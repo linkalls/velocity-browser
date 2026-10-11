@@ -109,14 +109,20 @@ class MainActivity : Activity(), BrowserHost {
         }
         val t = tabs.find { it.id == selectedId }
         chrome.showStart(t == null || t.url == "about:blank")
-        if (tabs.any { it.privateMode }) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
-        else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        // Avoid repeating WindowManager flag mutations on every render (e.g. blocker stats).
+        val needsSecure = tabs.any { it.privateMode }
+        val secureNow = (window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_SECURE) != 0
+        if (needsSecure != secureNow) {
+            if (needsSecure) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        }
         val title = (if (t?.readOnly == true) getString(R.string.reading_label) else "") + (if (t?.privateMode == true) getString(R.string.private_label) else "") + (t?.title ?: getString(R.string.app_name))
         if (chrome.title.text.toString() != title) chrome.title.text = title
         val url = t?.url?.takeUnless { it == "about:blank" }.orEmpty()
         if (!chrome.address.hasFocus() && chrome.address.text.toString() != url) chrome.address.setText(url)
         chrome.updateState(tabs.size, t?.privateMode == true, blocker.mode.name, blocker.enabled(t?.privateMode == true), blocker.busy, if (t?.privateMode == true) blocker.privateDecisions else blocker.normalDecisions, blocker.status)
-        chrome.back.isEnabled = canBack; chrome.forward.isEnabled = canForward
+        if (chrome.back.isEnabled != canBack) chrome.back.isEnabled = canBack
+        if (chrome.forward.isEnabled != canForward) chrome.forward.isEnabled = canForward
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             if (canBack && !backRegistered) { onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, modernBack); backRegistered = true }
             else if (!canBack && backRegistered) { onBackInvokedDispatcher.unregisterOnBackInvokedCallback(modernBack); backRegistered = false }
