@@ -1,0 +1,103 @@
+{
+  "verifiedAt": "2026-10-11",
+  "finalBuild": "SUCCESS (5m 44s; 258 actionable tasks: 35 executed, 223 up-to-date)",
+  "jvm": {
+    "tests": 26,
+    "failures": 0,
+    "errors": 0,
+    "suites": [
+      {
+        "name": "dev.velocity.browser.PrivacyAndUrlTest",
+        "tests": "2",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "dev.velocity.browser.AdaptiveTabSchedulerTest",
+        "tests": "18",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "dev.velocity.browser.block.LiteRulesTest",
+        "tests": "4",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "dev.velocity.browser.PreconnectPolicyTest",
+        "tests": "2",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      }
+    ]
+  },
+  "bun": {
+    "tests": 15,
+    "failures": 0,
+    "typecheck": "SUCCESS"
+  },
+  "lint": {
+    "errors": 0,
+    "warnings": 11,
+    "issueIds": [
+      "UnusedAttribute",
+      "AndroidGradlePluginVersion",
+      "GradleDependency",
+      "GradleDependency",
+      "GradleDependency",
+      "GradleDependency",
+      "NewerVersionAvailable",
+      "ChromeOsAbiSupport",
+      "DataExtractionRules",
+      "MissingApplicationIcon",
+      "SetTextI18n"
+    ]
+  },
+  "androidExecution": "UNVERIFIED: no device",
+  "deviceTestAttempt": {
+    "command": ":app:assembleBenchmark :app:connectedDebugAndroidTest :benchmark:connectedBenchmarkAndroidTest --continue",
+    "buildBenchmarkApp": "SUCCESS",
+    "instrumentation": "NOT_RUN: No connected devices!",
+    "macrobenchmark": "NOT_RUN: No connected devices!",
+    "gradleExit": "BUILD FAILED (device infrastructure unavailable, not test assertion failure)",
+    "duration": "3m 8s"
+  },
+  "githubActionsExecution": "NOT_RUN",
+  "performance": "NOT_MEASURED",
+  "artifacts": {
+    "app/build/outputs/apk/release/app-release-unsigned.apk": {
+      "bytes": 191199710,
+      "sha256": "b8b35770d8aaecac0b00f3d579f42f8ca54c6cfabca6726d4b93c8424d6383f9"
+    },
+    "app/build/outputs/apk/benchmark/app-benchmark.apk": {
+      "bytes": 191207902,
+      "sha256": "97c4643a55ad5067bc11382de6530b850a913598086f73e3a1bc29392292b47b"
+    },
+    "app/build/outputs/apk/debug/app-debug.apk": {
+      "bytes": 391963567,
+      "sha256": "9e731e9489c5185a213ec6ac1358553cdd0e7f098b461a9df5846722d230ce6d"
+    },
+    "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk": {
+      "bytes": 471976,
+      "sha256": "6a14908c6bafd56883cebd0a70273532c0e44d3a18d05a4547ee4dbb1503ee46"
+    },
+    "minimal-geckoview/build/outputs/apk/release/minimal-geckoview-release-unsigned.apk": {
+      "bytes": 191118123,
+      "sha256": "34cc9adf875eb86ac00457a174db1c1f0d9dc0a2251924463263f3f320ccaf76"
+    },
+    "benchmark/build/outputs/apk/benchmark/benchmark-benchmark.apk": {
+      "bytes": 36792796,
+      "sha256": "800c0ba02f86dd62b0c432d747638505e639aed59b94af2130473de30838fb50"
+    },
+    "app/build/outputs/bundle/release/app-release.aab": {
+      "bytes": 92077275,
+      "sha256": "dd59a66e9aa17dc669029d5e9a5682de6e36b54cb35e65e5fc101de075a12116"
+    }
+  },
+  "cpuAndPssCli": "Exit 1 ADB unavailable; no measurements emitted"
+}

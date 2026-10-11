@@ -1,0 +1,80 @@
+{
+  "kind": "SYNTHETIC_TEST_ONLY",
+  "samples": [
+    {
+      "config": {
+        "browser": "Velocity",
+        "version": "0.1.0",
+        "android": "36",
+        "device": "SYNTHETIC",
+        "soc": "SYNTHETIC",
+        "ramMiB": 12288,
+        "refreshHz": 120,
+        "network": "SYNTHETIC",
+        "pageLabel": "fixture-root",
+        "cache": "cold",
+        "adaptive": true,
+        "preconnect": false,
+        "tabKind": "none",
+        "timestamp": "2026-10-11T00:00:00Z",
+        "temperatureC": 25,
+        "batteryPct": 80,
+        "blockerMode": "ETP_ONLY"
+      },
+      "metric": "TTUI",
+      "unit": "ms",
+      "value": 10,
+      "failed": false
+    },
+    {
+      "config": {
+        "browser": "Velocity",
+        "version": "0.1.0",
+        "android": "36",
+        "device": "SYNTHETIC",
+        "soc": "SYNTHETIC",
+        "ramMiB": 12288,
+        "refreshHz": 120,
+        "network": "SYNTHETIC",
+        "pageLabel": "fixture-root",
+        "cache": "cold",
+        "adaptive": true,
+        "preconnect": false,
+        "tabKind": "none",
+        "timestamp": "2026-10-11T00:00:00Z",
+        "temperatureC": 25,
+        "batteryPct": 80,
+        "blockerMode": "ETP_ONLY"
+      },
+      "metric": "TTUI",
+      "unit": "ms",
+      "value": 20,
+      "failed": false
+    },
+    {
+      "config": {
+        "browser": "Velocity",
+        "version": "0.1.0",
+        "android": "36",
+        "device": "SYNTHETIC",
+        "soc": "SYNTHETIC",
+        "ramMiB": 12288,
+        "refreshHz": 120,
+        "network": "SYNTHETIC",
+        "pageLabel": "fixture-root",
+        "cache": "cold",
+        "adaptive": true,
+        "preconnect": false,
+        "tabKind": "none",
+        "timestamp": "2026-10-11T00:00:00Z",
+        "temperatureC": 25,
+        "batteryPct": 80,
+        "blockerMode": "ETP_ONLY"
+      },
+      "metric": "TTUI",
+      "unit": "ms",
+      "value": 30,
+      "failed": false
+    }
+  ]
+}

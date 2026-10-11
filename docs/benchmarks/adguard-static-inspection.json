@@ -1,0 +1,36 @@
+{
+  "status": "STATIC_INSPECTION_ONLY",
+  "inspectedAt": "2026-10-11",
+  "distribution": "official AMO pinned XPI",
+  "version": "5.5.2.3",
+  "id": "adguardadblocker@adguard.com",
+  "androidMinVersion": "113.0",
+  "bytes": 20182173,
+  "sha256": "008ff8e4d1e7764bbb2c24c35962fc7b43894101b27e2ba310e040b80b1d1e8f",
+  "permissions": [
+    "tabs",
+    "<all_urls>",
+    "webRequest",
+    "webRequestBlocking",
+    "webNavigation",
+    "storage",
+    "contextMenus",
+    "cookies",
+    "privacy"
+  ],
+  "optionsUi": {
+    "page": "pages/options.html",
+    "open_in_tab": true
+  },
+  "popup": "pages/popup.html",
+  "signatureFilesPresent": true,
+  "cryptographicSignatureVerification": "UNVERIFIED here; Gecko validates during install",
+  "amoLicense": "LGPL-3.0-only",
+  "repositoryLicense": "GPL-3.0",
+  "geckoviewInstall": "UNVERIFIED",
+  "webRequestBlocking": "UNVERIFIED",
+  "settingsAndPopup": "UNSUPPORTED in current host; device behavior UNVERIFIED",
+  "filterUpdate": "UNVERIFIED",
+  "ramCpuLoadComparison": "NOT_MEASURED",
+  "includedInApk": false
+}

@@ -1,0 +1,11 @@
+# 安全性
+
+自動破棄条件: 非選択、identity有効、全Protectionなし、certifiedRevision一致。Web UNKNOWNはGecko通知では解除しない。activeは自動破棄なし。手動closeには未保存状態の確認。旧callbackはidentity照合し、epoch変化でsnapshot/certificateを失効。許可後の入力が増えるリスクをfalseのcontainsFormDataだけで解除しない。
+
+URLはhttp/httpsとhost必須。userinfo、制御文字、空白、backslash、不正portを拒否。外部Intentからjavascript/file/content/intent等へ転送なし。URLを省略してHTTPSを偽装せずアドレス欄に完全URL表示。TLS例外を追加しない。onLoadErrorは停止+明示エラー。安全警告を成功扱いしない。Geckoのデフォルトセキュリティ・プロセス分離を変更しない。
+
+位置/カメラ/マイクはサイト確認とAndroid runtime permissions。非選択/背景からの要求は拒否。未知permission、screen capture、永続storage等は未対応案内で拒否。権限をsilent grantしない。確認/入力/再送信/beforeunloadをNative dialogで処理、回転/背景/終了では未解決要求をキャンセル。ダウンロードのbodyをcloseし未対応と通知。ファイル添付/HTTP auth/ポップアップは拒否案内。WebAuthnの一部はGeckoデフォルトに依存し、成功保証なし。
+
+通常URL/titleは内部ローカル保存の対象。privateは保存・先読みなし、backup無効。アドレス欄とGeckoViewのframework View state保存も無効化し、private URLをActivity復元Bundleへ残さない。privateタブが存在する間は一覧を含めFLAG_SECURE。ログとMetricsはURL/検索語/フォーム内容を受け取らない。Geckoのremote debugging/console outputはOFF。閲覧サイトとGecko標準サービス以外へ自動通信する機能なし。
+
+リリースゲート: 実機WebRTC、音声、ファイル添付、ダウンロード、複数窓、WebAuthn、ログイン/ログアウト、証明書異常、回転/再起動/強制終了、メモリ圧力を検証する。未検証状態でベータ配布しない。v0.1は保存安全性と重要互換機能が制限され、配布ゲート未達。

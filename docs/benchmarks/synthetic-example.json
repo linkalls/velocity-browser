@@ -1,0 +1,49 @@
+{
+  "kind": "SYNTHETIC_TEST_ONLY",
+  "status": "SYNTHETIC_TEST_ONLY",
+  "groups": [
+    {
+      "config": {
+        "browser": "Velocity",
+        "version": "0.1.0",
+        "android": "36",
+        "device": "SYNTHETIC",
+        "soc": "SYNTHETIC",
+        "ramMiB": 12288,
+        "refreshHz": 120,
+        "network": "SYNTHETIC",
+        "pageLabel": "fixture-root",
+        "cache": "cold",
+        "adaptive": true,
+        "preconnect": false,
+        "tabKind": "none",
+        "timestamp": "2026-10-11T00:00:00Z",
+        "temperatureC": 25,
+        "batteryPct": 80,
+        "blockerMode": "ETP_ONLY"
+      },
+      "metric": "TTUI",
+      "unit": "ms",
+      "n": 3,
+      "attempts": 3,
+      "failures": 0,
+      "under30": true,
+      "p50": 20,
+      "p90": 28,
+      "p95": 29,
+      "timestamps": [
+        "2026-10-11T00:00:00Z",
+        "2026-10-11T00:00:00Z",
+        "2026-10-11T00:00:00Z"
+      ],
+      "temperatureRangeC": [
+        25,
+        25
+      ],
+      "batteryRangePct": [
+        80,
+        80
+      ]
+    }
+  ]
+}

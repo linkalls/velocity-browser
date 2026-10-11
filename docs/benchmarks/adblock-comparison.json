@@ -1,0 +1,59 @@
+{
+  "status": "NOT_MEASURED",
+  "reason": "No connected Android device/emulator; no KVM",
+  "conditions": {
+    "ALL_OFF": {
+      "startupP50Ms": "NOT_MEASURED",
+      "startupP95Ms": "NOT_MEASURED",
+      "pss1KiB": "NOT_MEASURED",
+      "pss5KiB": "NOT_MEASURED",
+      "pss20KiB": "NOT_MEASURED",
+      "cpuTimeMs": "NOT_MEASURED",
+      "pageLoadP50Ms": "NOT_MEASURED",
+      "pageLoadP95Ms": "NOT_MEASURED",
+      "transferredBytes": "NOT_MEASURED",
+      "energy": "NOT_MEASURED",
+      "filterResidentMemory": "NOT_MEASURED"
+    },
+    "ETP_ONLY": {
+      "startupP50Ms": "NOT_MEASURED",
+      "startupP95Ms": "NOT_MEASURED",
+      "pss1KiB": "NOT_MEASURED",
+      "pss5KiB": "NOT_MEASURED",
+      "pss20KiB": "NOT_MEASURED",
+      "cpuTimeMs": "NOT_MEASURED",
+      "pageLoadP50Ms": "NOT_MEASURED",
+      "pageLoadP95Ms": "NOT_MEASURED",
+      "transferredBytes": "NOT_MEASURED",
+      "energy": "NOT_MEASURED",
+      "filterResidentMemory": "NOT_MEASURED"
+    },
+    "LITE": {
+      "startupP50Ms": "NOT_MEASURED",
+      "startupP95Ms": "NOT_MEASURED",
+      "pss1KiB": "NOT_MEASURED",
+      "pss5KiB": "NOT_MEASURED",
+      "pss20KiB": "NOT_MEASURED",
+      "cpuTimeMs": "NOT_MEASURED",
+      "pageLoadP50Ms": "NOT_MEASURED",
+      "pageLoadP95Ms": "NOT_MEASURED",
+      "transferredBytes": "NOT_MEASURED",
+      "energy": "NOT_MEASURED",
+      "filterResidentMemory": "NOT_MEASURED"
+    },
+    "ADGUARD": {
+      "startupP50Ms": "NOT_MEASURED",
+      "startupP95Ms": "NOT_MEASURED",
+      "pss1KiB": "NOT_MEASURED",
+      "pss5KiB": "NOT_MEASURED",
+      "pss20KiB": "NOT_MEASURED",
+      "cpuTimeMs": "NOT_MEASURED",
+      "pageLoadP50Ms": "NOT_MEASURED",
+      "pageLoadP95Ms": "NOT_MEASURED",
+      "transferredBytes": "NOT_MEASURED",
+      "energy": "NOT_MEASURED",
+      "filterResidentMemory": "NOT_MEASURED"
+    }
+  },
+  "adguardRuntimeCompatibility": "UNVERIFIED"
+}

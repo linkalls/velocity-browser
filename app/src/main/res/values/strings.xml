@@ -1,0 +1,30 @@
+<resources>
+<string name="app_name">Velocity Browser</string><string name="address">URLまたは検索語</string><string name="go">開く</string><string name="back">戻る</string><string name="forward">進む</string><string name="reload">更新</string><string name="stop">中断</string><string name="tabs">タブ</string><string name="new_tab">新規タブ</string><string name="private_tab">プライベートタブ</string><string name="close_tab">このタブを閉じる</string><string name="settings">設定</string><string name="search_engine">検索エンジン</string><string name="preconnect">接続先読み（許可した同一オリジンのみ）</string><string name="allow_origin">現在のHTTPSルートを公開・認証不要サイトとして先読み許可（金融・決済・ログイン不可）</string><string name="pin">保持固定を切り替え</string><string name="blocked">安全に解放できるタブがありません。タブ一覧から不要なタブを閉じて、保留タブを再選択してください。</string><string name="close_warning">未保存の入力・通話・処理が失われる可能性があります。このタブを閉じますか？</string><string name="yes">許可</string><string name="no">拒否</string><string name="cancel">キャンセル</string><string name="close_confirm">閉じる</string><string name="unsupported">この機能は未対応です。操作は完了していません。</string><string name="invalid_url">安全なHTTP(S) URLを入力してください。</string><string name="load_error">ページを読み込めませんでした。証明書の安全性を迂回せず停止しました。</string><string name="crash">ページプロセスが終了しました。URLから再読み込みできます。未保存状態の復元は保証できません。</string><string name="site_permission">サイト権限: %1$s（種類 %2$d）</string><string name="media_permission">このサイトにカメラ・マイクの使用を許可しますか？ %1$s</string><string name="private_label">[非公開] </string><string name="protected_label">[保護] </string><string name="error_title">確認</string><string name="adaptive">Adaptiveモード（OFFでも安全上限2を維持）</string><string name="export_metrics">内部計測JSONを保存</string><string name="metrics_saved">内部計測をアプリ内ファイルに保存しました。</string>
+
+<string name="block_settings">広告ブロック</string>
+<string name="block_toggle">Velocity Block Lite ON/OFF</string>
+<string name="block_exception">このサイトではLite OFF</string>
+<string name="block_exception_scope">%1$s のオリジン（scheme・host・port一致）のみ例外を切り替えます。サブドメインは別です。必要なら手動で再読み込みしてください。プライベートでの変更は保存しません。</string>
+<string name="block_update">フィルターを更新（通常モードのみ）</string>
+<string name="block_update_consent">Peter LoweのドメインリストのHTTPS配信元へ接続します（最大2MiB、手動更新）。閲覧URLは送りません。対応するドメイン規則のみ使用し、未対応規則はスキップします。配信元はリストの統合・Web掲載を許可しています。提供者Peter Loweの表示を維持します。失敗時は旧版を維持します。</string>
+<string name="block_user_rules">ユーザー規則</string>
+<string name="block_rules_help">対応例: ||ads.example^、@@||safe.example^、site.example##.ad-slot。CSSは .ad-slot / .ad-banner / .advertisement / .velocity-ad / [data-velocity-ad] のみ。フォームを含む要素を除外します。未対応構文は保存せずスキップします。プライベート変更は一時的です。</string>
+<string name="block_rules_result">採用 %1$d件 / 未対応 %2$d件。必要なら再読み込みしてください。</string>
+<string name="block_diagnostics">詳細・診断・フィルター更新日時</string>
+<string name="block_diagnostic_text">状態: %1$s
+版: %2$s
+採用: %3$d / 未対応: %4$d
+最終更新: %5$s
+遮断動作・性能は実機未検証</string>
+<string name="block_never_updated">未更新（同梱リスト）</string>
+<string name="block_updated">フィルターを更新しました。未対応構文はスキップしています。</string>
+<string name="block_failed">操作に失敗しました。診断を確認してください。更新失敗時は旧版を維持します。</string>
+<string name="block_modes">比較用の遮断モード（通常モードのみ）</string>
+<string name="block_mode_scope">ETP設定は共有Runtime全体に適用します。Safe Browsingは維持します。実測は未実施です。LiteとAdGuardは同時起動しません。AdGuardはプライベートで無効です。ALL OFFは比較用です。</string>
+<string-array name="block_modes"><item>ALL OFF（計測用・Safe Browsing維持）</item><item>ETPのみ（初期設定）</item><item>ETP + Lite</item><item>ETP + AdGuard（導入済みの場合）</item></string-array>
+<string name="adguard_install">AdGuard Firefox版を追加（実験）</string>
+<string name="adguard_remove">AdGuardを削除</string>
+<string name="adguard_experiment">Mozillaの公式配信元から署名済みAdGuard 5.5.2.3 XPIを導入します。GPLコードはAPKに同梱しません。GeckoViewでの遮断・更新・設定画面は未検証です。拡張Popup・追加タブは未対応です。必要権限を次の画面で確認します。Liteは停止します。</string>
+<string name="adguard_permissions">AdGuardの権限確認</string>
+<string name="adguard_permission_explanation">以下の権限を許可しますか？サイト通信の監視・遮断を含みます。プライベートモードと技術データ収集は許可しません。</string>
+</resources>

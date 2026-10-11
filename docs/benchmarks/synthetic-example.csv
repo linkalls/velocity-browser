@@ -1,0 +1,2 @@
+kind,config,metric,unit,n,attempts,failures,p50,p90,p95
+"SYNTHETIC_TEST_ONLY","{""browser"":""Velocity"",""version"":""0.1.0"",""android"":""36"",""device"":""SYNTHETIC"",""soc"":""SYNTHETIC"",""ramMiB"":12288,""refreshHz"":120,""network"":""SYNTHETIC"",""pageLabel"":""fixture-root"",""cache"":""cold"",""adaptive"":true,""preconnect"":false,""tabKind"":""none"",""timestamp"":""2026-10-11T00:00:00Z"",""temperatureC"":25,""batteryPct"":80,""blockerMode"":""ETP_ONLY""}","TTUI","ms","3","3","0","20","28","29"

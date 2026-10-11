@@ -1,0 +1,92 @@
+package dev.velocity.browser.engine
+
+import dev.velocity.browser.tabs.*
+import dev.velocity.browser.security.Protection
+import dev.velocity.browser.security.UrlPolicy
+import org.mozilla.geckoview.*
+
+/** Delegateのイベントはcoordinatorへ集約。GeckoSessionはUIへ公開しない。 */
+class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boolean,
+    private val owner: AdaptiveTabCoordinator) {
+    val session = GeckoSession(GeckoSessionSettings.Builder().usePrivateMode(privateMode).useTrackingProtection(true).build())
+    var pristineBlank = true; private set
+    var canGoBack = false; private set
+    var canGoForward = false; private set
+    var loading = false; private set
+    private fun emit(e: Event) { if (owner.isCurrent(id, identity)) owner.dispatch(e) }
+    fun risk(p: Protection, on: Boolean) = emit(Event.RiskChanged(id, identity, p, on))
+    init {
+        session.navigationDelegate = object : GeckoSession.NavigationDelegate {
+            override fun onLoadRequest(s: GeckoSession, request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny> {
+                val allowed = UrlPolicy.httpUrl(request.uri) != null || (pristineBlank && request.uri == "about:blank")
+                if (!allowed) owner.notice(dev.velocity.browser.R.string.invalid_url)
+                else if (request.uri != "about:blank") {
+                    pristineBlank = false
+                    risk(Protection.UNKNOWN, true)
+                }
+                return GeckoResult.fromValue(if (allowed) AllowOrDeny.ALLOW else AllowOrDeny.DENY)
+            }
+            override fun onLocationChange(s: GeckoSession, url: String?, perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>, hasUserGesture: Boolean) {
+                if (url != null && (url == "about:blank" || UrlPolicy.httpUrl(url) != null)) emit(Event.LocationChanged(id, identity, url))
+            }
+            override fun onCanGoBack(s: GeckoSession, value: Boolean) { canGoBack = value; owner.render() }
+            override fun onCanGoForward(s: GeckoSession, value: Boolean) { canGoForward = value; owner.render() }
+            override fun onNewSession(s: GeckoSession, uri: String): GeckoResult<GeckoSession>? {
+                // opener付き新窓は未対応。管理された独立タブにURLを渡し、隠しsessionは作らない。
+                if (owner.isCurrent(id, identity) && UrlPolicy.httpUrl(uri) != null) owner.createTab(uri, privateMode)
+                else owner.notice(dev.velocity.browser.R.string.unsupported)
+                return null
+            }
+            override fun onLoadError(s: GeckoSession, uri: String?, error: WebRequestError): GeckoResult<String>? {
+                owner.notice(dev.velocity.browser.R.string.load_error)
+                return null // 証明書例外・安全性迂回UIを提供しない。
+            }
+        }
+        session.progressDelegate = object : GeckoSession.ProgressDelegate {
+            override fun onPageStart(s: GeckoSession, url: String) {
+                if (url != "about:blank") pristineBlank = false
+                loading = true; emit(Event.NavigationStarted(id, identity, url)); owner.render()
+            }
+            override fun onPageStop(s: GeckoSession, success: Boolean) {
+                loading = false; owner.render()
+                val epoch = owner.scheduler.tab(id)?.epoch ?: return
+                session.containsFormData().accept({ hasForm ->
+                    if (owner.isCurrent(id, identity) && owner.scheduler.tab(id)?.epoch == epoch) risk(Protection.FORM, hasForm == true)
+                }, { if (owner.isCurrent(id, identity)) risk(Protection.UNKNOWN, true) })
+            }
+            override fun onSessionStateChange(s: GeckoSession, state: GeckoSession.SessionState) {
+                // このAPIにはnavigation epochもflush要求IDもない。Webの状態を最新と偽認定しない。
+                if (pristineBlank) owner.acceptBlankSnapshot(id, identity, state)
+            }
+        }
+        session.contentDelegate = object : GeckoSession.ContentDelegate {
+            override fun onTitleChange(s: GeckoSession, title: String?) { emit(Event.TitleChanged(id, identity, title.orEmpty())) }
+            override fun onFirstContentfulPaint(s: GeckoSession) { if (owner.isCurrent(id, identity)) owner.firstContent(id) }
+            override fun onCrash(s: GeckoSession) { emit(Event.Crashed(id, identity)); owner.notice(dev.velocity.browser.R.string.crash) }
+            override fun onExternalResponse(s: GeckoSession, response: WebResponse) {
+                // ストリームを放置しない。ダウンロードは成功扱いせず拒否する。
+                runCatching { response.body?.close() }; owner.notice(dev.velocity.browser.R.string.unsupported)
+            }
+        }
+        session.mediaSessionDelegate = object : MediaSession.Delegate {
+            override fun onPlay(s: GeckoSession, media: MediaSession) = risk(Protection.MEDIA, true)
+            override fun onPause(s: GeckoSession, media: MediaSession) = risk(Protection.MEDIA, false)
+            override fun onStop(s: GeckoSession, media: MediaSession) = risk(Protection.MEDIA, false)
+        }
+        session.mediaDelegate = object : GeckoSession.MediaDelegate {
+            override fun onRecordingStatusChanged(s: GeckoSession, devices: Array<GeckoSession.MediaDelegate.RecordingDevice>) {
+                val active = devices.filter { it.status == GeckoSession.MediaDelegate.RecordingDevice.Status.RECORDING }
+                risk(Protection.CAMERA, active.any { it.type == GeckoSession.MediaDelegate.RecordingDevice.Type.CAMERA })
+                risk(Protection.MICROPHONE, active.any { it.type == GeckoSession.MediaDelegate.RecordingDevice.Type.MICROPHONE })
+            }
+        }
+        session.permissionDelegate = owner.permissions.delegate(this)
+        session.promptDelegate = owner.prompts.delegate(this)
+    }
+    fun load(url: String) { if (url != "about:blank") pristineBlank = false; session.loadUri(url) }
+    fun close() {
+        session.navigationDelegate = null; session.progressDelegate = null; session.contentDelegate = null
+        session.mediaSessionDelegate = null; session.mediaDelegate = null; session.permissionDelegate = null; session.promptDelegate = null
+        if (session.isOpen) session.close()
+    }
+}

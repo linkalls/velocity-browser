@@ -1,0 +1,17 @@
+{
+  "name": "velocity-bench-runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "aggregate": "bun src/cli.ts aggregate",
+    "memory": "bun src/cli.ts memory",
+    "size": "bun src/cli.ts size",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.10",
+    "typescript": "5.9.3"
+  }
+}

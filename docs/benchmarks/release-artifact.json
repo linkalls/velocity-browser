@@ -1,0 +1,11 @@
+{
+  "file": "velocity-browser-0.2.0-release-test-signed.apk",
+  "version": "0.2.0",
+  "buildType": "release",
+  "abi": "arm64-v8a",
+  "bytes": 191217889,
+  "sha256": "f727ec6a93d3928903873f4507b8f224b42fb3c04832beef985a99b3d6df0abb",
+  "signing": "TEST_ONLY: existing Android Debug key; not a production distribution key",
+  "signatureVerification": "PASS: apksigner v2/v3",
+  "installationAndDeviceTests": "UNVERIFIED: no connected Android device"
+}
