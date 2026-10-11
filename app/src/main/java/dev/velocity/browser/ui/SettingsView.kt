@@ -2,37 +2,127 @@ package dev.velocity.browser.ui
 
 import android.app.Dialog
 import android.content.Context
+import android.content.res.ColorStateList
+import android.graphics.Typeface
+import android.graphics.drawable.RippleDrawable
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.*
 import android.widget.*
 
-/** Full-height native settings with categories, visible values and ordinary Back dismissal. */
-class SettingsView(context:Context,private val appearance:ThemeController,title:String,rows:List<Row>,private val onDismiss:()->Unit={}) {
-    data class Row(val category:String,val label:String,val detail:String="",val action:()->Unit) {var liveText:(()->String)?=null}
-    private val dialog=Dialog(context).apply {requestWindowFeature(Window.FEATURE_NO_TITLE)}
-    private val panel=LinearLayout(context).apply {orientation=LinearLayout.VERTICAL;setPadding(context.dp(16),context.dp(12),context.dp(16),context.dp(12))}
-    private val buttons=mutableListOf<Pair<Row,Button>>()
-    private val ticker=object:Runnable {override fun run(){if(!dialog.isShowing)return;refreshValues();panel.postDelayed(this,500)}}
-    val isShowing get()=dialog.isShowing
-    private fun refreshValues(){buttons.forEach {(row,button)->row.liveText?.let {val text=it();if(button.text.toString()!=text)button.text=text}}}
-    private val refresh:()->Unit={applyPalette()}
-    init {
-        panel.addView(LinearLayout(context).apply {
-            gravity=Gravity.CENTER_VERTICAL
-            addView(TextView(context).apply {text=title;textSize=26f},LinearLayout.LayoutParams(0,-2,1f))
-            addView(Button(context).apply {text="完了";minHeight=context.dp(48);setOnClickListener {dialog.dismiss()} })
-        })
-        val content=LinearLayout(context).apply {orientation=LinearLayout.VERTICAL}
-        var previous=""
-        rows.forEach {row->
-            if(row.category!=previous){previous=row.category;content.addView(TextView(context).apply {text=row.category;textSize=14f;setPadding(0,context.dp(20),0,context.dp(6))})}
-            content.addView(Button(context).apply {
-                text=row.label+(if(row.detail.isBlank())"" else "\n${row.detail}");isAllCaps=false;gravity=Gravity.START or Gravity.CENTER_VERTICAL;minHeight=context.dp(56);setPadding(context.dp(12),context.dp(8),context.dp(12),context.dp(8))
-                buttons+=row to this;setOnClickListener {row.action();refreshValues()}
-            },LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=context.dp(4)})
-        }
-        panel.addView(ScrollView(context).apply {addView(content)},LinearLayout.LayoutParams(-1,0,1f));dialog.setContentView(panel)
-        dialog.setOnDismissListener {appearance.remove(refresh);panel.removeCallbacks(ticker);onDismiss()}
+/** Searchable native settings. Values and explanations have separate visual hierarchy. */
+class SettingsView(context: Context, private val appearance: ThemeController, title: String,
+    rows: List<Row>, private val onDismiss: () -> Unit = {}) {
+    data class Row(val category: String, val label: String, val detail: String = "", val action: () -> Unit) {
+        var liveText: (() -> String)? = null
+        var checked: (() -> Boolean)? = null
     }
-    fun show() {dialog.show();dialog.window?.apply {setLayout(-1,-1);setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)};appearance.track(dialog);appearance.observe(refresh);applyPalette();refreshValues();panel.post(ticker)}
-    private fun applyPalette(){val p=appearance.palette();panel.setBackgroundColor(p.background);fun visit(v:View){if(v is Button){v.setTextColor(p.text);v.background=v.context.rounded(p.card,12,p.border)}else if(v is TextView)v.setTextColor(p.muted);if(v is ViewGroup)for(i in 0 until v.childCount)visit(v.getChildAt(i))};visit(panel)}
+    private data class Binding(val row: Row, val root: LinearLayout, val label: TextView,
+        val detail: TextView, val trailing: TextView?, val toggle: Switch?)
+    private val dialog = Dialog(context).apply { requestWindowFeature(Window.FEATURE_NO_TITLE) }
+    private val panel = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+    private val bindings = mutableListOf<Binding>()
+    private val headings = mutableMapOf<String, TextView>()
+    private val heading = TextView(context).apply { text = title; textSize = 24f; typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL) }
+    private val close = Button(context).apply { text = "閉じる"; isAllCaps = false; minHeight = context.dp(48); setOnClickListener { dialog.dismiss() } }
+    private val search = EditText(context).apply {
+        hint = "設定を検索"; textSize = 16f; setSingleLine(true); isSaveEnabled = false
+        setPadding(context.dp(16), context.dp(12), context.dp(16), context.dp(12))
+        contentDescription = "設定を検索"
+    }
+    private val empty = TextView(context).apply { text = "一致する設定がありません"; textSize = 16f; setPadding(context.dp(16), context.dp(24), context.dp(16), 0) }
+    private val ticker = object : Runnable {
+        override fun run() { if (!dialog.isShowing) return; refreshValues(); panel.postDelayed(this, 500) }
+    }
+    val isShowing get() = dialog.isShowing
+    private val refresh: () -> Unit = { applyPalette() }
+    init {
+        panel.setPadding(context.dp(16), context.dp(12), context.dp(16), context.dp(12))
+        panel.isFocusableInTouchMode = true
+        panel.addView(LinearLayout(context).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(heading, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(close)
+        })
+        panel.addView(search, LinearLayout.LayoutParams(-1, -2).apply { topMargin = context.dp(12); bottomMargin = context.dp(8) })
+        val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        // A category appears once, in the order supplied by the caller.
+        rows.groupBy { it.category }.forEach { (category, items) ->
+            val header = TextView(context).apply {
+                text = category; textSize = 13f; typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                setPadding(context.dp(4), context.dp(20), 0, context.dp(8))
+                if (android.os.Build.VERSION.SDK_INT >= 28) isAccessibilityHeading = true
+            }
+            headings[category] = header; content.addView(header)
+            items.forEach { row ->
+                val root = LinearLayout(context).apply {
+                    gravity = Gravity.CENTER_VERTICAL; minimumHeight = context.dp(64)
+                    setPadding(context.dp(16), context.dp(14), context.dp(12), context.dp(14))
+                    isClickable = true; isFocusable = true
+                }
+                val label = TextView(context).apply { text = row.label; textSize = 16f }
+                val detail = TextView(context).apply {
+                    text = row.detail; textSize = 13f; setPadding(0, context.dp(4), 0, 0)
+                    visibility = if (row.detail.isBlank()) View.GONE else View.VISIBLE
+                }
+                root.addView(LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; addView(label); addView(detail) }, LinearLayout.LayoutParams(0, -2, 1f))
+                val toggle = row.checked?.let { Switch(context).apply { isClickable = false; isFocusable = false; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO } }
+                val trailing = if (toggle == null) TextView(context).apply { text = "›"; textSize = 24f; setPadding(context.dp(12), 0, context.dp(4), 0) } else null
+                if (toggle != null) root.addView(toggle) else root.addView(trailing)
+                val binding = Binding(row, root, label, detail, trailing, toggle); bindings += binding
+                root.setOnClickListener { row.action(); refreshValues() }
+                content.addView(root, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = context.dp(2) })
+            }
+        }
+        content.addView(empty)
+        panel.addView(ScrollView(context).apply { isFillViewport = true; addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        search.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { filter() }
+            override fun afterTextChanged(s: Editable?) {}
+        })
+        dialog.setContentView(panel)
+        dialog.setOnDismissListener { appearance.remove(refresh); panel.removeCallbacks(ticker); onDismiss() }
+    }
+    private fun refreshValues() {
+        bindings.forEach { b ->
+            val value = b.row.liveText?.invoke() ?: b.row.label
+            val parts = value.split('\n', limit = 2)
+            if (b.label.text.toString() != parts[0]) b.label.text = parts[0]
+            val detail = parts.getOrElse(1) { b.row.detail }
+            if (b.detail.text.toString() != detail) b.detail.text = detail
+            b.detail.visibility = if (detail.isBlank()) View.GONE else View.VISIBLE
+            b.toggle?.isChecked = b.row.checked?.invoke() == true
+            val description = parts[0] + if (b.toggle != null) if (b.toggle.isChecked) "、オン" else "、オフ" else ""
+            if (b.root.contentDescription != description) b.root.contentDescription = description
+        }
+        filter()
+    }
+    private fun filter() {
+        val query = search.text.toString().trim()
+        bindings.forEach { b ->
+            val matches = query.isEmpty() || "${b.row.category} ${b.label.text} ${b.detail.text}".contains(query, ignoreCase = true)
+            val next = if (matches) View.VISIBLE else View.GONE
+            if (b.root.visibility != next) b.root.visibility = next
+        }
+        headings.forEach { (category, header) -> header.visibility = if (bindings.any { it.row.category == category && it.root.visibility == View.VISIBLE }) View.VISIBLE else View.GONE }
+        empty.visibility = if (bindings.none { it.root.visibility == View.VISIBLE }) View.VISIBLE else View.GONE
+    }
+    fun show() {
+        dialog.show(); dialog.window?.apply {
+            setLayout(-1, -1); setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
+        }
+        appearance.track(dialog); appearance.observe(refresh); applyPalette(); refreshValues(); panel.requestFocus(); panel.post(ticker)
+    }
+    private fun applyPalette() {
+        val p = appearance.palette(); panel.setBackgroundColor(p.background); heading.setTextColor(p.text)
+        close.setTextColor(p.accent); close.background = RippleDrawable(ColorStateList.valueOf(p.pressed), close.context.rounded(p.surface, 12), null)
+        search.applyTextPalette(p); search.background = search.context.rounded(p.surface, 12)
+        empty.setTextColor(p.muted); headings.values.forEach { it.setTextColor(p.accent) }
+        bindings.forEach { b ->
+            b.root.background = RippleDrawable(ColorStateList.valueOf(p.pressed), b.root.context.rounded(p.card, 12), null)
+            b.label.setTextColor(p.text); b.detail.setTextColor(p.muted); b.trailing?.setTextColor(p.muted)
+            b.toggle?.thumbTintList = ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(p.accent, p.muted))
+        }
+    }
 }

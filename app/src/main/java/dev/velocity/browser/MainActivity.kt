@@ -111,15 +111,18 @@ class MainActivity : Activity(), BrowserHost {
         chrome.showStart(t == null || t.url == "about:blank")
         if (tabs.any { it.privateMode }) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
         else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
-        chrome.title.text = (if (t?.readOnly == true) getString(R.string.reading_label) else "") + (if (t?.privateMode == true) getString(R.string.private_label) else "") + (t?.title ?: getString(R.string.app_name))
-        if (!chrome.address.hasFocus()) chrome.address.setText(t?.url?.takeUnless { it == "about:blank" }.orEmpty())
+        val title = (if (t?.readOnly == true) getString(R.string.reading_label) else "") + (if (t?.privateMode == true) getString(R.string.private_label) else "") + (t?.title ?: getString(R.string.app_name))
+        if (chrome.title.text.toString() != title) chrome.title.text = title
+        val url = t?.url?.takeUnless { it == "about:blank" }.orEmpty()
+        if (!chrome.address.hasFocus() && chrome.address.text.toString() != url) chrome.address.setText(url)
         chrome.updateState(tabs.size, t?.privateMode == true, blocker.mode.name, blocker.enabled(t?.privateMode == true), blocker.busy, if (t?.privateMode == true) blocker.privateDecisions else blocker.normalDecisions, blocker.status)
         chrome.back.isEnabled = canBack; chrome.forward.isEnabled = canForward
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             if (canBack && !backRegistered) { onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, modernBack); backRegistered = true }
             else if (!canBack && backRegistered) { onBackInvokedDispatcher.unregisterOnBackInvokedCallback(modernBack); backRegistered = false }
         }
-        chrome.reload.setText(if (loading) R.string.stop else R.string.reload)
+        val reloadLabel = getString(if (loading) R.string.stop else R.string.reload)
+        if (chrome.reload.text.toString() != reloadLabel) chrome.reload.text = reloadLabel
     }
     override fun notice(message: Int) { Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
     override fun capacityBlocked(id: String, adguard: Boolean) {
@@ -187,12 +190,17 @@ class MainActivity : Activity(), BrowserHost {
                 9 -> dialog().setTitle(R.string.appearance).setSingleChoiceItems(arrayOf("システムに合わせる", "ライト", "ダーク"),appearance.mode.ordinal) { d,n -> appearance.select(ThemeController.Mode.entries[n]); d.dismiss() }.showThemed()
                 8 -> dialog().setTitle("ライセンス").setMessage(assets.open("licenses/PETER_LOWES_LIST.txt").bufferedReader().use { it.readText() } + "\n" + assets.open("licenses/JSOUP.txt").bufferedReader().use { it.readText() }).setPositiveButton(R.string.close_confirm, null).showThemed()
             }
-        }) }.sortedBy { it.category }.toMutableList()
-        rows.add(0,SettingsView.Row("タブとメモリ","ライブ目標 ${coordinator.scheduler.config.liveTarget}枚 · ${coordinator.scheduler.config.discardAfterMs/1000}秒","保護中は目標を超えて保持します。RAMの推奨: ${coordinator.recommendedProfile().name}",::memorySettings))
+        }) }.toMutableList()
+        rows[0].liveText = { getString(R.string.search_engine) + " · " + coordinator.searchEngine.name }
+        rows[1].liveText = { getString(R.string.preconnect) }; rows[1].checked = { coordinator.preconnectEnabled() }
+        rows[4].liveText = { getString(R.string.adaptive) }; rows[4].checked = { coordinator.scheduler.adaptiveEnabled }
+        rows[9].liveText = { getString(R.string.appearance) + " · " + arrayOf("システム", "ライト", "ダーク")[appearance.mode.ordinal] }
+        rows.add(0,SettingsView.Row("タブとメモリ","ライブ目標 ${coordinator.scheduler.config.liveTarget}枚 · ${coordinator.scheduler.config.discardAfterMs/1000}秒","保護中は目標を超えて保持します。RAMの推奨: ${coordinator.recommendedProfile().name}",::memorySettings).apply { liveText = { "ライブ目標 ${coordinator.scheduler.config.liveTarget}枚 · ${coordinator.scheduler.config.discardAfterMs/1000}秒" } })
         rows.add(SettingsView.Row("外観","アドレスバー位置",if(chrome.bottomAddress)"下" else "上") {chrome.setAddressBottom(!chrome.bottomAddress)}.apply {liveText={"アドレスバー位置 · "+if(chrome.bottomAddress)"下" else "上"}})
-        rows.add(SettingsView.Row("外観","アドレスバーのスワイプ",if(chrome.swipeEnabled)"ON" else "OFF") {chrome.swipeEnabled=!chrome.swipeEnabled}.apply {liveText={"アドレスバーのスワイプ · "+if(chrome.swipeEnabled)"ON" else "OFF"}})
+        rows.add(SettingsView.Row("外観","アドレスバーのスワイプ","左右にスワイプしてタブを切り替える") {chrome.swipeEnabled=!chrome.swipeEnabled}.apply {liveText={"アドレスバーのスワイプ"};checked={chrome.swipeEnabled}})
         rows.add(SettingsView.Row("プライバシーと広告ブロック","広告ブロック",blocker.mode.name,::blockSettings))
-        showSettings("settings","設定",rows.sortedBy {it.category})
+        val categoryOrder = listOf("一般", "外観", "プライバシーと広告ブロック", "タブとメモリ", "ダウンロードと権限", "詳細情報")
+        showSettings("settings","設定",rows.sortedBy {categoryOrder.indexOf(it.category)})
     }
     private fun memorySettings() {
         val options=arrayOf("省メモリ · 3枚 / 30秒","バランス · 6枚 / 120秒","高速重視 · 12枚 / 600秒","カスタム")
@@ -283,11 +291,11 @@ class MainActivity : Activity(), BrowserHost {
             SettingsView.Row("要素非表示","ページ内の要素を選択して非表示","Lite有効時のみ。適用前にプレビューできます",::pickElement),
             SettingsView.Row("要素非表示","広告要素を非表示 · ${blocker.cosmeticEnabled}","Liteのみ。フォーム・本文領域を保護します") {blocker.setCosmetic(!blocker.cosmeticEnabled)},
             SettingsView.Row("要素非表示","広告の空白を折りたたむ · ${blocker.collapseEnabled}","広告専用の空枠のみ。高負荷時は監視を停止") {blocker.setCollapse(!blocker.collapseEnabled)},
-            SettingsView.Row("要素非表示","このサイトの折りたたみ",if(origin!=null&&blocker.collapseExcluded(origin,privateMode))"OFF" else "ON") {if(origin!=null)blocker.toggleCollapseException(origin,privateMode)}
+            SettingsView.Row("要素非表示","このサイトの折りたたみ","広告専用の空白をこのサイトで折りたたむ") {if(origin!=null)blocker.toggleCollapseException(origin,privateMode)}
         )
-        cosmeticRows[2].liveText={"広告要素を非表示 · ${blocker.cosmeticEnabled}\nLiteのみ。フォーム・本文領域を保護します"}
-        cosmeticRows[3].liveText={"広告の空白を折りたたむ · ${blocker.collapseEnabled}\n広告専用の空枠のみ。高負荷時は監視を停止"}
-        cosmeticRows[4].liveText={"このサイトの折りたたみ · "+if(origin!=null&&blocker.collapseExcluded(origin,privateMode))"OFF" else "ON"}
+        cosmeticRows[2].liveText={"広告要素を非表示"};cosmeticRows[2].checked={blocker.cosmeticEnabled}
+        cosmeticRows[3].liveText={"広告の空白を折りたたむ"};cosmeticRows[3].checked={blocker.collapseEnabled}
+        cosmeticRows[4].liveText={"このサイトの折りたたみ"};cosmeticRows[4].checked={origin!=null&&!blocker.collapseExcluded(origin,privateMode)}
         val counts=if(blocker.mode==dev.velocity.browser.block.BlockController.Mode.ADGUARD)"AdGuardの非表示・折りたたみ: 未取得" else "全${if(privateMode)"非公開" else "通常"}タブの観測数 · 非表示 ${if(privateMode)blocker.privateHiddenElements else blocker.hiddenElements} / 折りたたみ ${if(privateMode)blocker.privateCollapsedElements else blocker.collapsedElements}（各ページ100候補まで）"
         showSettings("block","広告とトラッカーのブロック",listOf(SettingsView.Row("状態",origin?:"ページ未選択","${blocker.mode.name} · 遮断判定 ${if(privateMode)blocker.privateDecisions else blocker.normalDecisions}（広告の個数ではありません）\n$counts") {})+rows.take(2)+cosmeticRows+rows.drop(2))
     }

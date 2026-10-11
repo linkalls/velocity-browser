@@ -121,9 +121,13 @@ class BrowserChromeView(context: Context) : LinearLayout(context) {
     }
     fun showStart(show: Boolean) { start.visibility = if (show) View.VISIBLE else View.GONE }
     fun updateState(tabCount: Int, privateMode: Boolean, mode: String, lite: Boolean, busy: Boolean, decisions: Int, status: String) {
-        tabsButton.count = tabCount; tabsButton.invalidate(); tabsButton.contentDescription = "タブ $tabCount 件"
-        privacy.text = if (privateMode) "PRIVATE" else ""
-        shield.contentDescription = context.getString(R.string.block_settings) + " · " + when { busy -> "準備中…"; status.contains("FAILED") || status.contains("INVALID") || status == "DISCONNECTED" -> "拡張の状態を確認"; lite && !status.startsWith("READY_CONFIG_ACK") -> "Lite · 準備中…"; mode == "ADGUARD" && privateMode -> "非公開 · AdGuard OFF"; mode == "ADGUARD" -> "AdGuard · 設定"; lite -> "Lite · 遮断判定 $decisions"; mode == "ALL_OFF" -> "広告ブロック OFF"; else -> "追跡防止 · Lite OFF" }
+        if (tabsButton.count != tabCount) { tabsButton.count = tabCount; tabsButton.invalidate() }
+        val tabDescription = "タブ $tabCount 件"
+        if (tabsButton.contentDescription != tabDescription) tabsButton.contentDescription = tabDescription
+        val privacyLabel = if (privateMode) "PRIVATE" else ""
+        if (privacy.text.toString() != privacyLabel) privacy.text = privacyLabel
+        val shieldDescription = context.getString(R.string.block_settings) + " · " + when { busy -> "準備中…"; status.contains("FAILED") || status.contains("INVALID") || status == "DISCONNECTED" -> "拡張の状態を確認"; lite && !status.startsWith("READY_CONFIG_ACK") -> "Lite · 準備中…"; mode == "ADGUARD" && privateMode -> "非公開 · AdGuard OFF"; mode == "ADGUARD" -> "AdGuard · 設定"; lite -> "Lite · 遮断判定 $decisions"; mode == "ALL_OFF" -> "広告ブロック OFF"; else -> "追跡防止 · Lite OFF" }
+        if (shield.contentDescription != shieldDescription) shield.contentDescription = shieldDescription
     }
     fun applyPalette(next: BrowserPalette) {
         palette = next; setBackgroundColor(surface); start.setBackgroundColor(surface)

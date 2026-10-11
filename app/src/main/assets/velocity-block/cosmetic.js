@@ -5,7 +5,10 @@ const hiddenSet=new Set(),collapsed=new Set(),queue=new Set();
 const wrapper='.ad-wrapper,.ad-container,[data-ad-container],[data-ad-wrapper]';
 const protectedSelector='html,body,main,article,header,nav,footer,'+VelocityRules.protectedNodes;
 const marker='data-velocity-lite-collapsed';
-let markerSheet=null;
+let markerSheet=null,lastScrollAt=-Infinity;
+const scrollQuietMs=180;
+// Capture nested scrolling too; this passive handler only records time.
+window.addEventListener('scroll',()=>{lastScrollAt=performance.now();},{capture:true,passive:true});
 function safe(element){return element instanceof Element&&!element.matches(protectedSelector)&&!element.closest('form,[role="dialog"]')&&!element.querySelector(VelocityRules.protectedNodes);}
 function stop(){if(observer)observer.disconnect();observer=null;if(timer)clearTimeout(timer);timer=null;queue.clear();}
 function restore(){stop();if(sheet)sheet.remove();sheet=null;if(markerSheet)markerSheet.remove();markerSheet=null;for(const e of collapsed)e.removeAttribute(marker);collapsed.clear();hiddenSet.clear();}
@@ -29,15 +32,18 @@ function enqueue(root){
 }
 function batch(){
  timer=null;if(!policy||document.hidden||stopped)return;
+ // Keep CSS blocking active, but postpone DOM/layout inspection while scrolling.
+ const quietRemaining=scrollQuietMs-(performance.now()-lastScrollAt);
+ if(quietRemaining>0){timer=setTimeout(batch,quietRemaining);return;}
  const started=performance.now();let processed=0;
  // Recheck our own collapsed elements when controls/content are subsequently inserted.
  for(const e of [...collapsed])if(!e.isConnected||!emptyDedicated(e)){e.removeAttribute(marker);collapsed.delete(e);}
  const roots=[...queue];queue.clear();
  const selectors=policy.selectors||[];
- const candidates=new Set();
+ const candidates=new Set(),matchingSelector=[wrapper,...selectors].join(',');
  for(const root of roots){
   if(root.matches(wrapper)||selectors.some(s=>root.matches(s)))candidates.add(root);
-  const matching=root.querySelectorAll([wrapper,...selectors].join(','));
+  const matching=root.querySelectorAll(matchingSelector);
   for(const e of matching){if(candidates.size>=100)break;candidates.add(e);}
   if(performance.now()-started>32){stopped=true;break;}
  }

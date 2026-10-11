@@ -175,4 +175,29 @@ class BrowserUiIntegrationTest {
         } finally {cleanup()}
     }
 
+    @Test fun settingsSearchSwitchAndBackPreserveSelectedTab() {
+        launch()
+        val preferences = app.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE)
+        val before = preferences.getBoolean("address_swipe", true)
+        var id: String? = null
+        main { id = app.coordinator.scheduler.selectedId }
+        try {
+            clickDescription(inst.targetContext.getString(R.string.settings))
+            assertTrue(device.wait(Until.hasObject(By.desc("設定を検索")), 10000))
+            device.findObject(By.desc("設定を検索")).text = "アドレスバーのスワイプ"
+            val label = "アドレスバーのスワイプ、" + if (before) "オン" else "オフ"
+            clickDescription(label)
+            assertTrue(device.wait(Until.hasObject(By.desc("アドレスバーのスワイプ、" + if (before) "オフ" else "オン")), 10000))
+            assertEquals(!before, preferences.getBoolean("address_swipe", true))
+            device.findObject(By.desc("設定を検索")).text = "NO_MATCH_SETTINGS"
+            assertTrue(device.wait(Until.hasObject(By.text("一致する設定がありません")), 10000))
+            assertFalse(device.hasObject(By.descStartsWith("アドレスバーのスワイプ、")))
+            click("閉じる")
+            main { assertEquals(id, app.coordinator.scheduler.selectedId) }
+        } finally {
+            preferences.edit().putBoolean("address_swipe", before).commit()
+            cleanup()
+        }
+    }
+
 }
