@@ -82,7 +82,7 @@ class BrowserChromeView(context: Context) : LinearLayout(context) {
         start.addView(TextView(context).apply { text = "次のページへ、すばやく。"; textSize = 12f; setTextColor(muted); gravity = Gravity.CENTER; setPadding(0, dp(18), 0, 0) })
         divider = View(context).apply { setBackgroundColor(palette.border) }; addView(divider, LayoutParams(-1, dp(1)))
         val actions = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(10), dp(4), dp(10), dp(4)) }
-        fun button(kind: Int, label: Int) = ChromeButton(context, kind).apply { setText(label); actions.addView(this, LayoutParams(0, dp(52), 1f)) }
+        fun button(kind: Int, label: Int) = ChromeButton(context, kind).apply { setText(label); contentDescription = context.getString(label); actions.addView(this, LayoutParams(0, dp(52), 1f)) }
         back = button(0, R.string.back); forward = button(1, R.string.forward)
         button(7,R.string.app_name).apply {contentDescription="ホーム";setOnClickListener {onHome()}}
         tabsButton = button(3, R.string.tabs).apply { setOnClickListener { onTabs() } }

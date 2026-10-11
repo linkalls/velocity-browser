@@ -9,6 +9,6 @@
 
 ## Validation
 
-Bun: 23 passed, 0 failed; typecheck passed. The first Release/instrumentation compilation passed but lint failed on two Typeface style literal constants; these were replaced with Typeface.NORMAL. Final 0.3.1 build/lint and the 21-case CI device suite are pending completion. A first scheduling-test harness used insufficient VM microtask synchronization; awaiting the script's refresh promise fixes the harness, and both tests pass.
+Bun: 23 passed, 0 failed; typecheck passed. The first Release/instrumentation compilation passed but lint failed on two Typeface style literal constants; these were replaced with Typeface.NORMAL. Local 0.3.1 Release/instrumentation build passed; lint had 0 errors / 34 warnings. CI run 38153148844 passed the original 20 device cases but the new settings case failed at entry because the icon had no content description (only text). Navigation icons now have explicit descriptions, and obsolete hard-cap settings wording was removed; final rebuild and CI rerun are pending. A first scheduling-test harness used insufficient VM microtask synchronization; awaiting the script's refresh promise fixes the harness, and both tests pass.
 
 Physical-device scrolling, frame-time/jank, TalkBack and 200% font rendering are UNVERIFIED. No smoothness, FPS, CPU or RAM improvement has been measured. AdGuard performance and compatibility are not established by these changes. GeckoView and tab data protections are unchanged.

@@ -123,6 +123,7 @@ class MainActivity : Activity(), BrowserHost {
         }
         val reloadLabel = getString(if (loading) R.string.stop else R.string.reload)
         if (chrome.reload.text.toString() != reloadLabel) chrome.reload.text = reloadLabel
+        if (chrome.reload.contentDescription != reloadLabel) chrome.reload.contentDescription = reloadLabel
     }
     override fun notice(message: Int) { Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
     override fun capacityBlocked(id: String, adguard: Boolean) {
