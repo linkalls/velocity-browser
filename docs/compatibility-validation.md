@@ -26,7 +26,7 @@ main `310ab2d` の次段階として、日常の基本操作を改善した。Ge
 - JVM48件: failure/error/skipすべて0。app:testDebugUnitTestはNO-SOURCEで成功件数に含めない。Bun18件とTypeScript型検査成功。lintDebugはエラー0、警告27。
 - 未署名Release arm64: 191,353,994 bytes（182.489MiB）。同条件minimal GeckoView: 191,118,123 bytes。差分235,871 bytes（230.343KiB）。Bun size CLIとファイル長の計測一致。Gecko native shared object13個は同一hash。[サイズJSON](benchmarks/size.json)。インストール容量・AAB配信量は未測定。
 - テスト署名Release: 191,369,849 bytes。v2/v3署名、16KiB zipalign、ZIP整合性、arm64のみ、version0.2.3/code4を検証。署名certは従来と同じ `fde17539cd18040be42f73e708ee3491088c65177802d5e25bca2d00d1c8198e`。Releaseはnon-debuggable/profileableなし、fixture Activity/Providerはdebugだけに存在する。[署名・SHA-256](benchmarks/release-artifact.json)。正式鍵ではなく物理端末インストールは未検証。
-- Androidスモークは従来12件に実転送・認証・復元キューの6件を追加して18件。最終 [Actions 38142027301](https://github.com/linkalls/velocity-browser/actions/runs/38142027301)、code `45121ab`: build/Bun/device-smokeの3ジョブ成功。API36 x86_64の実Geckoで18件、failure/error/skipすべて0。[端末結果JSON](benchmarks/compatibility-device-results.json)。外部fixture3件と物理端末は未検証。公開artifactはVelocity-Browser-APKだけで、ソース/テストレポート/画像archiveは含めない。[端末試験](device-tests.md)。
+- Androidスモークは従来12件に実転送・認証・復元キューの6件を追加して18件。最終 [Actions 38142027301](https://github.com/linkalls/velocity-browser/actions/runs/38142027301)、code `45121ab`: build/Bun/device-smokeの3ジョブ成功。API36 x86_64の実Geckoで18件、failure/error/skipすべて0。[端末結果JSON](benchmarks/compatibility-device-results.json)。外部fixture3件と物理端末は未検証。スキップが1件でもあれば集計ジョブを失敗にし、未検証を成功扱いしない。公開artifactはVelocity-Browser-APKだけで、ソース/テストレポート/画像archiveは含めない。[端末試験](device-tests.md)。
 
 [変更ファイル一覧](compatibility-changed-files.txt)、[機械可読結果](benchmarks/compatibility-validation.json)。
 
@@ -49,4 +49,4 @@ main `310ab2d` の次段階として、日常の基本操作を改善した。Ge
 
 2回目 [38140758092](https://github.com/linkalls/velocity-browser/actions/runs/38140758092) はbuild/Bun成功、端末18件中3件失敗（15件成功）。回転/FIDO結果の取消・再試行・古い結果拒否、通常/privateのWebAuthn拒否、既存スモークは成功。SAF保存action検出、実multipart転送、HTTP認証の最終受理で失敗したため、DocumentsUIの大文字action/別resource ID、HTTP chunked本文とheader空白の処理、失敗時fixture診断を追加した。
 
-3回目 [38141415133](https://github.com/linkalls/velocity-browser/actions/runs/38141415133) は17件成功、添付1件失敗。実multipart到達・一時ファイル生成は確認できたが、本文のfield数とaccessibility表示の確認で失敗した。multipart headerの空白を許容し、ファイル内容の一致とJSが読み取った実入力値をGeckoの公開title通知で確認する方式に変更した。最終38142027301では単一/複数のalpha/beta実本文・入力保持・選択取消・close時コピー削除も成功した。Geckoのaccessibility互換class名はエンジン変更を意味しない。
+3回目 [38141415133](https://github.com/linkalls/velocity-browser/actions/runs/38141415133) は17件成功、添付1件失敗。実multipart到達・一時ファイル生成は確認できたが、本文のfield数とaccessibility表示の確認で失敗した。multipart headerの空白を許容し、ファイル内容の一致とJSが読み取った実入力値をGeckoの公開title通知で確認する方式に変更した。最終38142027301では単一/複数のalpha/beta実本文・入力保持・選択取消・close時コピー削除も成功した。

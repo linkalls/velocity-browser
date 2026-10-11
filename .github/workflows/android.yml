@@ -94,6 +94,6 @@ jobs:
           print('DEVICE_TOTALS', totals)
           if totals['tests'] != 18:
               raise SystemExit('Expected all 18 smoke cases; partial execution is not a pass')
-          if totals['failures'] or totals['errors']:
+          if totals['failures'] or totals['errors'] or totals['skipped']:
               raise SystemExit(1)
           PYTHON
