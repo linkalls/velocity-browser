@@ -36,7 +36,7 @@ jobs:
               s=s.replace(needle,needle+'\n            ndk { abiFilters.clear(); abiFilters += "x86_64" }')
               p.write_text(s)
           PY
-          ./gradlew --max-workers=1 :app:assembleBenchmark
+          ./gradlew --max-workers=1 :app:assembleBenchmark :app:assembleDebugAndroidTest
           (cd ../velocity-baseline && ./gradlew --max-workers=1 :app:assembleBenchmark)
       - name: Enable KVM
         run: |

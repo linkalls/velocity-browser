@@ -22,15 +22,17 @@ for round in 1 2 3 4 5; do
       prefix="dist/profile/$version-$scene-$round"
       adb uninstall dev.velocity.browser >/dev/null 2>&1 || true
       adb install -t "$apk" >/dev/null
-      adb shell am start -W -a android.intent.action.VIEW -d "http://127.0.0.1:8181/$scene" dev.velocity.browser/.MainActivity > "$prefix-launch.txt"
-      # Await the actual fixture, not a fixed loading-delay guess.
+      adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk >/dev/null
+      adb shell rm -f /data/local/tmp/velocity-fixture-ready
+      adb shell am instrument -w -r -e class dev.velocity.browser.MeasurementFixtureDriver -e scene "$scene" dev.velocity.browser.test/androidx.test.runner.AndroidJUnitRunner > "$prefix-driver.txt" 2>&1 &
+      driver=$!
       ready=0
-      for attempt in $(seq 1 20); do
-        adb shell uiautomator dump /data/local/tmp/velocity-fixture.xml >/dev/null
-        if adb shell cat /data/local/tmp/velocity-fixture.xml | rg -q 'Fixture row'; then ready=1; break; fi
+      for attempt in $(seq 1 40); do
+        if adb shell test -f /data/local/tmp/velocity-fixture-ready; then ready=1; break; fi
         sleep 1
       done
-      if [ "$ready" != 1 ]; then echo 'Fixture did not render; comparison is unverified' >&2; exit 1; fi
+      if [ "$ready" != 1 ]; then cat "$prefix-driver.txt";echo 'Fixture did not render; comparison is unverified' >&2; exit 1; fi
+      adb pull /data/data/dev.velocity.browser/cache/velocity-profile-launch.txt "$prefix-launch.txt" >/dev/null
       bash tools/scroll-trace.sh "$scene" "$prefix.perfetto-trace" &
       recorder=$!
       (cd tools/bench-runner && bun src/cli.ts cpu dev.velocity.browser 15000 "../../$prefix-cpu.json") &
@@ -40,6 +42,8 @@ for round in 1 2 3 4 5; do
         sleep 0.5
       done
       wait "$recorder"
+      wait "$driver"
+      if ! rg -q 'OK \(1 test\)' "$prefix-driver.txt"; then cat "$prefix-driver.txt";exit 1;fi
       wait "$cpu" || echo 'CPU sampling failed; retain its unavailable status'
       (cd tools/bench-runner && bun src/cli.ts memory dev.velocity.browser "../../$prefix-memory.json") || echo 'PSS sampling unavailable'
       python3 tools/frame-report.py "$prefix.perfetto-trace" /tmp/velocity-trace-processor "$prefix-frames.json"
