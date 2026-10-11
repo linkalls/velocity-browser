@@ -82,7 +82,12 @@ class BrowserUiIntegrationTest {
             val minimum=(48*inst.targetContext.resources.displayMetrics.density).toInt()
             assertTrue(bounds.width()>=minimum);assertTrue(bounds.height()>=minimum)
             close.click(); click("キャンセル")
-            assertTrue(device.hasObject(By.desc("『UI_FIXTURE』を閉じる")))
+            main {
+                val sheetField = MainActivity::class.java.getDeclaredField("tabSheet").apply { isAccessible=true }
+                val sheet = sheetField.get(app.coordinator.host!!.activity) as dev.velocity.browser.ui.TabSwitcherView
+                assertTrue("cancel must retain the native tab dialog",sheet.isShowing)
+            }
+            assertTrue("tab sheet accessibility after warning dismiss",device.wait(Until.hasObject(By.desc("『UI_FIXTURE』を閉じる")),10000))
             main { assertEquals(identity,app.coordinator.scheduler.tab(id)!!.identity) }
             click("完了"); awaitField();assertEquals("KEEP_ON_CANCEL",field()!!.text)
             device.findObject(By.descStartsWith("タブ ")).click()
