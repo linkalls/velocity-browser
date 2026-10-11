@@ -4,7 +4,7 @@ import dev.velocity.browser.security.Protection
 import dev.velocity.browser.util.Clock
 
 sealed interface Event {
-    data class CreateTab(val id: String, val url: String, val privateMode: Boolean = false, val readOnly: Boolean = false, val extensionBase: String? = null) : Event
+    data class CreateTab(val id: String, val url: String, val privateMode: Boolean = false, val readOnly: Boolean = false, val extensionBase: String? = null, val title: String = "") : Event
     data class SelectTab(val id: String) : Event
     data class Configure(val config: AdaptiveConfig) : Event
     data class CreationFailed(val id: String, val identity: Long) : Event
@@ -60,7 +60,7 @@ class AdaptiveTabScheduler(config: AdaptiveConfig, private val clock: Clock) {
         fun persist(t: TabRecord) { if (!t.privateMode) out += Command.PersistTabMetadata }
         when (event) {
             is Event.CreateTab -> if (!records.containsKey(event.id)) {
-                records[event.id] = TabRecord(event.id, event.url, event.privateMode, readOnly = event.readOnly, extensionBase = event.extensionBase)
+                records[event.id] = TabRecord(event.id, event.url, event.privateMode, readOnly = event.readOnly, extensionBase = event.extensionBase, title = event.title)
                 persist(records.getValue(event.id))
             }
             is Event.SelectTab -> select(event.id, out)
