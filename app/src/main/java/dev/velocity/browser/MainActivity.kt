@@ -140,7 +140,7 @@ class MainActivity : Activity(), BrowserHost {
             .setPositiveButton("このタブを閉じる") { _, _ ->
                 if (coordinator.host === this) {
                     val current=coordinator.scheduler.tab(id)
-                    if(current?.identity==identity&&current.epoch==tab.epoch&&current.revision==tab.revision)coordinator.close(id,true)
+                    if(current!=null&&current.identity==identity&&current.epoch==tab.epoch&&current.revision==tab.revision)coordinator.close(id,true)
                     else Toast.makeText(this,"ページの状態が変わりました。内容を確認してから閉じてください。",Toast.LENGTH_LONG).show()
                 }
             }.setNegativeButton(R.string.cancel) { _, _ -> cancelRequest() }
