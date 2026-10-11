@@ -4,7 +4,7 @@ data class Metric(val name: String, val elapsedMs: Long, val value: Long)
 class Metrics(private val clock: Clock) {
     private val events = ArrayDeque<Metric>()
     fun record(name: String, value: Long = 0) {
-        require(name in setOf("UI_READY", "RUNTIME_CREATED", "FIRST_CONTENT", "SELECT", "BLOCKED", "LIVE_COUNT", "PRECONNECT_ISSUED"))
+        require(name in setOf("UI_READY", "RUNTIME_CREATED", "FIRST_CONTENT", "SELECT", "BLOCKED", "LIVE_COUNT", "TARGET_EXCESS", "PRECONNECT_ISSUED"))
         if (events.size == 512) events.removeFirst()
         events.addLast(Metric(name, clock.elapsedRealtimeMs(), value))
     }

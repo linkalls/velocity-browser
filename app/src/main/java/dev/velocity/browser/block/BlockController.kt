@@ -16,7 +16,7 @@ import java.security.MessageDigest
 import java.util.concurrent.Executors
 import javax.net.ssl.HttpsURLConnection
 
-/** Runtime共有。拡張にセッション生成を委譲しないので2ライブ上限を変えない。 */
+/** Runtime共有。拡張の新タブもcoordinatorの保護モデルとソフト目標で管理。 */
 class BlockController(private val context: Context) {
     enum class Mode { ALL_OFF, ETP_ONLY, LITE, ADGUARD }
     companion object {
