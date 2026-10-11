@@ -1,5 +1,8 @@
 name: Inspect device test results
 on:
+  push:
+    paths:
+      - .github/workflows/inspect-device-results.yml
   workflow_dispatch:
     inputs:
       run_id:
@@ -17,7 +20,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ inputs.run_id }}
-        run: gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name instrumentation-reports --dir reports
+        run: |
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow android.yml --status failure --limit 1 --json databaseId --jq '.[0].databaseId')
+          fi
+          test -n "$RUN_ID" && test "$RUN_ID" != null
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" --name instrumentation-reports --dir reports
       - name: Print test cases and failures
         run: |
           python3 - <<'PY'
