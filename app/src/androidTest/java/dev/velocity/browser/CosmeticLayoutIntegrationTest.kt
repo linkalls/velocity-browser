@@ -18,7 +18,7 @@ class CosmeticLayoutIntegrationTest {
         val origin="http://127.0.0.1:${server.localPort}";var previousMode=BlockController.Mode.ETP_ONLY;var previousCosmetic=true;var previousCollapse=true
         val page="""<!doctype html><meta charset=utf-8><title>LAYOUT_WAIT</title><style>body{margin:0}.ad-wrapper{height:250px}.ad-slot{height:30px}</style>
             <div class=ad-wrapper id=gap><div class=ad-slot>advertisement fixture</div></div><p id=body>BODY_REMAINS</p>
-            <header class=banner>HEADER_REMAINS</header><main>MAIN_REMAINS</main>
+            <div id=picker_fixture>PICKER_FIXTURE</div><header class=banner>HEADER_REMAINS</header><main>MAIN_REMAINS</main>
             <div class=ad-slot id=protected><form><input value=KEEP_DRAFT><button>FORM_REMAINS</button></form></div>
             <div class=ad-wrapper id=video><iframe src=about:blank title=VIDEO_REMAINS></iframe></div>
             <script>
@@ -53,6 +53,15 @@ class CosmeticLayoutIntegrationTest {
             await("site exception restores original layout"){app.coordinator.scheduler.tab(id)?.title=="LAYOUT_RESTORED_100"}
             main {app.blocker.toggleException(origin,false)}
             await("exception undo recollapses"){app.coordinator.scheduler.tab(id)?.title=="LAYOUT_COLLAPSED_100"}
+            main {val t=app.coordinator.scheduler.tab(id)!!;assertTrue(app.blocker.startPicker(origin,false) {app.coordinator.scheduler.selectedId==id&&app.coordinator.scheduler.tab(id)?.identity==identity&&app.coordinator.scheduler.tab(id)?.epoch==t.epoch})}
+            assertTrue(device.wait(Until.hasObject(By.text("隠す領域をタップ（フォーム・本文は保護）")),10000))
+            device.findObject(By.text("PICKER_FIXTURE")).click()
+            assertTrue(device.wait(Until.hasObject(By.text("選択範囲を確認してください")),10000))
+            device.findObject(By.text("適用")).click()
+            await("picker rule saved"){app.blocker.siteRules(origin,false).any {it.endsWith("###picker_fixture")}}
+            assertTrue(device.wait(Until.gone(By.text("PICKER_FIXTURE")),10000))
+            main {app.blocker.undoPickerRule(false)}
+            assertTrue(device.wait(Until.hasObject(By.text("PICKER_FIXTURE")),10000))
             main {app.blocker.setMode(BlockController.Mode.ETP_ONLY)}
             await("disable cleanup restores layout before extension shutdown"){!app.blocker.busy&&app.coordinator.scheduler.tab(id)?.title=="LAYOUT_RESTORED_100"}
             main {assertEquals(identity,app.coordinator.scheduler.tab(id)!!.identity)}

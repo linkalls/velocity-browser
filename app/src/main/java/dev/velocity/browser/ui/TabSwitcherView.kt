@@ -16,7 +16,7 @@ class TabSwitcherView(context: Context, private val appearance: ThemeController,
     private val select: (String) -> Boolean, private val create: (Boolean) -> Boolean,
     private val close: (String) -> Unit, private val cancel: (String) -> Unit,
     private val reading: () -> Unit, private val undo: () -> Unit = {},
-    private val canUndo: () -> Boolean = { false }, private val pin: (String) -> Unit = {}) {
+    private val canUndo: () -> Boolean = { false }, private val pin: (String) -> Unit = {}, private val organize: () -> Unit = {}) {
     private val preferences=context.getSharedPreferences("settings",Context.MODE_PRIVATE)
     private val dialog=Dialog(context).apply { requestWindowFeature(Window.FEATURE_NO_TITLE) }
     private val panel=LinearLayout(context).apply { orientation=LinearLayout.VERTICAL;setPadding(context.dp(12),context.dp(12),context.dp(12),context.dp(12)) }
@@ -27,10 +27,12 @@ class TabSwitcherView(context: Context, private val appearance: ThemeController,
     private var snapshot=emptyList<TabRecord>();private var shown=emptyList<TabRecord>();private var selected:String?=null
     private var privateMode=false
     private var columns=if(preferences.getBoolean("tabs_list",false)) 1 else 2
+    private val stableIds=mutableMapOf<String,Long>();private var nextStableId=0L
     private val adapter=object: BaseAdapter() {
         override fun getCount()=shown.size
         override fun getItem(position:Int)=shown[position]
-        override fun getItemId(position:Int)=position.toLong()
+        override fun hasStableIds()=true
+        override fun getItemId(position:Int)=stableIds.getOrPut(shown[position].id){++nextStableId}
         override fun getView(position:Int,convertView:View?,parent:ViewGroup):View {
             val row=(convertView as? LinearLayout) ?: LinearLayout(context).apply {
                 orientation=LinearLayout.VERTICAL;setPadding(context.dp(12),context.dp(8),context.dp(12),context.dp(8))
@@ -71,7 +73,7 @@ class TabSwitcherView(context: Context, private val appearance: ThemeController,
             addView(button("非公開タブ") {privateMode=true;filter()},LinearLayout.LayoutParams(0,-2,1f))
             addView(button("表示切替") {columns=if(columns==2)1 else 2;preferences.edit().putBoolean("tabs_list",columns==1).apply();grid.numColumns=columns;adapter.notifyDataSetChanged()},LinearLayout.LayoutParams(0,-2,1f))
         })
-        grid.numColumns=columns;grid.adapter=adapter;panel.addView(grid,LinearLayout.LayoutParams(-1,0,1f));panel.addView(undoButton)
+        grid.numColumns=columns;grid.adapter=adapter;panel.addView(grid,LinearLayout.LayoutParams(-1,0,1f));panel.addView(undoButton);panel.addView(button("一括整理",organize))
         search.addTextChangedListener(object:TextWatcher {override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){};override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){filter()};override fun afterTextChanged(s:Editable?){} })
         dialog.setContentView(panel)
     }
@@ -79,9 +81,9 @@ class TabSwitcherView(context: Context, private val appearance: ThemeController,
     fun dismiss()=dialog.dismiss()
     fun update(tabs:List<TabRecord>,selectedId:String?,waiting:String?) {snapshot=tabs;selected=selectedId;if(!isShowing)privateMode=tabs.find {it.id==selectedId}?.privateMode==true;filter()}
     private fun filter() {
-        val query=search.text.toString().trim();val old=grid.firstVisiblePosition
+        val query=search.text.toString().trim();val old=grid.firstVisiblePosition;val first=shown.getOrNull(old)?.id
         shown=snapshot.filter {it.privateMode==privateMode && (query.isEmpty() || it.displayTitle().contains(query,true) || it.displayLocation().contains(query,true))}
-        count.text=(if(privateMode)"非公開" else "タブ")+" ${shown.size}枚";adapter.notifyDataSetChanged();if(old<shown.size)grid.setSelection(old)
+        count.text=(if(privateMode)"非公開" else "タブ")+" ${shown.size}枚";adapter.notifyDataSetChanged();val retained=shown.indexOfFirst {it.id==first};if(shown.isNotEmpty())grid.setSelection(if(retained>=0)retained else old.coerceAtMost(shown.lastIndex))
         undoButton.visibility=if(canUndo())View.VISIBLE else View.GONE
         if(snapshot.any {it.privateMode})dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else dialog.window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }

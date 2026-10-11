@@ -91,23 +91,25 @@ class BrowserChromeView(context: Context) : LinearLayout(context) {
         addView(LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;setPadding(dp(12),0,dp(12),0);addView(title,LayoutParams(0,-2,1f));addView(privacy,LayoutParams(-2,-2))},LayoutParams(-1,-2))
         addView(actions, LayoutParams(-1, dp(60)))
         if(bottomAddress)setAddressBottom(true)
-        var touchX=0f;var touchY=0f
+        var touchX=0f;var touchY=0f;var wasEditing=false
         address.setOnTouchListener {_,event->
             when(event.actionMasked){
-                android.view.MotionEvent.ACTION_DOWN->{touchX=event.x;touchY=event.y;false}
+                android.view.MotionEvent.ACTION_DOWN->{touchX=event.x;touchY=event.y;wasEditing=address.hasFocus();false}
                 android.view.MotionEvent.ACTION_UP->{
-                    if(swipeEnabled && kotlin.math.abs(event.x-touchX)>dp(100) && kotlin.math.abs(event.y-touchY)<dp(40)) {onSwitchTab(if(event.x>touchX)-1 else 1);true}else false
+                    if(swipeEnabled && !wasEditing && kotlin.math.abs(event.x-touchX)>dp(100) && kotlin.math.abs(event.y-touchY)<dp(40)) {onSwitchTab(if(event.x>touchX)-1 else 1);true}else false
                 }
                 else->false
             }
         }
         address.setOnLongClickListener {
+            if(address.hasFocus())return@setOnLongClickListener false
             android.widget.PopupMenu(context,address).apply {
                 menu.add("URLをコピー").setOnMenuItemClickListener {(context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("URL",address.text.toString()));true}
                 menu.add("URLを共有").setOnMenuItemClickListener {context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply {type="text/plain";putExtra(android.content.Intent.EXTRA_TEXT,address.text.toString())},"URLを共有"));true}
                 menu.add("このサイトの設定").setOnMenuItemClickListener {onBlock();true}
             }.show();true
         }
+        isFocusableInTouchMode=true;requestFocus()
         address.setOnEditorActionListener { _, action, _ -> if (action == EditorInfo.IME_ACTION_GO) { submit(); true } else false }
         setOnApplyWindowInsetsListener { _, insets ->
             if (android.os.Build.VERSION.SDK_INT >= 30) {

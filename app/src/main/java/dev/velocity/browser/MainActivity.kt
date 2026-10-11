@@ -17,6 +17,7 @@ class MainActivity : Activity(), BrowserHost {
     private val appearance get() = (application as VelocityApp).appearance
     private var tabSheet: TabSwitcherView? = null
     private var capacity: CapacityDialog? = null
+    private var settingsScreen:String?=null
     private val appearanceChanged: () -> Unit = { applyAppearance() }
     private fun dialog() = appearance.builder(this)
     private fun AlertDialog.Builder.showThemed() = appearance.show(this)
@@ -47,7 +48,7 @@ class MainActivity : Activity(), BrowserHost {
                 val before = coordinator.scheduler.selectedId
                 coordinator.createTab(privateMode = privateMode)
                 coordinator.scheduler.selectedId != before && coordinator.scheduler.pendingId == null
-            }, { coordinator.close(it) }, coordinator::cancelPending, ::readingDialog, coordinator::undoClose, coordinator::canUndo, coordinator::pin).also {
+            }, { coordinator.close(it) }, coordinator::cancelPending, ::readingDialog, coordinator::undoClose, coordinator::canUndo, coordinator::pin, ::organizeTabs).also {
                 it.update(coordinator.scheduler.tabs,coordinator.scheduler.selectedId,coordinator.scheduler.pendingId); it.show()
             }
         }
@@ -63,6 +64,15 @@ class MainActivity : Activity(), BrowserHost {
         appearance.observe(appearanceChanged); applyAppearance()
         coordinator.bind(this, chrome.geckoView)
         if (savedInstanceState == null) openIntent(intent)
+        else chrome.post {when(savedInstanceState.getString("settings_screen")){"settings"->settings();"block"->blockSettings();"site"->siteRules()};if(savedInstanceState.getBoolean("tabs_open"))chrome.onTabs() }
+    }
+    override fun onSaveInstanceState(outState:Bundle) {
+        outState.putString("settings_screen",settingsScreen);outState.putBoolean("tabs_open",tabSheet?.isShowing==true)
+        super.onSaveInstanceState(outState)
+    }
+    private fun showSettings(kind:String,title:String,rows:List<SettingsView.Row>) {
+        appearance.dismissFor(this);settingsScreen=kind
+        SettingsView(this,appearance,title,rows) {if(settingsScreen==kind)settingsScreen=null}.show()
     }
     @Deprecated("Legacy Activity result bridge for GeckoRuntime and the system SAF picker")
     override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
@@ -128,7 +138,11 @@ class MainActivity : Activity(), BrowserHost {
         val builder = dialog().setTitle("『${tab.displayTitle()}』を閉じる")
             .setMessage("${tab.displayLocation()}\n" + getString(R.string.close_warning))
             .setPositiveButton("このタブを閉じる") { _, _ ->
-                if (coordinator.host === this && coordinator.scheduler.tab(id)?.identity == identity) coordinator.close(id, true)
+                if (coordinator.host === this) {
+                    val current=coordinator.scheduler.tab(id)
+                    if(current!=null&&current.identity==identity&&current.epoch==tab.epoch&&current.revision==tab.revision)coordinator.close(id,true)
+                    else Toast.makeText(this,"ページの状態が変わりました。内容を確認してから閉じてください。",Toast.LENGTH_LONG).show()
+                }
             }.setNegativeButton(R.string.cancel) { _, _ -> cancelRequest() }
             .setOnCancelListener { cancelRequest() }
         appearance.show(builder,true)
@@ -175,10 +189,10 @@ class MainActivity : Activity(), BrowserHost {
             }
         }) }.sortedBy { it.category }.toMutableList()
         rows.add(0,SettingsView.Row("タブとメモリ","ライブ目標 ${coordinator.scheduler.config.liveTarget}枚 · ${coordinator.scheduler.config.discardAfterMs/1000}秒","保護中は目標を超えて保持します。RAMの推奨: ${coordinator.recommendedProfile().name}",::memorySettings))
-        rows.add(SettingsView.Row("外観","アドレスバー位置",if(chrome.bottomAddress)"下" else "上") {chrome.setAddressBottom(!chrome.bottomAddress)})
-        rows.add(SettingsView.Row("外観","アドレスバーのスワイプ",if(chrome.swipeEnabled)"ON" else "OFF") {chrome.swipeEnabled=!chrome.swipeEnabled})
+        rows.add(SettingsView.Row("外観","アドレスバー位置",if(chrome.bottomAddress)"下" else "上") {chrome.setAddressBottom(!chrome.bottomAddress)}.apply {liveText={"アドレスバー位置 · "+if(chrome.bottomAddress)"下" else "上"}})
+        rows.add(SettingsView.Row("外観","アドレスバーのスワイプ",if(chrome.swipeEnabled)"ON" else "OFF") {chrome.swipeEnabled=!chrome.swipeEnabled}.apply {liveText={"アドレスバーのスワイプ · "+if(chrome.swipeEnabled)"ON" else "OFF"}})
         rows.add(SettingsView.Row("プライバシーと広告ブロック","広告ブロック",blocker.mode.name,::blockSettings))
-        SettingsView(this,appearance,"設定",rows.sortedBy {it.category}).show()
+        showSettings("settings","設定",rows.sortedBy {it.category})
     }
     private fun memorySettings() {
         val options=arrayOf("省メモリ · 3枚 / 30秒","バランス · 6枚 / 120秒","高速重視 · 12枚 / 600秒","カスタム")
@@ -201,6 +215,34 @@ class MainActivity : Activity(), BrowserHost {
         dialog().setTitle(R.string.reading_new).setMessage(R.string.reading_consent).setView(input)
             .setPositiveButton(R.string.go) { _, _ -> UrlPolicy.input(input.text.toString(), coordinator.searchEngine)?.let(coordinator::createReadingTab) }
             .setNegativeButton(R.string.cancel, null).showThemed()
+    }
+    private fun organizeTabs() {
+        dialog().setTitle("タブを整理").setItems(arrayOf("全て閉じる","他のタブを閉じる","重複URLのタブを整理")) {_,choice->
+            val tabs=coordinator.scheduler.tabs
+            val seen=mutableSetOf<Pair<Boolean,String>>()
+            val closing=tabs.filter {when(choice){0->true;1->it.id!=coordinator.scheduler.selectedId;else->!seen.add(it.privateMode to it.url)}}
+            if(closing.isEmpty())return@setItems
+            appearance.show(dialog().setTitle("${closing.size}枚のタブを閉じる")
+                .setMessage("未保存のフォームや操作中のデータも失われます。固定されたタブも対象です。取り消しで完全なページ状態は復元できません。")
+                .setPositiveButton("閉じる") {_,_->closing.forEach {t->
+                    val current=coordinator.scheduler.tab(t.id)
+                    if(current!=null&&current.identity==t.identity&&current.epoch==t.epoch&&current.revision==t.revision)coordinator.close(t.id,true)
+                }}.setNegativeButton(R.string.cancel,null),true)
+        }.showThemed()
+    }
+    private fun siteRules() {
+        val t=coordinator.scheduler.selectedId?.let(coordinator.scheduler::tab)?:return
+        val origin=dev.velocity.browser.block.LiteRules.origin(t.url)?:return
+        val rows=blocker.siteRules(origin,t.privateMode).map {rule->SettingsView.Row("このサイトの規則",rule,"タップでこの規則を削除") {blocker.removeUserRule(rule,t.privateMode)}}
+        showSettings("site","サイト別ルール",rows+SettingsView.Row("取り消し","直前の要素選択を元に戻す","ページを再読み込みせず解除します") {blocker.undoPickerRule(t.privateMode)})
+    }
+    private fun pickElement() {
+        val t=coordinator.scheduler.selectedId?.let(coordinator.scheduler::tab)?:return
+        val origin=dev.velocity.browser.block.LiteRules.origin(t.url)?:return
+        val identity=t.identity?:return
+        if(blocker.startPicker(origin,t.privateMode) {val current=coordinator.scheduler.tab(t.id);coordinator.scheduler.selectedId==t.id&&current?.identity==identity&&current.epoch==t.epoch}) {
+            appearance.dismissFor(this)
+        } else Toast.makeText(this,"このページではLiteを有効にしてから選択してください",Toast.LENGTH_LONG).show()
     }
     private fun blockSettings() {
         val tab = coordinator.scheduler.tabs.find { it.id == coordinator.scheduler.selectedId }
@@ -237,12 +279,17 @@ class MainActivity : Activity(), BrowserHost {
             }
         }) }
         val cosmeticRows=listOf(
+            SettingsView.Row("要素非表示","このサイトの非表示ルールを管理","削除・直前の選択ルールを取り消し",::siteRules),
+            SettingsView.Row("要素非表示","ページ内の要素を選択して非表示","Lite有効時のみ。適用前にプレビューできます",::pickElement),
             SettingsView.Row("要素非表示","広告要素を非表示 · ${blocker.cosmeticEnabled}","Liteのみ。フォーム・本文領域を保護します") {blocker.setCosmetic(!blocker.cosmeticEnabled)},
             SettingsView.Row("要素非表示","広告の空白を折りたたむ · ${blocker.collapseEnabled}","広告専用の空枠のみ。高負荷時は監視を停止") {blocker.setCollapse(!blocker.collapseEnabled)},
             SettingsView.Row("要素非表示","このサイトの折りたたみ",if(origin!=null&&blocker.collapseExcluded(origin,privateMode))"OFF" else "ON") {if(origin!=null)blocker.toggleCollapseException(origin,privateMode)}
         )
+        cosmeticRows[2].liveText={"広告要素を非表示 · ${blocker.cosmeticEnabled}\nLiteのみ。フォーム・本文領域を保護します"}
+        cosmeticRows[3].liveText={"広告の空白を折りたたむ · ${blocker.collapseEnabled}\n広告専用の空枠のみ。高負荷時は監視を停止"}
+        cosmeticRows[4].liveText={"このサイトの折りたたみ · "+if(origin!=null&&blocker.collapseExcluded(origin,privateMode))"OFF" else "ON"}
         val counts=if(blocker.mode==dev.velocity.browser.block.BlockController.Mode.ADGUARD)"AdGuardの非表示・折りたたみ: 未取得" else "全${if(privateMode)"非公開" else "通常"}タブの観測数 · 非表示 ${if(privateMode)blocker.privateHiddenElements else blocker.hiddenElements} / 折りたたみ ${if(privateMode)blocker.privateCollapsedElements else blocker.collapsedElements}（各ページ100候補まで）"
-        SettingsView(this,appearance,"広告とトラッカーのブロック",listOf(SettingsView.Row("状態",origin?:"ページ未選択","${blocker.mode.name} · 遮断判定 ${if(privateMode)blocker.privateDecisions else blocker.normalDecisions}（広告の個数ではありません）\n$counts") {})+cosmeticRows+rows).show()
+        showSettings("block","広告とトラッカーのブロック",listOf(SettingsView.Row("状態",origin?:"ページ未選択","${blocker.mode.name} · 遮断判定 ${if(privateMode)blocker.privateDecisions else blocker.normalDecisions}（広告の個数ではありません）\n$counts") {})+rows.take(2)+cosmeticRows+rows.drop(2))
     }
 
 }

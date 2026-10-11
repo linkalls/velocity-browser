@@ -25,3 +25,8 @@
 CPUはPerfettoのsched durationをapp/Gecko子processで合計するのを優先。SQL例はPerfetto Trace Processorで `SELECT process.name, SUM(sched.dur)/1e6 AS cpu_ms FROM sched JOIN thread ON sched.utid=thread.utid JOIN process ON thread.upid=process.upid WHERE process.name LIKE 'dev.velocity.browser%' GROUP BY process.name;`。計測操作の時間窓をWHEREで限定し、異名の隔離processも実traceの親子関係から追加する。Bun `cpu`は/procが読める端末だけの補助で、短命processが抜ける。proc読み拒否は未検証/測定失敗であり0msにしない。
 
 `tools/bench-runner/README.md`にHTTPS fixture、事前TLS到達確認、source/例外/フォームCSSの試験手順を記載。instrumentationへ `-Pandroid.testInstrumentationRunnerArguments.blockFixtureOrigin=https://site.velocity.test:8443` を追加。CA信頼をアプリの証明書迂回で解決しない。端末未接続の現在、4条件比較のRAM/CPU/PageLoadは未測定。
+
+
+## v0.3追加条件（未測定）
+
+ライブ目標3/6/12、論理1/5/20/50タブ、ALL_OFF/LITE/ADGUARD、cosmetic hiding/collapse ON/OFFを分離する。Chrome/Firefox/Velocityは同端末・同回線・同fixture・同温度/電源条件で試験し、冷/温起動p50/p95、PSS（子プロセス含む）、CPU、jank、切替時間とSpeedometerを記録する。空白高さと本文位置、CLS、100動的変更、長時間放置も比較する。エミュレーター機能試験から性能優位や実機RAM値を推定しない。未取得の全条件はNOT_MEASURED。

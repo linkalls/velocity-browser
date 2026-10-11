@@ -30,7 +30,8 @@
       ],
       "js": [
         "engine.js",
-        "cosmetic.js"
+        "cosmetic.js",
+        "picker.js"
       ],
       "run_at": "document_start",
       "all_frames": false

@@ -50,7 +50,7 @@ class BlockController(private val context: Context) {
     var updatedAt = 0L; private set
     var accepted = 0; private set
     var skipped = 0; private set
-    var mode = runCatching { Mode.valueOf(prefs.getString("mode", Mode.ETP_ONLY.name)!!) }.getOrDefault(Mode.ETP_ONLY); private set
+    var mode = runCatching { Mode.valueOf(prefs.getString("mode", Mode.LITE.name)!!) }.getOrDefault(Mode.ETP_ONLY); private set
     var cosmeticEnabled=prefs.getBoolean("cosmetic",true);private set
     var collapseEnabled=prefs.getBoolean("collapse",true);private set
     var hiddenElements=0;private set
@@ -59,6 +59,26 @@ class BlockController(private val context: Context) {
     var privateCollapsedElements=0;private set
     private val collapseExceptions=prefs.getStringSet("collapse_exceptions",emptySet())!!.toMutableSet()
     private val privateCollapseExceptions=mutableSetOf<String>()
+    private var lastPickerRule:String?=null
+    private var lastPickerPrivate=false
+    fun undoPickerRule(privateMode:Boolean) {
+        val rule=lastPickerRule?.takeIf {privateMode==lastPickerPrivate}?:return
+        removeUserRule(rule,privateMode);lastPickerRule=null
+    }
+    fun removeUserRule(rule:String,privateMode:Boolean) {if(busy)return;setUserRules(userRules(privateMode).lineSequence().filter {it!=rule}.joinToString("\n"),privateMode)}
+    fun siteRules(origin:String,privateMode:Boolean):List<String> {
+        val host=runCatching {URI(origin).host}.getOrNull()?:return emptyList()
+        return userRules(privateMode).lineSequence().filter {it.startsWith(host+"##")||it.startsWith(host+"#@#")}.toList()
+    }
+    private var pickerRequest=0
+    private var pickerOrigin:String?=null
+    private var pickerPrivate=false
+    private var pickerValid:(()->Boolean)?=null
+    fun startPicker(origin:String,privateMode:Boolean,valid:()->Boolean):Boolean {
+        if(busy||port==null||!enabled(privateMode)||LiteRules.origin(origin)!=origin)return false
+        pickerOrigin=origin;pickerPrivate=privateMode;pickerValid=valid
+        port?.postMessage(JSONObject().put("type","picker").put("requestId",++pickerRequest));return true
+    }
     private var cleanup: (() -> Unit)? = null
     private var rollbackMode=mode
     private var rollbackPrivate=false
@@ -90,6 +110,7 @@ class BlockController(private val context: Context) {
     fun attach(runtime: GeckoRuntime) {
         check(this.runtime == null)
         this.runtime = runtime
+        busy=true;status="INITIALIZING"
         val controller = runtime.webExtensionController
         controller.setPromptDelegate(object : WebExtensionController.PromptDelegate {
             override fun onInstallPromptRequest(extension: WebExtension, permissions: Array<String>, origins: Array<String>, dataCollectionPermissions: Array<String>): GeckoResult<WebExtension.PermissionPromptResponse> {
@@ -107,7 +128,7 @@ class BlockController(private val context: Context) {
             }
         }) // 追加権限/データ収集/私的モード/自動更新の既定は拒否。
         controller.ensureBuiltIn("resource://android/assets/velocity-block/", ID).accept({ extension ->
-            if (extension == null) { status = "INSTALL_FAILED"; return@accept }
+            if (extension == null) { busy=false;status = "INSTALL_FAILED"; return@accept }
             lite = extension; guardTabs(extension)
             extension.setMessageDelegate(object : WebExtension.MessageDelegate {
                 override fun onConnect(p: WebExtension.Port) {
@@ -116,7 +137,20 @@ class BlockController(private val context: Context) {
                     p.setDelegate(object : WebExtension.PortDelegate {
                         override fun onPortMessage(message: Any, p: WebExtension.Port) {
                             if (port !== p || message !is JSONObject || message.length() > 8) return
-                            if (message.optString("type") == "stats" && message.optInt("generation", -1) == generation) {
+                            if(message.optString("type")=="pickerSave") {
+                                var success=false
+                                if(message.optInt("requestId")==pickerRequest&&message.optString("origin")==pickerOrigin&&pickerValid?.invoke()==true&&enabled(pickerPrivate)&&!busy) {
+                                    val selector=message.optString("selector")
+                                    if(LiteRules.selector(selector)==selector)success=runCatching {
+                                        val host=URI(pickerOrigin).host
+                                        val rule=host+"##"+selector
+                                        if(rule !in userRules(pickerPrivate).lineSequence().toList()){lastPickerRule=rule;lastPickerPrivate=pickerPrivate}
+                                        setUserRules(userRules(pickerPrivate)+"\n"+rule,pickerPrivate)
+                                    }.isSuccess
+                                }
+                                pickerValid=null;pickerOrigin=null
+                                port?.postMessage(JSONObject().put("type","pickerResult").put("requestId",message.optInt("requestId")).put("success",success))
+                            } else if (message.optString("type") == "stats" && message.optInt("generation", -1) == generation) {
                                 val n = message.optInt("blocked", -1); val pCount = message.optInt("privateBlocked", -1)
                                 if (n in 0..1_000_000 && pCount in 0..1_000_000) { normalDecisions = n; privateDecisions = pCount
                                     hiddenElements=message.optInt("hidden",0).coerceIn(0,1_000_000);collapsedElements=message.optInt("collapsed",0).coerceIn(0,1_000_000)
@@ -140,7 +174,7 @@ class BlockController(private val context: Context) {
                     applyMode()
                 }, { status = "LIST_FAILED"; mode = Mode.ETP_ONLY; applyMode() })
             }, { status = "PRIVATE_ENABLE_FAILED"; mode = Mode.ETP_ONLY; applyMode() })
-        }, { status = "INSTALL_FAILED (page rendering continues)" })
+        }, { busy=false;status = "INSTALL_FAILED (page rendering continues)" })
         updateEtp()
     }
     private fun updateEtp() {
@@ -166,6 +200,9 @@ class BlockController(private val context: Context) {
     private fun applyMode() {
         val r = runtime ?: return; val l = lite ?: return
         busy = true; status = "APPLYING"; updateEtp()
+        if(mode==Mode.LITE && l.metaData.enabled && adguard?.metaData?.enabled!=true) {
+            busy=false;push();return
+        }
         // 二重フィルタリングを避け、まず両エンジンを停止してから一方だけ有効化。
         fun switchEngines() {
         r.webExtensionController.disable(l, WebExtensionController.EnableSource.APP).accept({ disabled ->
@@ -226,7 +263,7 @@ class BlockController(private val context: Context) {
         if (privateMode) privateUser = result.text else { user = result.text; prefs.edit().putString("user", user).apply() }
         push(); return result
     }
-    fun resetPrivate() { privateUser = ""; privateExceptions.clear();privateCollapseExceptions.clear(); privateEnabled = false; push(); if (!busy) applyMode() }
+    fun resetPrivate() {if(lastPickerPrivate)lastPickerRule=null;pickerValid=null;pickerOrigin=null; privateUser = ""; privateExceptions.clear();privateCollapseExceptions.clear(); privateEnabled = false; push(); if (!busy) applyMode() }
     /** 明示操作でのみ開始。HTTP redirect禁止、2MiB上限、完全検査→AtomicFile置換。 */
     fun updateFilters(done: (Boolean) -> Unit) {
         if (busy) { done(false); return }; busy = true

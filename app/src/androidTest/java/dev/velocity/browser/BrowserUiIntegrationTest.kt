@@ -164,6 +164,7 @@ class BrowserUiIntegrationTest {
         launch();try {
             main {repeat(100){app.coordinator.dispatch(Event.CreateTab("logical-$it","https://example.com/$it",title="Logical$it"))};assertEquals(1,app.coordinator.scheduler.liveCount)}
             device.findObject(By.descStartsWith("タブ ")).click()
+            assertTrue(device.wait(Until.hasObject(By.desc("タブを検索")),10000))
             val query=device.findObject(By.desc("タブを検索"));assertNotNull(query);query.text="Logical99"
             assertTrue(device.wait(Until.hasObject(By.desc("『Logical99』を閉じる")),10000))
             click("固定");main {assertTrue(app.coordinator.scheduler.tab("logical-99")!!.pinned)}

@@ -6,6 +6,7 @@ object LiteRules {
     const val MAX_RULES = 20_000
     private val domain = Regex("(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+")
     private val network = Regex("(@@)?\\|\\|([^\\^]+)\\^")
+    private val cosmetic = Regex("^([^#]+)(#@#|##)(.+)$")
     private val identifier = "[A-Za-z_][A-Za-z0-9_-]{0,63}"
     private val token = Regex("(?:[#.]$identifier|\\[data-ad-[a-z0-9-]{1,40}(?:=\"[A-Za-z0-9_-]{1,64}\")?\\]|\\[(?:id|class)=\"$identifier\"\\])")
     fun selector(raw: String): String? {
@@ -37,7 +38,7 @@ object LiteRules {
             val line = raw.trim()
             if (line.isEmpty() || line.startsWith("!") || line == "[Adblock Plus 1.1]") continue
             val net = network.matchEntire(line)
-            val css = Regex("^([^#]+)(#@#|##)(.+)$").matchEntire(line)
+            val css = cosmetic.matchEntire(line)
             val selected = css?.let { selector(it.groupValues[3]) }
             val canonical = when {
                 net != null && domain.matches(net.groupValues[2]) -> line

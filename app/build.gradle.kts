@@ -7,8 +7,8 @@ android {
         applicationId = "dev.velocity.browser"
         minSdk = 26
         targetSdk = 37
-        versionCode = 4
-        versionName = "0.2.3"
+        versionCode = 5
+        versionName = "0.3.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {

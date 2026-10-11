@@ -1,0 +1,110 @@
+{
+  "version": "0.3.0",
+  "appSourceCommit": "576a641ca16a0e11391c61bdd4d77921b80e9fc2",
+  "local": {
+    "jvm": {
+      "tests": 40,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "bun": {
+      "tests": 21,
+      "failures": 0,
+      "typecheck": "PASS",
+      "frozenInstall": "PASS"
+    },
+    "lint": {
+      "errors": 0,
+      "warnings": 37
+    },
+    "releaseBuild": "PASS",
+    "instrumentationCompilation": "PASS",
+    "appJvmTests": "NO-SOURCE",
+    "physicalDevice": "UNAVAILABLE",
+    "localEmulator": "UNAVAILABLE: no KVM or adb device"
+  },
+  "lastSuccessfulDeviceRun": {
+    "runId": 38147354368,
+    "jobId": 114493413370,
+    "commit": "4c5bca4dc00c86f8116c83e9ee88aff7eaffe4f5",
+    "platform": "API36 x86_64 emulator, real GeckoView",
+    "tests": 20,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "latestRun": {
+    "runId": 38147819890,
+    "commit": "576a641ca16a0e11391c61bdd4d77921b80e9fc2",
+    "status": "DEVICE_PASS_BUILD_PENDING",
+    "deviceJobId": 114494766622,
+    "deviceTests": 20,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "bun": "PASS"
+  },
+  "size": {
+    "status": "MEASURED",
+    "apkBytes": 191375171,
+    "baselineBytes": 191118123,
+    "additionalBytes": 257048,
+    "installSize": "NOT_MEASURED",
+    "comparison": "same-condition unsigned release arm64, identical GeckoView Stable dependency"
+  },
+  "artifact": {
+    "file": "velocity-browser-0.3.0-release-test-signed.apk",
+    "version": "0.3.0",
+    "versionCode": 5,
+    "sourceCommit": "576a641ca16a0e11391c61bdd4d77921b80e9fc2",
+    "buildType": "release",
+    "abi": "arm64-v8a",
+    "bytes": 191394502,
+    "sha256": "b5b09ba471c2a5da7b7cff1f4c85049b0dfa033560fe6bd2a26c4e6acd73d134",
+    "signing": "TEST_ONLY: same local Android Debug key as 0.2.x, not a production key",
+    "signatureVerification": "PASS: apksigner v2/v3; zipalign 16KiB",
+    "physicalDeviceInstall": "UNVERIFIED"
+  },
+  "notMeasured": [
+    "PSS",
+    "CPU",
+    "Speedometer",
+    "cold/warm startup p50/p95",
+    "Chrome/Firefox comparisons",
+    "physical-device jank",
+    "long-idle cosmetic memory",
+    "advertising block rate"
+  ],
+  "unverified": [
+    "physical-device Passkey creation/login/provider compatibility",
+    "official AdGuard signed-XPI install/options/real blocking/update",
+    "external TLS/DNS fixtures",
+    "background media/camera/microphone/payment",
+    "TalkBack and font 200%",
+    "process kill/power loss durability",
+    "physical-device APK installation"
+  ],
+  "failedRuns": [
+    {
+      "runId": 38146384730,
+      "cause": "TARGET_EXCESS missing metric allowlist; 2 executed, 1 failed, no full smoke pass"
+    },
+    {
+      "runId": 38146649705,
+      "cause": "legacy hard-cap assertions, missing UI wait, picker pointer default suppression; 20 executed, 4 failed"
+    },
+    {
+      "runId": 38146860487,
+      "cause": "startup mode race plus legacy assertions/UI wait; 20 executed, 4 failed; layout/picker passed"
+    },
+    {
+      "runId": 38147211440,
+      "cause": "startup engine initialization race; 20 executed, 1 failed"
+    },
+    {
+      "runId": 38147641649,
+      "cause": "nullable delayed-close receiver compile error; not a device pass"
+    }
+  ]
+}

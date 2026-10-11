@@ -3,6 +3,7 @@ let normal = VelocityRules.compile(''), privateRules = normal;
 let enabled = false, privateEnabled = false, exceptions = new Set(), privateExceptions = new Set();
 let cosmeticEnabled=true,collapseEnabled=true,collapseExceptions=new Set(),privateCollapseExceptions=new Set();
 const cosmeticCounts=new Map();
+const pickerResults=new Map();
 let port = null, retries = 0, configured = false, generation = 0, blocked = 0, privateBlocked = 0, statsPending = false;
 function reportStats() {
   if (statsPending) return; statsPending = true;
@@ -22,6 +23,11 @@ function connect() {
     port = browser.runtime.connectNative('velocity_block_lite');
     port.onMessage.addListener(async message => {
       try {
+        if(message?.type==='pickerResult') {const done=pickerResults.get(message.requestId);if(done){pickerResults.delete(message.requestId);done({success:message.success===true});}return;}
+        if(message?.type==='picker') {
+            const tabs=await browser.tabs.query({active:true});const tab=tabs[0];
+            if(configured&&tab&&(tab.incognito?privateEnabled:enabled))await browser.tabs.sendMessage(tab.id,{type:'startPicker',requestId:message.requestId});return;
+        }
         if (!message || message.type !== 'config' || typeof message.enabled !== 'boolean' || typeof message.privateEnabled !== 'boolean' || !Number.isSafeInteger(message.generation)) return;
         const nextNormal = VelocityRules.compile(message.rules), nextPrivate = message.privateRules === message.rules ? nextNormal : VelocityRules.compile(message.privateRules);
         const nextExceptions = validOrigins(message.exceptions), nextPrivateExceptions = validOrigins(message.privateExceptions);
@@ -50,6 +56,10 @@ browser.runtime.onMessage.addListener((message,sender)=>{
  if(!message||!sender.tab||!sender.url)return Promise.resolve({css:''});
  let u;try{u=new URL(sender.url);}catch{return Promise.resolve({css:''});}
  const incognito=sender.tab.incognito===true,allowed=configured&&(incognito?privateEnabled:enabled)&&!excluded(topOrigins.get(sender.tab.id)||u.origin,incognito);
+ if(message.type==='pickerSave') {
+  if(!allowed||!VelocityRules.selector(message.selector)||pickerResults.size)return Promise.resolve({success:false});
+  return new Promise(resolve=>{pickerResults.set(message.requestId,resolve);port?.postMessage({type:'pickerSave',requestId:message.requestId,origin:u.origin,selector:message.selector});setTimeout(()=>{const done=pickerResults.get(message.requestId);if(done){pickerResults.delete(message.requestId);done({success:false});}},5000);});
+ }
  if(message.type==='cosmeticStats'){
   if(allowed&&message.generation===generation&&Number.isInteger(message.hidden)&&message.hidden>=0&&message.hidden<=100&&Number.isInteger(message.collapsed)&&message.collapsed>=0&&message.collapsed<=100){cosmeticCounts.set(sender.tab.id,{hidden:message.hidden,collapsed:message.collapsed,private:incognito});reportStats();}
   return Promise.resolve({});
