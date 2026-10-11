@@ -26,40 +26,56 @@ class TabSwitcherView(context: Context, private val appearance: ThemeController,
     private val undoButton=Button(context).apply { text="閉じるを取り消す（ページを再読み込み）";isAllCaps=false;minHeight=context.dp(48);setOnClickListener { undo();filter() } }
     private var snapshot=emptyList<TabRecord>();private var shown=emptyList<TabRecord>();private var selected:String?=null
     private var privateMode=false
-    private var columns=if(preferences.getBoolean("tabs_list",false)) 1 else 2
+    private var columns=if(preferences.getBoolean("tabs_list",true)) 1 else 2
     private val stableIds=mutableMapOf<String,Long>();private var nextStableId=0L
-    private val adapter=object: BaseAdapter() {
+    private class RowViews(val root:LinearLayout,val title:TextView,val domain:TextView,val state:TextView,val menu:BrowserIconButton,val close:BrowserIconButton,val grid:Boolean)
+    private val adapter=object:BaseAdapter() {
         override fun getCount()=shown.size
         override fun getItem(position:Int)=shown[position]
         override fun hasStableIds()=true
         override fun getItemId(position:Int)=stableIds.getOrPut(shown[position].id){++nextStableId}
         override fun getView(position:Int,convertView:View?,parent:ViewGroup):View {
-            val row=(convertView as? LinearLayout) ?: LinearLayout(context).apply {
-                orientation=LinearLayout.VERTICAL;setPadding(context.dp(12),context.dp(8),context.dp(12),context.dp(8))
-                addView(TextView(context).apply { textSize=16f;maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END;minimumHeight=context.dp(48) })
-                addView(TextView(context).apply { textSize=12f;maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END })
-                addView(LinearLayout(context).apply {
-                    addView(Button(context).apply { text="固定";isAllCaps=false;minHeight=context.dp(48) },LinearLayout.LayoutParams(0,-2,1f))
-                    addView(Button(context).apply { text="×";textSize=24f;minWidth=0;minimumWidth=0;setPadding(0,0,0,0) },LinearLayout.LayoutParams(context.dp(48),context.dp(48)))
-                })
+            val gridMode=columns==2
+            val cached=convertView?.tag as? RowViews
+            val row=if(cached!=null&&cached.grid==gridMode)cached else {
+                val root=LinearLayout(context).apply {orientation=if(gridMode)LinearLayout.VERTICAL else LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;minimumHeight=context.dp(72);setPadding(context.dp(8),context.dp(8),context.dp(4),context.dp(8))}
+                val label=TextView(context).apply {textSize=16f;maxLines=2;ellipsize=android.text.TextUtils.TruncateAt.END}
+                val domain=TextView(context).apply {textSize=13f;maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END;setPadding(0,context.dp(4),0,0)}
+                val state=TextView(context).apply {textSize=13f}
+                val text=LinearLayout(context).apply {orientation=LinearLayout.VERTICAL;addView(label);addView(domain)}
+                if(gridMode)root.addView(text,LinearLayout.LayoutParams(-1,-2)) else root.addView(text,LinearLayout.LayoutParams(0,-2,1f))
+                val menu=BrowserIconButton(context,"menu","タブの操作")
+                val closeButton=BrowserIconButton(context,"close","閉じる")
+                val actions=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL}
+                actions.addView(state,LinearLayout.LayoutParams(if(gridMode)0 else context.dp(16),-2,if(gridMode)1f else 0f))
+                actions.addView(menu,LinearLayout.LayoutParams(context.dp(48),context.dp(48)));actions.addView(closeButton,LinearLayout.LayoutParams(context.dp(48),context.dp(48)))
+                root.addView(actions,LinearLayout.LayoutParams(if(gridMode)-1 else -2,-2))
+                RowViews(root,label,domain,state,menu,closeButton,gridMode).also {root.tag=it}
             }
             val tab=shown[position];val p=appearance.palette()
-            row.background=context.rounded(p.card,16,if(tab.id==selected)p.accent else p.border)
-            (row.getChildAt(0) as TextView).apply { text=(if(tab.pinned)"• " else "")+tab.displayTitle();setTextColor(p.text) }
-            (row.getChildAt(1) as TextView).apply {
-                text=tab.displayLocation()+"\n"+when {tab.id==selected->"使用中";tab.live->"保持中";else->"休眠中 · 再読み込みされます"};setTextColor(p.muted)
-            }
-            val actions=row.getChildAt(2) as LinearLayout
-            (actions.getChildAt(0) as Button).apply { text=if(tab.pinned)"固定解除" else "固定";setTextColor(p.accent);setOnClickListener { pin(tab.id) } }
-            (actions.getChildAt(1) as Button).apply { setTextColor(p.danger);contentDescription="『${tab.displayTitle()}』を閉じる";setOnClickListener { close(tab.id) } }
-            row.isFocusable=true;row.contentDescription="『${tab.displayTitle()}』を選択";row.setOnClickListener { if(select(tab.id)) dismiss() }
+            row.root.setBackgroundColor(if(tab.id==selected)p.pressed else p.background)
+            row.title.text=tab.displayTitle();row.title.setTextColor(p.text)
+            row.domain.text=tab.displayLocation();row.domain.setTextColor(p.muted)
+            val state=when {tab.pinned->"固定";tab.protections.isNotEmpty()->"保護中";!tab.live->"休眠中";else->""}
+            row.state.text=if(state.isEmpty())"" else "•";row.state.contentDescription=state;row.state.setTextColor(p.muted)
+            row.menu.palette=p;row.close.palette=p
+            fun menu(){PopupMenu(context,row.menu).apply {
+                menu.add(if(tab.pinned)"固定解除" else "固定").setOnMenuItemClickListener {pin(tab.id);true}
+                menu.add("閉じる").setOnMenuItemClickListener {close(tab.id);true}
+                menu.add("タブを整理").setOnMenuItemClickListener {organize();true}
+                menu.add("状態: "+state.ifEmpty {"通常"}).isEnabled=false
+            }.show()}
+            row.menu.contentDescription="『${tab.displayTitle()}』の操作";row.menu.setOnClickListener {menu()}
+            row.close.contentDescription="『${tab.displayTitle()}』を閉じる";row.close.setOnClickListener {close(tab.id)}
+            row.root.isFocusable=true;row.root.contentDescription="『${tab.displayTitle()}』を選択"+(if(state.isEmpty())"" else " · $state")
+            row.root.setOnClickListener {if(select(tab.id))dismiss()};row.root.setOnLongClickListener {menu();true}
             var x=0f;var y=0f
-            row.setOnTouchListener { _,event -> when(event.actionMasked) {
-                MotionEvent.ACTION_DOWN->{x=event.x;y=event.y;false}
-                MotionEvent.ACTION_UP->{if(kotlin.math.abs(event.x-x)>context.dp(100) && kotlin.math.abs(event.y-y)<context.dp(40)) {close(tab.id);true}else false}
+            row.root.setOnTouchListener {_,e->when(e.actionMasked){
+                MotionEvent.ACTION_DOWN->{x=e.x;y=e.y;false}
+                MotionEvent.ACTION_UP->if(kotlin.math.abs(e.x-x)>context.dp(100)&&kotlin.math.abs(e.y-y)<context.dp(40)){close(tab.id);true}else false
                 else->false
-            } }
-            return row
+            }}
+            return row.root
         }
     }
     val isShowing get()=dialog.isShowing
@@ -77,7 +93,7 @@ class TabSwitcherView(context: Context, private val appearance: ThemeController,
         search.addTextChangedListener(object:TextWatcher {override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){};override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){filter()};override fun afterTextChanged(s:Editable?){} })
         dialog.setContentView(panel)
     }
-    fun show() {dialog.show();dialog.window?.apply {setGravity(Gravity.BOTTOM);setLayout(-1,(panel.context.resources.displayMetrics.heightPixels*.90).toInt());setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)};applyPalette()}
+    fun show() {dialog.show();dialog.window?.apply {setGravity(Gravity.BOTTOM);setLayout(-1,(panel.context.resources.displayMetrics.heightPixels*.90).toInt());setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)};applyPalette();panel.isFocusableInTouchMode=true;panel.requestFocus()}
     fun dismiss()=dialog.dismiss()
     fun update(tabs:List<TabRecord>,selectedId:String?,waiting:String?) {snapshot=tabs;selected=selectedId;if(!isShowing)privateMode=tabs.find {it.id==selectedId}?.privateMode==true;filter()}
     private fun filter() {
@@ -88,7 +104,7 @@ class TabSwitcherView(context: Context, private val appearance: ThemeController,
         if(snapshot.any {it.privateMode})dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else dialog.window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
     fun applyPalette() {
-        val p=appearance.palette();panel.background=panel.context.rounded(p.background,24);search.applyTextPalette(p);count.setTextColor(p.text);undoButton.setTextColor(p.accent)
+        val p=appearance.palette();panel.setBackgroundColor(p.background);search.applyTextPalette(p);count.setTextColor(p.text);undoButton.setTextColor(p.accent)
         fun tint(v:View) {if(v is Button)v.setTextColor(p.accent);if(v is ViewGroup && v!==grid)for(i in 0 until v.childCount)tint(v.getChildAt(i))};tint(panel);adapter.notifyDataSetChanged()
     }
 }
