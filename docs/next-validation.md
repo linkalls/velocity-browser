@@ -1,4 +1,6 @@
-# 0.2.1検証結果
+# 0.2.1検証結果（履歴）
+
+現在の変更・結果は[0.2.2検証](fix-validation.md)を参照。この文書は過去の成果物とCI設定の記録。
 
 GeckoView Stable 157.0.20261005135250固定。checkout時のmain b487694を精査し、開発中に取得したmain ecd714fのAPK-only artifact変更もmergeして保持した。変更の説明は[next-stage](next-stage.md)、[変更ファイル一覧](changed-files.txt)、機械可読結果は[JSON](benchmarks/next-validation.json)。
 

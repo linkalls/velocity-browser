@@ -2,9 +2,9 @@
 
 個人データのない専用テストprofile/端末で実行する。試験は作成したタブを閉じ、設定を変更して復帰する。arm64 Releaseの物理端末インストールと、CIのdebug x86_64エミュレーターは別の検証である。
 
-## 通常スモーク8件
+## 通常スモーク12件
 
-READMEの `connectedDebugAndroidTest` コマンドとActionsのmanual dispatchは、BrowserIntegrationTest 4件、ReadingIntegrationTest 2件、BlockIntegrationTestのprivate設定・loopback遮断2件を実行する。`RequiresExternalFixture` annotationの3件だけを除外し、集計が8件でなければCIを失敗にする。
+READMEの `connectedDebugAndroidTest` コマンドとActionsのmanual dispatchは、BrowserIntegrationTest 4件、ReadingIntegrationTest 2件、BlockIntegrationTestのprivate設定・loopback遮断2件に加えBrowserUiIntegrationTest 4件（削除キャンセル/48dp、保留/回転/入力保持、外観の保存/Web配色/OS連動、private警告/配色contrast）を実行する。`RequiresExternalFixture` annotationの3件だけを除外し、集計が12件でなければCIを失敗にする。
 
 loopback試験はLite OFFで広告endpointへの到達を確認してから、Lite ONのwebRequest cancel / CSS / フォーム保全 / native遮断判定通知 / サイト例外を検証する。初期到達失敗は遮断成功にしない。試験serverはGeckoの空接続やread timeoutでもaccept loopを継続する。閲覧専用試験は20ページ、実ライブ上限2、本文再表示時の追加GETなしを検査する。
 
@@ -20,7 +20,7 @@ Lite HTTPS: [Bun fixture手順](../tools/bench-runner/README.md)に従い、専�
   -Pandroid.testInstrumentationRunnerArguments.blockFixtureOrigin=https://site.velocity.test:8443
 ```
 
-公式AdGuard XPI: 既存AdGuardがない専用profile、ネット接続、権限確認UIを使用。AMOの署名済み5.5.2.3を取得し、version / enabled / private除外 / mode切替を検査する。終了時に導入したXPIを削除する。本試験だけでは広告遮断を証明しない。
+公式AdGuard XPI: 既存AdGuardがない専用profile、ネット接続、権限確認UIを使用。AMOの署名済み5.5.2.3を取得し、version / enabled / private除外 / mode切替、2枚保護時の設定保留・キャンセル・確認後の表示、fragment変更後の再利用、失敗したdelegated loadのnull応答と仮タブ解放を検査する。終了時に導入したXPIを削除する。本試験だけでは広告遮断を証明しない。
 
 ```bash
 ./gradlew :app:connectedDebugAndroidTest \
@@ -36,8 +36,8 @@ AdGuard HTTPS: アプリの追加導入UIで公式XPIを導入し、AdGuard設�
   -Pandroid.testInstrumentationRunnerArguments.adguardFixtureOrigin=https://site.velocity.test:8443
 ```
 
-公式導入・HTTPSの実行結果は[next-validation](next-validation.md)に分けて記録する。RAM/CPU/PageLoadや一般サイトでの遮断率を、この機能試験から推測しない。
+公式導入・HTTPSの実行結果は[fix-validation](fix-validation.md)に分けて記録する。RAM/CPU/PageLoadや一般サイトでの遮断率を、この機能試験から推測しない。
 
 ## 失敗レポート
 
-ActionsはJUnit XMLとHTMLを保存し、名前空間を処理してcase名・失敗理由をログに出す。`Inspect device test results` のmanual dispatchへrun_idを指定すると、同一repositoryの保存済みinstrumentation-reportsを読む。診断workflowの変更push時は最後の失敗runを読む。診断ジョブの成功はアプリテストの成功を意味しない。
+ActionsはJUnit XMLからcase名・失敗理由・集計をログに出す。公開artifactはインストール可能なAPKだけ。テストレポートarchive、ソースZIP、スクリーンショットはuploadしない。失敗時は該当jobログを確認する。CIの部分実行を成功として扱わない。

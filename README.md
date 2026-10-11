@@ -1,8 +1,10 @@
 # Velocity Browser 0.2
 
-GeckoViewだけでWebページを表示する、標準View/KotlinのAndroidブラウザです。M0 → M1 → M2 → M3 → M4のソースと、JVM/Androidテスト、GitHub Actions、Macrobenchmark、Bun集計ツールとM6 Velocity Block Liteを含みます。実行結果は [docs/next-validation.md](docs/next-validation.md) を参照してください。
+GeckoViewだけでWebページを表示する、標準View/KotlinのAndroidブラウザです。M0 → M1 → M2 → M3 → M4のソースと、JVM/Androidテスト、GitHub Actions、Macrobenchmark、Bun集計ツールとM6 Velocity Block Liteを含みます。実行結果は [docs/fix-validation.md](docs/fix-validation.md) を参照してください。
 
 **安全性を判定できない通常Webタブは自動破棄しません。** 動的Webページ2枚の保護中は3枚目が保留となります。今回、公開URLの本文を保持して再表示する「閲覧専用タブ」を追加しました。フォームやスクリプトを含まないコピーをGeckoViewで表示し、最大2ライブを維持して往復できます。通常ページや入力を無断で変換・破棄しません。設定・ホーム・タブ一覧から選べます。画像・リンク操作・認証・JS・スクロール復元はこのコピー経路で未対応です。[次段階の設計・制約](docs/next-stage.md)。
+
+設定 → 外観で「システムに合わせる・ライト・ダーク」を選べます。設定は保存され、既存Runtimeの公開配色APIとネイティブUIへ反映します。テーマ切替によるreloadは行いません。タブ一覧はタイトルと接続先、48dpの閉じるボタンを表示し、削除キャンセル後も一覧が残ります。最後のタブを閉じると同じプライベート区分で新しい空タブを作ります。
 
 ## 必要環境
 
@@ -29,7 +31,7 @@ adb shell am start -n dev.velocity.browser/.MainActivity
 
 Debugはarm64-v8a/x86_64。Releaseはarm64-v8a、R8とresource shrinkingを適用。Release APKは未署名で、配布には自分の署名設定が必要です。benchmarkビルドだけはdebugキーで署名し、debuggable=false、profileableにします。秘密鍵をリポジトリに含めません。
 
-今回のダウンロード用 `velocity-browser-0.2.1-release-test-signed.apk` はReleaseビルドをAndroid Debugキーでテスト用に署名したものです（arm64-v8a）。v2/v3署名検証は成功、実機インストールは未検証です。本番配布用の鍵ではありません。[ハッシュ・検証情報](docs/benchmarks/release-artifact.json)。
+今回のダウンロード用 `velocity-browser-0.2.2-release-test-signed.apk` はReleaseビルドをAndroid Debugキーでテスト用に署名したものです（arm64-v8a）。v2/v3署名検証は成功、実機インストールは未検証です。本番配布用の鍵ではありません。[ハッシュ・検証情報](docs/benchmarks/release-artifact.json)。
 
 ## 操作
 
@@ -43,9 +45,9 @@ Adaptiveは最大2オープンGeckoSession、非表示120秒で候補判定、�
 
 ## 広告ブロック（v0.2）
 
-下部の広告ブロック状態ボタンからLite ON/OFF、サイト例外、ユーザー規則、フィルター更新、診断を操作できます。**ETP初期ON、Lite初期OFF**（性能・誤検知が未検証）。約3,500ドメインの軽量リストを同梱し、AdGuard全構文には非互換です。Peter Loweのドメインリストの固定HTTPS更新元から明示操作時のみ更新し、未対応規則は件数を記録してスキップ。private設定はメモリのみで最後のprivateタブ閉鎖時に消去します。ON/OFF・例外・規則変更後は手動でページを再読み込みして適用を確認してください。未保存入力を守るため自動reloadしません。
+アドレス欄のシールドボタンからLite ON/OFF、サイト例外、ユーザー規則、フィルター更新、診断を操作できます。**ETP初期ON、Lite初期OFF**（性能・誤検知が未検証）。約3,500ドメインの軽量リストを同梱し、AdGuard全構文には非互換です。Peter Loweのドメインリストの固定HTTPS更新元から明示操作時のみ更新し、未対応規則は件数を記録してスキップ。private設定はメモリのみで最後のprivateタブ閉鎖時に消去します。ON/OFF・例外・規則変更後は手動でページを再読み込みして適用を確認してください。未保存入力を守るため自動reloadしません。
 
-本家AdGuardの公式XPI追加は権限確認付きの実験機能。Liteと同時起動しません。インストール・遮断・RAM/CPU/load性能は実機未検証、Popupは未対応です。設定タブは2ライブ枠内で開き、保護中なら保留します。GPLの本体は同梱しません。LiteにはPeter Loweのドメイン規則と出典・creditを同梱しています。[設計・ライセンス・未検証](docs/adblock-decisions.md)。
+本家AdGuardの公式XPI追加は権限確認付きの実験機能。Liteと同時起動しません。インストール・遮断・RAM/CPU/load性能は実機未検証、Popupは未対応です。設定タブは2ライブ枠内で開き、保護中なら閉じるタブを選べます。保護中のタブは確認後だけ閉じ、設定ページへ自動復帰します。キャンセルでは表示要求を取り消し、元のタブを保持します。GPLの本体は同梱しません。LiteにはPeter Loweのドメイン規則と出典・creditを同梱しています。[設計・ライセンス・未検証](docs/adblock-decisions.md)。
 
 ## テスト
 
@@ -61,7 +63,7 @@ bun run typecheck
 bun src/cli.ts aggregate fixtures/synthetic.json ../../docs/benchmarks/synthetic-example
 ```
 
-通常の端末スモークは8件。外部HTTPS・AdGuardの3件は除外し、未検証として別管理します。実行方法は[端末テスト](docs/device-tests.md)。引数なしの全件実行では、現在のAGPがJUnitのAssumptionを失敗として記録する場合があります。
+通常の端末スモークは12件。外部HTTPS・AdGuardの3件は除外し、未検証として別管理します。実行方法は[端末テスト](docs/device-tests.md)。引数なしの全件実行では、現在のAGPがJUnitのAssumptionを失敗として記録する場合があります。
 
 SchedulerをAndroid非依存の`:core`へ分離しています。上限、LRU、120秒境界、保護、保存未確認、世代/identity不一致、100タブ、復元失敗、先読み条件、ログ情報制限をJVMテストで検証。Syntheticファイルはテスト専用で実機結果ではありません。実機テストを実行できなかったものは「未検証」、性能は「NOT_MEASURED」と記録します。
 

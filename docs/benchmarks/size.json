@@ -1,19 +1,13 @@
 {
   "status": "MEASURED",
-  "apkBytes": 191328682,
+  "implementationVersion": "0.2.2",
+  "apkBytes": 191347946,
   "baselineBytes": 191118123,
-  "additionalBytes": 210559,
-  "withinEffortBudget": true,
+  "additionalBytes": 229823,
+  "aabFileBytes": 92328823,
+  "geckoNativeLibrariesIdentical": 13,
   "installSize": "NOT_MEASURED",
-  "measuredAt": "2026-10-11",
-  "abi": "arm64-v8a",
-  "engine": "GeckoView Stable 157.0.20261005135250",
-  "r8": true,
-  "buildType": "release unsigned",
-  "apkMiB": 182.4652500152588,
-  "additionalKiB": 205.6240234375,
-  "aabFileBytes": 92308665,
-  "aabDownloadSize": "NOT_MEASURED",
-  "note": "Uncompressed mmap-ready native libs dominate APK; stock Gecko libxul is already stripped; no 5MB claim.",
-  "implementationVersion": "0.2.1"
+  "apkMiB": 182.48362159729004,
+  "additionalKiB": 224.4365234375,
+  "withinEffortBudget": true
 }

@@ -1,0 +1,69 @@
+{
+  "implementationVersion": "0.2.2",
+  "productionCodeCommit": "e9ed0b3f3bf1e68fffd8b8ea30f6763c2c2be261",
+  "testCodeCommit": "3e5f3698881d4e82cc5911ee621101e90a1de456",
+  "finalBuild": "BUILD SUCCESSFUL in 3m 24s",
+  "jvm": {
+    "tests": 43,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "appUnitTest": "NO-SOURCE, not counted as a passed test",
+  "bun": {
+    "tests": 18,
+    "failures": 0,
+    "typecheck": "PASS"
+  },
+  "lint": {
+    "Error": 0,
+    "Warning": 22
+  },
+  "physicalDevice": "UNVERIFIED",
+  "adguardAndHttpsFixtures": "UNVERIFIED: 3 excluded conditional tests",
+  "performance": "NOT_MEASURED",
+  "ci": {
+    "runId": 38133338162,
+    "url": "https://github.com/linkalls/velocity-browser/actions/runs/38133338162",
+    "testedCommit": "3e5f3698881d4e82cc5911ee621101e90a1de456",
+    "build": "SUCCESS",
+    "bun": "SUCCESS",
+    "deviceSmoke": {
+      "environment": "API36 x86_64 emulator, debug APK, real GeckoView",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "excludedExternalFixtureTests": 3
+    },
+    "artifacts": [
+      "Velocity-Browser-APK"
+    ]
+  },
+  "size": {
+    "status": "MEASURED",
+    "implementationVersion": "0.2.2",
+    "apkBytes": 191347946,
+    "baselineBytes": 191118123,
+    "additionalBytes": 229823,
+    "aabFileBytes": 92328823,
+    "geckoNativeLibrariesIdentical": 13,
+    "installSize": "NOT_MEASURED",
+    "apkMiB": 182.48362159729004,
+    "additionalKiB": 224.4365234375,
+    "withinEffortBudget": true
+  },
+  "releaseArtifact": {
+    "file": "velocity-browser-0.2.2-release-test-signed.apk",
+    "version": "0.2.2",
+    "buildType": "release",
+    "abi": "arm64-v8a",
+    "bytes": 191365753,
+    "sha256": "92b089ad87218ddd39fe689fa4a2f1d9e527ff657c1b140e9d7fe488fd3248ff",
+    "signing": "TEST_ONLY: same Android Debug key as local 0.2.1 APK, not a production key",
+    "signatureVerification": "PASS: apksigner v2/v3; zipalign 16KiB",
+    "physicalDeviceInstall": "UNVERIFIED"
+  },
+  "localRetry": "Initial full build OOM killed (8GiB cgroup oom_kill=1); repeat with --max-workers=1 succeeded",
+  "finalInstrumentationApkBuild": "BUILD SUCCESSFUL in 18s"
+}

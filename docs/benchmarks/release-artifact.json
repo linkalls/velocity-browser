@@ -1,11 +1,11 @@
 {
-  "file": "velocity-browser-0.2.1-release-test-signed.apk",
-  "version": "0.2.1",
+  "file": "velocity-browser-0.2.2-release-test-signed.apk",
+  "version": "0.2.2",
   "buildType": "release",
   "abi": "arm64-v8a",
-  "bytes": 191345217,
-  "sha256": "e913772f293a1b526b7939f3b4833a60f553f77a6f6df29e78d4f40ccc5fef78",
-  "signing": "TEST_ONLY: Android Debug key, not a production key",
+  "bytes": 191365753,
+  "sha256": "92b089ad87218ddd39fe689fa4a2f1d9e527ff657c1b140e9d7fe488fd3248ff",
+  "signing": "TEST_ONLY: same Android Debug key as local 0.2.1 APK, not a production key",
   "signatureVerification": "PASS: apksigner v2/v3; zipalign 16KiB",
-  "installationAndDeviceTests": "This arm64 Release APK on a physical device: UNVERIFIED; debug x86_64 emulator results are separate"
+  "physicalDeviceInstall": "UNVERIFIED"
 }
