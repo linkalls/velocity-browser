@@ -31,16 +31,17 @@ class MainActivity : Activity(), BrowserHost {
     private var permissionResult: ((Boolean) -> Unit)? = null
     private var foreground = false
     private var backRegistered = false
-    private val modernBack by lazy { android.window.OnBackInvokedCallback { coordinator.back() } }
+    private val modernBack by lazy { android.window.OnBackInvokedCallback { if(chrome.address.hasFocus())chrome.cancelAddressEdit() else coordinator.back() } }
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(appearance.style())
         super.onCreate(savedInstanceState)
-        chrome = BrowserChromeView(this)
+        chrome = BrowserChromeView(this,(application as VelocityApp).homeInputState)
         setContentView(chrome)
         chrome.onNavigate = coordinator::navigate
         chrome.back.setOnClickListener { coordinator.back() }
         chrome.forward.setOnClickListener { coordinator.forward() }
-        chrome.reload.setOnClickListener { coordinator.reload() }
+        chrome.reload.setOnClickListener { if(chrome.address.hasFocus())chrome.submitAddress() else coordinator.reload() }
+        chrome.onEditingChanged={coordinator.render()}
         chrome.onTabs = {
             tabSheet?.dismiss()
             tabSheet = TabSwitcherView(this, appearance, { id ->
@@ -121,13 +122,13 @@ class MainActivity : Activity(), BrowserHost {
         if (chrome.title.text.toString() != title) chrome.title.text = title
         val url = t?.url?.takeUnless { it == "about:blank" }.orEmpty()
         if (!chrome.address.hasFocus() && chrome.address.text.toString() != url) chrome.address.setText(url)
-        chrome.updateState(tabs.size, t?.privateMode == true, blocker.mode.name, blocker.enabled(t?.privateMode == true), blocker.busy, if (t?.privateMode == true) blocker.privateDecisions else blocker.normalDecisions, blocker.status)
+        chrome.updateState(tabs.size, t?.privateMode == true, blocker.mode.name, blocker.enabled(t?.privateMode == true), blocker.busy, if (t?.privateMode == true) blocker.privateDecisions else blocker.normalDecisions, blocker.status, selectedId)
         chrome.back.isEnabled = canBack; chrome.forward.isEnabled = canForward
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             if (canBack && !backRegistered) { onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, modernBack); backRegistered = true }
             else if (!canBack && backRegistered) { onBackInvokedDispatcher.unregisterOnBackInvokedCallback(modernBack); backRegistered = false }
         }
-        val reloadLabel = getString(if (loading) R.string.stop else R.string.reload)
+        val reloadLabel = getString(if(chrome.address.hasFocus()) R.string.go else if (loading) R.string.stop else R.string.reload)
         if (chrome.reload.text.toString() != reloadLabel) chrome.reload.text = reloadLabel
         if (chrome.reload.contentDescription != reloadLabel) chrome.reload.contentDescription = reloadLabel
     }
@@ -173,7 +174,7 @@ class MainActivity : Activity(), BrowserHost {
     @android.annotation.SuppressLint("GestureBackNavigation") // API26〜32のfallback。33以降は上記dispatcher。
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onBackPressed() {
-        if (chrome.back.isEnabled) coordinator.back() else super.onBackPressed()
+        if(chrome.address.hasFocus())chrome.cancelAddressEdit() else if (chrome.back.isEnabled) coordinator.back() else super.onBackPressed()
     }
     private fun browserMenu() {
         val current=coordinator.scheduler.selectedId?.let(coordinator.scheduler::tab)
@@ -181,7 +182,7 @@ class MainActivity : Activity(), BrowserHost {
         showSettings("menu","メニュー",listOf(
             row("新しいタブ") {coordinator.createTab()},
             row("新しいプライベートタブ") {coordinator.createTab(privateMode=true)},
-            row("進む") {coordinator.forward()},
+            row("進む") {coordinator.forward()}.apply {available={chrome.forward.isEnabled}},
             row(chrome.reload.text.toString()) {coordinator.reload()},
             row("共有") {val url=current?.url?.takeIf {UrlPolicy.httpUrl(it)!=null};if(url!=null)startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {type="text/plain";putExtra(Intent.EXTRA_TEXT,url)},"ページを共有"))},
             row("ホーム") {chrome.onHome()},
@@ -237,13 +238,13 @@ class MainActivity : Activity(), BrowserHost {
         }) }.toMutableList()
         rows[0].liveText = { getString(R.string.search_engine) + " · " + coordinator.searchEngine.name }
         rows[1].liveText = { getString(R.string.preconnect) }; rows[1].navigation=false;rows[1].checked = { coordinator.preconnectEnabled() }
-        rows[4].liveText = { getString(R.string.adaptive) }; rows[4].navigation=false;rows[4].checked = { coordinator.scheduler.adaptiveEnabled }
+        rows[4].liveText = { getString(R.string.adaptive) }; rows[3].navigation=false;rows[5].navigation=false;rows[4].navigation=false;rows[4].checked = { coordinator.scheduler.adaptiveEnabled }
         rows[9].liveText = { getString(R.string.appearance) + " · " + arrayOf("システム", "ライト", "ダーク")[appearance.mode.ordinal] }
         rows.add(0,SettingsView.Row("タブとパフォーマンス","ライブ目標 ${coordinator.scheduler.config.liveTarget}枚 · ${coordinator.scheduler.config.discardAfterMs/1000}秒","保護中は目標を超えて保持します。RAMの推奨: ${coordinator.recommendedProfile().name}",::memorySettings).apply { liveText = { "ライブ目標 ${coordinator.scheduler.config.liveTarget}枚 · ${coordinator.scheduler.config.discardAfterMs/1000}秒" } })
-        rows.add(SettingsView.Row("一般","アドレスバー位置",if(chrome.bottomAddress)"下" else "上") {chrome.setAddressBottom(!chrome.bottomAddress)}.apply {liveText={"アドレスバー位置 · "+if(chrome.bottomAddress)"下" else "上"}})
+        rows.add(SettingsView.Row("一般","アドレスバー位置",if(chrome.bottomAddress)"下" else "上") {chrome.setAddressBottom(!chrome.bottomAddress)}.apply {liveText={"アドレスバー位置 · "+if(chrome.bottomAddress)"下" else "上"};navigation=false})
         rows.add(SettingsView.Row("外観","アドレスバーのスワイプ","左右にスワイプしてタブを切り替える") {chrome.swipeEnabled=!chrome.swipeEnabled}.apply {liveText={"アドレスバーのスワイプ"};checked={chrome.swipeEnabled}})
         rows.add(SettingsView.Row("プライバシー","広告ブロック",blocker.mode.name,::blockSettings))
-        rows.add(SettingsView.Row("一般","ホームページ","新規ページに設定するURL") {
+        rows.add(SettingsView.Row("一般","ホームページ","ホーム操作で開くURL（空欄でVelocityホーム）") {
             val prefs=getSharedPreferences("settings",MODE_PRIVATE)
             val input=android.widget.EditText(this).apply {isSaveEnabled=false;hint="https://example.com";setText(prefs.getString("home_url",""))}
             val d=dialog().setTitle("ホームページ").setView(input).setPositiveButton("保存",null).setNegativeButton(R.string.cancel,null).showThemed()
@@ -340,9 +341,11 @@ class MainActivity : Activity(), BrowserHost {
                 6 -> if (!privateMode) dialog().setTitle(R.string.adguard_install).setMessage(R.string.adguard_experiment)
                     .setPositiveButton(R.string.yes) { _, _ -> blocker.installAdguard(this) }.setNegativeButton(R.string.cancel, null).showThemed()
                 7 -> if (!privateMode) blocker.removeAdguard()
-                8 -> if (!privateMode) blocker.openAdguardOptions()
+                8 -> if (!privateMode) {appearance.dismissFor(this);blocker.openAdguardOptions()}
             }
         }) }
+        rows[0].liveText={getString(R.string.block_toggle)};rows[0].checked={blocker.enabled(privateMode)};rows[0].available={!blocker.busy}
+        rows[7].navigation=false
         val cosmeticRows=listOf(
             SettingsView.Row("要素非表示","このサイトの非表示ルールを管理","削除・直前の選択ルールを取り消し",::siteRules),
             SettingsView.Row("要素非表示","ページ内の要素を選択して非表示","Lite有効時のみ。適用前にプレビューできます",::pickElement),
@@ -353,8 +356,8 @@ class MainActivity : Activity(), BrowserHost {
         cosmeticRows[2].liveText={"広告要素を非表示"};cosmeticRows[2].checked={blocker.cosmeticEnabled}
         cosmeticRows[3].liveText={"広告の空白を折りたたむ"};cosmeticRows[3].checked={blocker.collapseEnabled}
         cosmeticRows[4].liveText={"このサイトの折りたたみ"};cosmeticRows[4].checked={origin!=null&&!blocker.collapseExcluded(origin,privateMode)}
-        val counts=if(blocker.mode==dev.velocity.browser.block.BlockController.Mode.ADGUARD)"AdGuardの非表示・折りたたみ: 未取得" else "全${if(privateMode)"非公開" else "通常"}タブの観測数 · 非表示 ${if(privateMode)blocker.privateHiddenElements else blocker.hiddenElements} / 折りたたみ ${if(privateMode)blocker.privateCollapsedElements else blocker.collapsedElements}（各ページ100候補まで）"
-        showSettings("block","広告とトラッカーのブロック",listOf(SettingsView.Row("状態",origin?:"ページ未選択","${blocker.mode.name} · 遮断判定 ${if(privateMode)blocker.privateDecisions else blocker.normalDecisions}（広告の個数ではありません）\n$counts") {})+rows.take(2)+cosmeticRows+rows.drop(2))
+        fun counts()=if(blocker.mode==dev.velocity.browser.block.BlockController.Mode.ADGUARD)"AdGuardの非表示・折りたたみ: 未取得" else "全${if(privateMode)"非公開" else "通常"}タブの観測数 · 非表示 ${if(privateMode)blocker.privateHiddenElements else blocker.hiddenElements} / 折りたたみ ${if(privateMode)blocker.privateCollapsedElements else blocker.collapsedElements}（各ページ100候補まで）"
+        showSettings("block","広告とトラッカーのブロック",listOf(SettingsView.Row("状態",origin?:"ページ未選択",action={}).apply {navigation=false;available={false};liveText={ (origin?:"ページ未選択")+"\n${blocker.mode.name} · 遮断判定 ${if(privateMode)blocker.privateDecisions else blocker.normalDecisions}（広告の個数ではありません）\n${counts()}"}})+rows.take(2)+cosmeticRows+rows.drop(2))
     }
 
 }

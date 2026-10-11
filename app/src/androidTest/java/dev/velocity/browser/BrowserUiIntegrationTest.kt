@@ -175,7 +175,7 @@ class BrowserUiIntegrationTest {
             assertTrue(device.wait(Until.hasObject(By.desc("タブを検索")),10000))
             val query=device.findObject(By.desc("タブを検索"));assertNotNull(query);query.text="Logical99"
             assertTrue(device.wait(Until.hasObject(By.desc("『Logical99』を閉じる")),10000))
-            click("固定");main {assertTrue(app.coordinator.scheduler.tab("logical-99")!!.pinned)}
+            clickDescription("『Logical99』の操作");click("固定");main {assertTrue(app.coordinator.scheduler.tab("logical-99")!!.pinned)}
             clickDescription("『Logical99』を閉じる");main {assertNull(app.coordinator.scheduler.tab("logical-99"));assertTrue(app.coordinator.canUndo())}
             click("閉じるを取り消す（ページを再読み込み）")
             main {assertTrue(app.coordinator.scheduler.tabs.any {it.url=="https://example.com/99"&&it.pinned});assertFalse(app.coordinator.canUndo())}
@@ -190,7 +190,7 @@ class BrowserUiIntegrationTest {
         var id: String? = null
         main { id = app.coordinator.scheduler.selectedId }
         try {
-            clickDescription(inst.targetContext.getString(R.string.settings))
+            clickDescription("メニュー");clickDescription("設定")
             assertTrue(device.wait(Until.hasObject(By.desc("設定を検索")), 10000))
             device.findObject(By.desc("設定を検索")).text = "アドレスバーのスワイプ"
             val label = "アドレスバーのスワイプ、" + if (before) "オン" else "オフ"

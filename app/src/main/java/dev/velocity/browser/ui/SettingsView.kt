@@ -17,6 +17,7 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
         var liveText: (() -> String)? = null
         var checked: (() -> Boolean)? = null
         var navigation: Boolean = true
+        var available: (() -> Boolean)? = null
     }
     private data class Binding(val row: Row, val root: LinearLayout, val label: TextView,
         val detail: TextView, val trailing: TextView?, val toggle: Switch?)
@@ -40,6 +41,10 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
     init {
         panel.setPadding(context.dp(16), context.dp(12), context.dp(16), context.dp(12))
         panel.isFocusableInTouchMode = true
+        panel.setOnApplyWindowInsetsListener {_,insets->
+            if(android.os.Build.VERSION.SDK_INT>=30){val bars=insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout() or WindowInsets.Type.ime());panel.setPadding(context.dp(16)+bars.left,context.dp(12)+bars.top,context.dp(16)+bars.right,context.dp(12)+bars.bottom)}
+            insets
+        }
         panel.addView(LinearLayout(context).apply {
             gravity = Gravity.CENTER_VERTICAL
             addView(heading, LinearLayout.LayoutParams(0, -2, 1f))
@@ -71,7 +76,7 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
                 val trailing = if (toggle == null && row.navigation) TextView(context).apply { text = "›"; textSize = 24f; setPadding(context.dp(12), 0, context.dp(4), 0) } else null
                 if (toggle != null) root.addView(toggle) else if(trailing!=null)root.addView(trailing)
                 val binding = Binding(row, root, label, detail, trailing, toggle); bindings += binding
-                root.setOnClickListener { row.action(); refreshValues() }
+                root.setOnClickListener { if(row.available?.invoke()!=false)row.action(); refreshValues() }
                 content.addView(root, LinearLayout.LayoutParams(-1, -2))
                 content.addView(View(context).apply {setBackgroundColor(appearance.palette().border);separators+=this},LinearLayout.LayoutParams(-1,context.dp(1)))
             }
@@ -89,6 +94,8 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
     fun refresh() { if(dialog.isShowing)refreshValues() }
     private fun refreshValues() {
         bindings.forEach { b ->
+            b.root.isEnabled=b.row.available?.invoke()!=false
+            b.root.alpha=if(b.root.isEnabled)1f else 0.5f
             val value = b.row.liveText?.invoke() ?: b.row.label
             val parts = value.split('\n', limit = 2)
             if (b.label.text.toString() != parts[0]) b.label.text = parts[0]
@@ -113,7 +120,7 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
     }
     fun show() {
         dialog.show(); dialog.window?.apply {
-            setLayout(-1, -1); setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
+            setLayout(-1, -1);if(android.os.Build.VERSION.SDK_INT>=30)setDecorFitsSystemWindows(false); setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
         }
         appearance.track(dialog); appearance.observe(themeChanged);preferences.forEach {it.registerOnSharedPreferenceChangeListener(preferenceChanged)};applyPalette();refreshValues();panel.requestFocus()
     }

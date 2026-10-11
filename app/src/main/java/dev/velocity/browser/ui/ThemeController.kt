@@ -67,6 +67,8 @@ class ThemeController(private val context: Context) {
     @Suppress("DEPRECATION")
     fun applyWindow(activity: Activity) {
         val p = palette(); val window = activity.window
+        if(android.os.Build.VERSION.SDK_INT>=30)window.setDecorFitsSystemWindows(false)
+        else window.decorView.systemUiVisibility = window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
         window.setBackgroundDrawable(ColorDrawable(p.background)); window.statusBarColor = p.background; window.navigationBarColor = p.background
         if (android.os.Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
         if (android.os.Build.VERSION.SDK_INT >= 30) {

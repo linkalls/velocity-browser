@@ -26,7 +26,7 @@ class BrowserIconButton(context: Context, private val icon: String, label: Strin
         when(icon) {
             "back" -> path(4f,-8f,-4f,0f,4f,8f)
             "forward" -> path(-4f,-8f,4f,0f,-4f,8f)
-            "reload" -> if(text.toString()=="中断")canvas.drawRoundRect(-6f,-6f,6f,6f,1f,1f,pen) else {canvas.drawArc(-8f,-8f,8f,8f,40f,285f,false,pen);path(8f,-8f,8f,-2f,2f,-2f)}
+            "reload" -> if(text.toString()=="開く")path(-7f,0f,7f,0f,1f,-6f,7f,0f,1f,6f) else if(text.toString()=="中断")canvas.drawRoundRect(-6f,-6f,6f,6f,1f,1f,pen) else {canvas.drawArc(-8f,-8f,8f,8f,40f,285f,false,pen);path(8f,-8f,8f,-2f,2f,-2f)}
             "tabs" -> {canvas.drawRoundRect(-9f,-9f,9f,9f,2f,2f,pen);pen.style=Paint.Style.FILL;pen.textSize=10f;pen.textAlign=Paint.Align.CENTER;canvas.drawText(if(count>99)"99+" else count.toString(),0f,3.5f,pen)}
             "menu" -> {pen.style=Paint.Style.FILL;for(y in listOf(-6f,0f,6f))canvas.drawCircle(0f,y,1.6f,pen)}
             "info" -> {canvas.drawCircle(0f,0f,8f,pen);canvas.drawLine(0f,-1f,0f,5f,pen);pen.style=Paint.Style.FILL;canvas.drawCircle(0f,-4f,1f,pen)}

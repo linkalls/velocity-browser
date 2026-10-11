@@ -91,8 +91,8 @@ jobs:
                   for failure in list(case.findall('failure')) + list(case.findall('error')):
                       print((failure.get('message', '') + '\n' + (failure.text or ''))[:12000])
           print('DEVICE_TOTALS', totals)
-          if totals['tests'] != 21:
-              raise SystemExit('Expected all 21 smoke cases; partial execution is not a pass')
+          if totals['tests'] != 24:
+              raise SystemExit('Expected all 24 smoke cases; partial execution is not a pass')
           if totals['failures'] or totals['errors'] or totals['skipped']:
               raise SystemExit(1)
           PYTHON

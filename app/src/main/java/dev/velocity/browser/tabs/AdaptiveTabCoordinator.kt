@@ -115,6 +115,7 @@ class AdaptiveTabCoordinator(private val context: Context) {
             }
         } finally { draining = false }
         // COLDタブの手動closeにはCloseSession commandが出ない。残るstate参照も解放。
+        (context.applicationContext as dev.velocity.browser.VelocityApp).homeInputState.retain(scheduler.tabs.map {it.id}.toSet())
         documents.keys.removeAll { scheduler.tab(it) == null }
         if (snapshots.isNotEmpty()) snapshots.keys.removeAll { scheduler.tab(it) == null }
         if (hadPrivate && scheduler.tabs.none { it.privateMode }) (context.applicationContext as dev.velocity.browser.VelocityApp).blocker.resetPrivate()
