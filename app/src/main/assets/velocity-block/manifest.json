@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Velocity Block Lite",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Bounded domain blocking and scoped cosmetic CSS; no scriptlets",
   "browser_specific_settings": {
     "gecko": {

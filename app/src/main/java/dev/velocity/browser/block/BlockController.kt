@@ -165,7 +165,7 @@ class BlockController(private val context: Context) {
             }, "velocity_block_lite")
             controller.setAllowedInPrivateBrowsing(extension, true).accept({ updated ->
                 lite = updated ?: extension
-                prefs.edit().putString("builtInVersion", "0.3.0").apply()
+                prefs.edit().putString("builtInVersion", "0.3.1").apply()
                 controller.list().accept({ list ->
                     extensionInventoryKnown = list != null
                     if (list?.any { it.id != ID } == true) onUntrustedExtension?.invoke()
