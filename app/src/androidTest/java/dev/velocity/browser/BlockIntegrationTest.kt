@@ -33,6 +33,7 @@ class BlockIntegrationTest {
         }
     }
     /** 専用信頼済みTLS fixtureをrunner引数で指定。未指定はskipであり成功ではない。 */
+    @RequiresExternalFixture
     @Test fun liteHttpsBlockingAndExceptionPreserveTwoLiveLimit() {
         val args = InstrumentationRegistry.getArguments()
         val origin = args.getString("blockFixtureOrigin")

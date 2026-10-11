@@ -17,6 +17,7 @@ import org.junit.runner.RunWith
 /** 明示runner引数がある専用試験端末だけで公式XPIを取得・導入。通常CIはskip。 */
 @RunWith(AndroidJUnit4::class)
 class AdguardIntegrationTest {
+    @RequiresExternalFixture
     @Test fun officialSignedXpiInstallModeSwitchAndPrivateExclusion() {
         val inst = InstrumentationRegistry.getInstrumentation()
         assumeTrue("Official XPI install not opted in: UNVERIFIED", InstrumentationRegistry.getArguments().getString("adguardInstallConsent") == "true")
@@ -66,6 +67,7 @@ class AdguardIntegrationTest {
     }
 
     /** AdGuardの設定画面で専用fixture規則を保存済みの場合だけ動かす。 */
+    @RequiresExternalFixture
     @Test fun configuredAdguardBlocksHttpsFixtureWithoutReloadingDraftOnModeChange() {
         val inst = InstrumentationRegistry.getInstrumentation()
         val origin = InstrumentationRegistry.getArguments().getString("adguardFixtureOrigin")

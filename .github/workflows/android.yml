@@ -68,7 +68,7 @@ jobs:
           api-level: 36
           arch: x86_64
           script: |
-            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=dev.velocity.browser.BrowserIntegrationTest,dev.velocity.browser.ReadingIntegrationTest,dev.velocity.browser.BlockIntegrationTest#privateRulesAndExceptionsAreNotPersistent,dev.velocity.browser.BlockIntegrationTest#liteLoopbackBlockingCssAndDraftPreservation
+            ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notAnnotation=dev.velocity.browser.RequiresExternalFixture
             adb exec-out screencap -p > app/build/reports/androidTests/device-ui.png
       - name: Report device test outcomes
         if: always()
@@ -92,6 +92,8 @@ jobs:
                   for failure in list(case.findall('failure')) + list(case.findall('error')):
                       print((failure.get('message', '') + '\n' + (failure.text or ''))[:12000])
           print('DEVICE_TOTALS', totals)
+          if totals['tests'] != 8:
+              raise SystemExit('Expected all 8 smoke cases; partial execution is not a pass')
           if totals['failures'] or totals['errors']:
               raise SystemExit(1)
           PYTHON
