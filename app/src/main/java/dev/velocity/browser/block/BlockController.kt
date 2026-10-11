@@ -110,6 +110,7 @@ class BlockController(private val context: Context) {
     fun attach(runtime: GeckoRuntime) {
         check(this.runtime == null)
         this.runtime = runtime
+        busy=true;status="INITIALIZING"
         val controller = runtime.webExtensionController
         controller.setPromptDelegate(object : WebExtensionController.PromptDelegate {
             override fun onInstallPromptRequest(extension: WebExtension, permissions: Array<String>, origins: Array<String>, dataCollectionPermissions: Array<String>): GeckoResult<WebExtension.PermissionPromptResponse> {
@@ -127,7 +128,7 @@ class BlockController(private val context: Context) {
             }
         }) // 追加権限/データ収集/私的モード/自動更新の既定は拒否。
         controller.ensureBuiltIn("resource://android/assets/velocity-block/", ID).accept({ extension ->
-            if (extension == null) { status = "INSTALL_FAILED"; return@accept }
+            if (extension == null) { busy=false;status = "INSTALL_FAILED"; return@accept }
             lite = extension; guardTabs(extension)
             extension.setMessageDelegate(object : WebExtension.MessageDelegate {
                 override fun onConnect(p: WebExtension.Port) {
@@ -173,7 +174,7 @@ class BlockController(private val context: Context) {
                     applyMode()
                 }, { status = "LIST_FAILED"; mode = Mode.ETP_ONLY; applyMode() })
             }, { status = "PRIVATE_ENABLE_FAILED"; mode = Mode.ETP_ONLY; applyMode() })
-        }, { status = "INSTALL_FAILED (page rendering continues)" })
+        }, { busy=false;status = "INSTALL_FAILED (page rendering continues)" })
         updateEtp()
     }
     private fun updateEtp() {
@@ -199,6 +200,9 @@ class BlockController(private val context: Context) {
     private fun applyMode() {
         val r = runtime ?: return; val l = lite ?: return
         busy = true; status = "APPLYING"; updateEtp()
+        if(mode==Mode.LITE && l.metaData.enabled && adguard?.metaData?.enabled!=true) {
+            busy=false;push();return
+        }
         // 二重フィルタリングを避け、まず両エンジンを停止してから一方だけ有効化。
         fun switchEngines() {
         r.webExtensionController.disable(l, WebExtensionController.EnableSource.APP).accept({ disabled ->
