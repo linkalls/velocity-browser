@@ -110,7 +110,7 @@ class MainActivity : Activity(), BrowserHost {
         if (!adguard && tabSheet?.isShowing == true) return
         if (capacity?.targetId == id) return
         capacity?.dismiss()
-        capacity = CapacityDialog(this,id,adguard,appearance,{ coordinator.close(it) },{ target ->
+        capacity = CapacityDialog(this,id,adguard,appearance,{ coordinator.select(it) },{ target ->
             if (coordinator.host === this) coordinator.cancelPending(target)
         }, { capacity = null; chrome.onTabs() }).also { it.update(coordinator.scheduler.tabs); it.show() }
     }

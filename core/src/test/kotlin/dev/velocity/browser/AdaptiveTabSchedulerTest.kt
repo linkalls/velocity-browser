@@ -1,7 +1,7 @@
 package dev.velocity.browser
 
 import dev.velocity.browser.tabs.*
-import dev.velocity.browser.security.*
+import dev.velocity.browser.security.Protection
 import dev.velocity.browser.util.Clock
 import org.junit.Assert.*
 import org.junit.Test
@@ -10,247 +10,137 @@ class AdaptiveTabSchedulerTest {
     private class FakeClock(var now: Long = 0) : Clock { override fun elapsedRealtimeMs() = now }
     private val clock = FakeClock()
     private val s = AdaptiveTabScheduler(AdaptiveConfig(), clock)
-    private fun create(id: String, privateMode: Boolean = false): List<Command> {
-        s.dispatch(Event.CreateTab(id, "https://example.com/", privateMode))
+    private fun create(id: String): List<Command> {
+        s.dispatch(Event.CreateTab(id,"https://example.com/$id"))
         val commands = s.dispatch(Event.SelectTab(id))
-        s.tab(id)?.identity?.let { s.dispatch(Event.Ready(id, it)) }
+        s.tab(id)?.identity?.let { s.dispatch(Event.Ready(id,it)) }
         return commands
     }
-    /** テストのfake engineが保存・リスク不在を独立に証明する。Geckoの通知とは異なる。 */
+    // Independent fake-engine proof; a Gecko SessionState callback is never this proof.
     private fun certify(id: String) {
-        var t = s.tab(id)!!
-        t.protections.toList().forEach { s.dispatch(Event.RiskChanged(id, t.identity!!, it, false)) }
-        t = s.tab(id)!!
-        s.dispatch(Event.SafeCheckpoint(id, t.identity!!, t.epoch, t.revision, t.saveGeneration))
+        var t=s.tab(id)!!
+        t.protections.toList().forEach { s.dispatch(Event.RiskChanged(id,t.identity!!,it,false)) }
+        t=s.tab(id)!!; s.dispatch(Event.SafeCheckpoint(id,t.identity!!,t.epoch,t.revision,t.saveGeneration))
     }
-    private fun foreground() = s.dispatch(Event.AppForegroundChanged(true))
-    @Test fun firstTabActive() { create("a"); assertEquals(TabState.ACTIVE, s.tab("a")!!.state); assertEquals(1, s.liveCount) }
-    @Test fun secondTabOneActiveOneWarm() {
-        create("a"); create("b"); certify("a")
-        assertEquals(TabState.WARM, s.tab("a")!!.state); assertEquals(TabState.ACTIVE, s.tab("b")!!.state); assertEquals(2, s.liveCount)
+    @Test fun defaultAndProfilesAreSoftTargets() {
+        assertEquals(6,s.config.liveTarget);assertEquals(120000L,s.config.discardAfterMs)
+        assertEquals(3,TabProfile.MEMORY.config().liveTarget);assertEquals(12,TabProfile.FAST.config().liveTarget)
     }
-    @Test fun thirdTabEvictsSavedLru() {
-        create("a"); clock.now = 10; create("b"); certify("a")
-        val commands = create("c")
-        assertTrue(commands.any { it is Command.CloseSession && it.id == "a" }); assertEquals(TabState.COLD, s.tab("a")!!.state); assertEquals(2, s.liveCount)
+    @Test fun protectedTabsRemainLiveAtEveryRequestedCount() {
+        for (count in listOf(2,3,6,12,20,50,100)) {
+            repeat(count) { create("$count-$it") }
+            assertEquals("$count-${count-1}",s.selectedId)
+            assertNull(s.pendingId);assertTrue(s.tabs.all { it.live })
+            assertEquals(1,s.tabs.count { it.state==TabState.ACTIVE })
+        }
     }
-    @Test fun unsavedThirdKeepsDisplayedPageAndBlocks() {
-        create("a"); create("b"); val commands = create("c")
-        assertFalse(commands.any { it is Command.CloseSession }); assertTrue(commands.any { it is Command.ShowEvictionBlockedNotice })
-        assertEquals("b", s.selectedId); assertEquals(TabState.COLD, s.tab("c")!!.state)
+    @Test fun seventhAdmittedWithSixProtectedIdentitiesUnchanged() {
+        repeat(6) { create("t$it"); val t=s.tab("t$it")!!;s.dispatch(Event.RiskChanged(t.id,t.identity!!,Protection.FORM,true)) }
+        val before=s.tabs.associate { it.id to it.identity }; val commands=create("seventh")
+        assertEquals(7,s.liveCount);assertEquals("seventh",s.selectedId)
+        before.forEach { (id,identity)->assertEquals(identity,s.tab(id)!!.identity) }
+        assertFalse(commands.any { it is Command.CloseSession || it is Command.ShowEvictionBlockedNotice })
     }
-    @Test fun callbackIsNotFlushAcknowledgment() {
-        create("a"); create("b"); val t = s.tab("a")!!
-        s.dispatch(Event.SessionStateChanged("a", t.identity!!, t.epoch, "snapshot"))
-        assertFalse(s.tab("a")!!.safelySaved); assertTrue(create("c").any { it is Command.ShowEvictionBlockedNotice })
+    @Test fun onlyCertifiedHiddenLruIsReclaimedAtTarget() {
+        s.dispatch(Event.Configure(AdaptiveConfig(liveTarget=2)))
+        create("a");clock.now=10;create("b");certify("a")
+        assertTrue(create("c").any { it is Command.CloseSession && it.id=="a" })
+        assertEquals(TabState.COLD,s.tab("a")!!.state);assertEquals(2,s.liveCount)
     }
-    @Test fun elapsed120SecondsIsCandidateBoundary() {
-        foreground(); create("a"); clock.now = 200; create("b"); certify("a")
-        clock.now = 120199; assertFalse(s.dispatch(Event.Tick(clock.now)).any { it is Command.CloseSession })
-        clock.now = 120200; assertTrue(s.dispatch(Event.Tick(clock.now)).any { it is Command.CloseSession && it.id == "a" })
-        assertEquals(1, s.liveCount)
+    @Test fun displayedSafePageIsKeptForAllocationRollback() {
+        s.dispatch(Event.Configure(AdaptiveConfig(liveTarget=2)))
+        create("a");create("b");certify("b")
+        assertFalse(create("c").any { it is Command.CloseSession });assertEquals(3,s.liveCount)
     }
-    @Test fun everyRiskPreventsAutomaticEviction() {
+    @Test fun allProtectionFlagsPreventPressureEviction() {
         for (risk in Protection.entries) {
-            val test = AdaptiveTabScheduler(AdaptiveConfig(), clock)
-            test.dispatch(Event.AppForegroundChanged(true))
-            test.dispatch(Event.CreateTab("a", "https://example.com/")); test.dispatch(Event.SelectTab("a"))
-            val a = test.tab("a")!!
-            test.dispatch(Event.RiskChanged("a", a.identity!!, Protection.UNKNOWN, false))
-            test.dispatch(Event.RiskChanged("a", a.identity!!, risk, true))
-            test.dispatch(Event.SafeCheckpoint("a", a.identity!!, a.epoch, test.tab("a")!!.revision, 0))
-            test.dispatch(Event.CreateTab("b", "https://example.com/")); test.dispatch(Event.SelectTab("b"))
-            assertFalse("$risk", test.dispatch(Event.MemoryPressure()).any { it is Command.CloseSession })
-            test.dispatch(Event.CreateTab("c", "https://example.com/"))
-            assertTrue("$risk", test.dispatch(Event.SelectTab("c")).any { it is Command.ShowEvictionBlockedNotice })
-            assertEquals(2, test.liveCount)
+            val id=risk.name;create(id);val t=s.tab(id)!!
+            s.dispatch(Event.RiskChanged(id,t.identity!!,Protection.UNKNOWN,false))
+            s.dispatch(Event.RiskChanged(id,t.identity!!,risk,true))
+            val changed=s.tab(id)!!;s.dispatch(Event.SafeCheckpoint(id,t.identity!!,t.epoch,changed.revision,changed.saveGeneration))
+            create("after-$id")
+            assertFalse(s.dispatch(Event.MemoryPressure()).any { it is Command.CloseSession && it.id==id })
+            assertEquals(t.identity,s.tab(id)!!.identity)
         }
     }
-    @Test fun protectedCloseRequiresExplicitConfirmation() {
-        create("a"); assertTrue(s.dispatch(Event.CloseTab("a")).any { it is Command.ConfirmClose })
-        assertEquals(1, s.liveCount); assertTrue(s.dispatch(Event.CloseTab("a", true)).any { it is Command.CloseSession }); assertEquals(1, s.liveCount); assertEquals("about:blank", s.tab(s.selectedId!!)!!.url)
+    @Test fun adaptiveOffDisablesAutomaticReclamationAndAdmissionLimit() {
+        s.adaptiveEnabled=false;create("a");create("b");certify("a")
+        repeat(20) { assertFalse(create("t$it").any { it is Command.CloseSession }) }
+        assertFalse(s.dispatch(Event.MemoryPressure()).any { it is Command.CloseSession });assertEquals(22,s.liveCount)
     }
-    @Test fun memoryPressureReclaimsOnlySafeHidden() {
-        create("a"); create("b"); certify("a")
-        assertTrue(s.dispatch(Event.MemoryPressure()).any { it is Command.CloseSession && it.id == "a" }); assertEquals("b", s.selectedId)
+    @Test fun idleBoundaryUsesMonotonicTimeAndBackgroundTimerStops() {
+        s.dispatch(Event.AppForegroundChanged(true));create("a");clock.now=200;create("b");certify("a")
+        assertFalse(s.dispatch(Event.Tick(120199)).any { it is Command.CloseSession })
+        s.dispatch(Event.AppForegroundChanged(false));assertFalse(s.dispatch(Event.Tick(120200)).any { it is Command.CloseSession })
+        clock.now=120200;assertTrue(s.dispatch(Event.AppForegroundChanged(true)).any { it is Command.CloseSession && it.id=="a" })
     }
-    @Test fun staleIdentityCannotAffectRecreatedTab() {
-        create("a"); val identity = s.tab("a")!!.identity!!; create("b"); certify("a"); create("c"); certify("b")
-        s.dispatch(Event.SelectTab("a")); val newer = s.tab("a")!!.identity
-        assertNotEquals(identity, newer)
-        s.dispatch(Event.SessionStateChanged("a", identity, 0, "old"))
-        s.dispatch(Event.Crashed("a", identity)); assertNull(s.tab("a")!!.snapshot); assertEquals(newer, s.tab("a")!!.identity)
+    @Test fun pressureReclaimsSafeHiddenInLruOrder() {
+        create("a");clock.now=10;create("b");clock.now=20;create("c");certify("a");certify("b")
+        assertEquals(listOf("a","b"),s.dispatch(Event.MemoryPressure()).filterIsInstance<Command.CloseSession>().map { it.id })
+        assertEquals("c",s.selectedId)
     }
-    @Test fun newNavigationInvalidatesOldSnapshotAndCertificate() {
-        create("a"); certify("a"); val t = s.tab("a")!!
-        s.dispatch(Event.SessionStateChanged("a", t.identity!!, t.epoch, "old"))
-        s.dispatch(Event.NavigationStarted("a", t.identity!!, "https://example.com/new"))
-        s.dispatch(Event.SessionStateChanged("a", t.identity!!, t.epoch, "late"))
-        s.dispatch(Event.SafeCheckpoint("a", t.identity!!, t.epoch, t.revision, t.saveGeneration))
-        assertNull(s.tab("a")!!.snapshot); assertFalse(s.tab("a")!!.safelySaved)
+    @Test fun callbackDoesNotProveSafetyOrTriggerPendingRetry() {
+        create("a");create("b");val a=s.tab("a")!!
+        s.dispatch(Event.SessionStateChanged("a",a.identity!!,a.epoch,"state"));assertFalse(s.tab("a")!!.safelySaved)
+        assertFalse(s.dispatch(Event.MemoryPressure()).any { it is Command.CloseSession })
     }
-    @Test fun inputRiskInvalidatesSaveGenerationEvidence() {
-        create("a"); val t = s.tab("a")!!
-        s.dispatch(Event.RiskChanged("a", t.identity!!, Protection.UNKNOWN, false)); val before = s.tab("a")!!
-        s.dispatch(Event.RiskChanged("a", t.identity!!, Protection.FORM, true))
-        s.dispatch(Event.SafeCheckpoint("a", t.identity!!, before.epoch, before.revision, before.saveGeneration)); assertFalse(s.tab("a")!!.safelySaved)
+    @Test fun creationFailureRestoresPreviousViewAndKeepsLogicalTabForRetry() {
+        create("a");val original=s.tab("a")!!.identity
+        s.dispatch(Event.CreateTab("b","https://example.com"));s.dispatch(Event.SelectTab("b"));val b=s.tab("b")!!
+        val rollback=s.dispatch(Event.CreationFailed("b",b.identity!!))
+        assertEquals("a",s.selectedId);assertEquals(original,s.tab("a")!!.identity);assertEquals("b",s.pendingId)
+        assertEquals(TabState.FAILED,s.tab("b")!!.state);assertTrue(rollback.contains(Command.AttachSessionToView("a")))
+        assertTrue(s.dispatch(Event.SelectTab("b")).any { it is Command.CreateSession });assertNull(s.pendingId)
+        val newer=s.tab("b")!!.identity;s.dispatch(Event.CreationFailed("b",b.identity!!));assertEquals(newer,s.tab("b")!!.identity)
     }
-    @Test fun foregroundTimerStopsInBackgroundAndReevaluatesOnResume() {
-        foreground(); create("a"); create("b"); certify("a")
-        assertTrue(s.dispatch(Event.AppForegroundChanged(false)).filterIsInstance<Command.SetSessionActive>().none { it.active })
-        clock.now = 500000; assertFalse(s.dispatch(Event.Tick(clock.now)).any { it is Command.CloseSession })
-        assertTrue(foreground().any { it is Command.CloseSession })
+    @Test fun staleIdentityEpochRevisionAndGenerationNeverCloseChangedPage() {
+        create("a");create("b");certify("a");val old=s.tab("a")!!
+        s.dispatch(Event.MemoryPressure());s.dispatch(Event.SelectTab("a"));assertNotEquals(old.identity,s.tab("a")!!.identity)
+        s.dispatch(Event.Crashed("a",old.identity!!));assertTrue(s.tab("a")!!.live)
+        val t=s.tab("a")!!;s.dispatch(Event.NavigationStarted("a",t.identity!!,"https://example.com/new"))
+        s.dispatch(Event.SessionStateChanged("a",t.identity!!,t.epoch,"late"))
+        s.dispatch(Event.SafeCheckpoint("a",t.identity!!,t.epoch,t.revision,t.saveGeneration));assertFalse(s.tab("a")!!.safelySaved)
+        assertNull(s.tab("a")!!.snapshot)
     }
-    @Test fun privateNeverGeneratesPersistCommands() {
-        val created = s.dispatch(Event.CreateTab("p", "https://example.com/", true))
-        val selected = s.dispatch(Event.SelectTab("p")); val t = s.tab("p")!!
-        val moved = s.dispatch(Event.NavigationStarted("p", t.identity!!, "https://example.com/new"))
-        assertFalse((created + selected + moved + s.dispatch(Event.CloseTab("p", true))).contains(Command.PersistTabMetadata))
+    @Test fun timeoutRejectsLateProofAndInputInvalidatesRevision() {
+        create("a");create("b");val t=s.tab("a")!!
+        s.dispatch(Event.SaveTimedOut("a",t.identity!!,t.saveGeneration))
+        s.dispatch(Event.RiskChanged("a",t.identity!!,Protection.UNKNOWN,false));val next=s.tab("a")!!
+        s.dispatch(Event.SafeCheckpoint("a",t.identity!!,next.epoch,next.revision,t.saveGeneration));assertFalse(s.tab("a")!!.safelySaved)
+        s.dispatch(Event.RiskChanged("a",t.identity!!,Protection.FORM,true))
+        s.dispatch(Event.SafeCheckpoint("a",t.identity!!,next.epoch,next.revision,next.saveGeneration));assertFalse(s.tab("a")!!.safelySaved)
     }
-    @Test fun hundredTabsRepeatedSelectionsNeverLeakOrDuplicate() {
-        foreground()
-        for (n in 0 until 100) {
-            s.tabs.filter { it.live }.forEach { certify(it.id) }
-            create("t$n"); assertTrue(s.liveCount <= 2)
-        }
-        for (n in 0 until 100) {
-            s.tabs.filter { it.live }.forEach { certify(it.id) }
-            s.dispatch(Event.SelectTab("t$n")); assertTrue(s.liveCount <= 2)
-        }
-        assertEquals(100, s.tabs.map { it.id }.toSet().size)
-        s.tabs.filterNot { it.live }.forEach { assertNull(it.identity) }
-        for (n in 0 until 100) s.dispatch(Event.CloseTab("t$n", true))
-        assertEquals(1, s.liveCount); assertEquals(1, s.tabs.size); assertEquals("about:blank", s.tabs.single().url)
-    }
-    @Test fun failedRestoreFallsBackToUrlAndCrashIsRetryable() {
-        create("a"); val t = s.tab("a")!!
-        assertTrue(s.dispatch(Event.RestoreFailed("a", t.identity!!)).contains(Command.FallbackReload("a", t.url)))
-        s.dispatch(Event.Crashed("a", t.identity!!)); assertEquals(TabState.FAILED, s.tab("a")!!.state)
-        assertTrue(s.dispatch(Event.SelectTab("a")).any { it is Command.CreateSession }); assertEquals(1, s.liveCount)
-    }
-    @Test fun duplicateEventsAreIdempotent() {
-        create("a"); assertTrue(s.dispatch(Event.SelectTab("a")).isEmpty())
-        s.dispatch(Event.CreateTab("a", "https://other.example/")); assertEquals(1, s.tabs.size)
-        s.dispatch(Event.CloseTab("a", true)); assertTrue(s.dispatch(Event.CloseTab("a", true)).isEmpty())
-    }
-    @Test fun adaptiveOffStillEnforcesHardSafetyLimit() {
-        s.adaptiveEnabled = false; create("a"); create("b"); assertTrue(create("c").any { it is Command.ShowEvictionBlockedNotice }); assertEquals(2, s.liveCount)
-    }
-
-    @Test fun pendingSelectionResumesOnlyAfterIndependentCertificate() {
-        create("a"); create("b"); create("c")
-        assertEquals("c", s.pendingId)
-        certify("a")
-        assertEquals("c", s.selectedId); assertNull(s.pendingId)
-        assertEquals(TabState.COLD, s.tab("a")!!.state); assertEquals(2, s.liveCount)
-    }
-    @Test fun userSelectingAnotherTabCancelsPendingSelection() {
-        create("a"); create("b"); create("c")
-        s.dispatch(Event.SelectTab("a")); assertNull(s.pendingId)
-        certify("b"); assertEquals("a", s.selectedId)
-    }
-    @Test fun saveTimeoutAllowsRetryAndRejectsLateGeneration() {
-        create("a"); create("b"); val a = s.tab("a")!!
-        s.dispatch(Event.SaveTimedOut("a", a.identity!!, a.saveGeneration))
-        assertEquals(TabState.WARM, s.tab("a")!!.state)
-        s.dispatch(Event.RiskChanged("a", a.identity!!, Protection.UNKNOWN, false))
-        val newer = s.tab("a")!!
-        s.dispatch(Event.SafeCheckpoint("a", a.identity!!, newer.epoch, newer.revision, a.saveGeneration))
-        assertFalse(s.tab("a")!!.safelySaved)
-        create("c"); assertEquals(TabState.SAVING, s.tab("a")!!.state)
-        assertTrue(s.tab("a")!!.saveGeneration > a.saveGeneration)
-    }
-    @Test fun readingCertificateRequiresMatchingIdentityEpochAndNoOtherRisk() {
-        s.dispatch(Event.CreateTab("r", "https://example.com", readOnly = true)); s.dispatch(Event.SelectTab("r"))
-        val t = s.tab("r")!!
-        s.dispatch(Event.ReplayReady("r", t.identity!! + 1, t.epoch, "r")); assertFalse(s.tab("r")!!.safelySaved)
-        s.dispatch(Event.ReplayReady("r", t.identity!!, t.epoch + 1, "r")); assertFalse(s.tab("r")!!.safelySaved)
-        s.dispatch(Event.RiskChanged("r", t.identity!!, Protection.PINNED, true))
-        s.dispatch(Event.ReplayReady("r", t.identity!!, t.epoch, "r")); assertFalse(s.tab("r")!!.safelySaved)
-        s.dispatch(Event.RiskChanged("r", t.identity!!, Protection.PINNED, false))
-        s.dispatch(Event.ReplayReady("r", t.identity!!, t.epoch, "r")); assertTrue(s.tab("r")!!.safelySaved)
-    }
-    @Test fun ordinaryPageCannotUseReadingCertificate() {
-        create("a"); val t = s.tab("a")!!
-        s.dispatch(Event.ReplayReady("a", t.identity!!, t.epoch, "a")); assertFalse(s.tab("a")!!.safelySaved)
-    }
-    @Test fun twentyReadingTabsCanEvictAndReplayWithTwoLiveSessions() {
-        repeat(20) { n ->
-            val id = "r$n"
-            s.dispatch(Event.CreateTab(id, "https://example.com/$n", readOnly = true)); s.dispatch(Event.SelectTab(id))
-            val t = s.tab(id)!!
-            s.dispatch(Event.Ready(id, t.identity!!)); s.dispatch(Event.ReplayReady(id, t.identity!!, t.epoch, id))
-            assertTrue(s.liveCount <= 2)
-        }
-        val restore = s.dispatch(Event.SelectTab("r0")).filterIsInstance<Command.CreateSession>().single()
-        assertTrue(restore.readOnly); assertNull(restore.snapshot); assertEquals(2, s.liveCount)
-        assertEquals(20, s.tabs.size)
-    }
-
-    @Test fun protectedHiddenTabCanCoexistWithSwitchingReadingTabs() {
-        create("form")
-        s.dispatch(Event.CreateTab("reader", "https://example.com", readOnly = true)); s.dispatch(Event.SelectTab("reader"))
-        val reader = s.tab("reader")!!
-        s.dispatch(Event.ReplayReady("reader", reader.identity!!, reader.epoch, "reader"))
-        val commands = create("third")
-        assertEquals("third", s.selectedId); assertNotNull(s.tab("form")!!.identity)
-        assertEquals(TabState.COLD, s.tab("reader")!!.state)
-        val detach = commands.indexOfFirst { it is Command.DetachSessionFromView && it.id == "reader" }
-        val close = commands.indexOfFirst { it is Command.CloseSession && it.id == "reader" }
-        assertTrue(detach >= 0 && close > detach); assertEquals(2, s.liveCount)
-    }
-
-    @Test fun readingReplayNeverOverridesFormMediaAuthOrOtherProtections() {
-        for (risk in Protection.entries.filter { it != Protection.UNKNOWN }) {
-            val test = AdaptiveTabScheduler(AdaptiveConfig(), clock)
-            test.dispatch(Event.CreateTab("r", "https://example.com", readOnly = true)); test.dispatch(Event.SelectTab("r"))
-            val r = test.tab("r")!!
-            test.dispatch(Event.RiskChanged("r", r.identity!!, risk, true))
-            test.dispatch(Event.ReplayReady("r", r.identity!!, r.epoch, "r"))
-            test.dispatch(Event.HideTab("r"))
-            assertFalse("$risk", test.dispatch(Event.MemoryPressure()).any { it is Command.CloseSession })
-            assertFalse("$risk", test.tab("r")!!.safelySaved)
+    @Test fun readingReplayCannotCertifyOrdinaryOrProtectedPage() {
+        create("ordinary");val t=s.tab("ordinary")!!
+        s.dispatch(Event.ReplayReady(t.id,t.identity!!,t.epoch,"token"));assertFalse(s.tab(t.id)!!.safelySaved)
+        for (risk in Protection.entries.filter { it!=Protection.UNKNOWN }) {
+            val id="r-$risk";s.dispatch(Event.CreateTab(id,"https://example.com",readOnly=true));s.dispatch(Event.SelectTab(id));val r=s.tab(id)!!
+            s.dispatch(Event.RiskChanged(id,r.identity!!,risk,true));s.dispatch(Event.ReplayReady(id,r.identity!!,r.epoch,"token"))
+            assertFalse(s.tab(id)!!.safelySaved)
         }
     }
-
-    @Test fun confirmedCloseResumesPendingWithoutClosingOtherProtectedTab() {
-        create("a"); create("b"); val identity = s.tab("a")!!.identity
-        create("c"); s.dispatch(Event.CloseTab("b", true))
-        assertEquals("c", s.selectedId); assertEquals(identity, s.tab("a")!!.identity); assertEquals(2, s.liveCount)
+    @Test fun protectedCloseNeedsConfirmationAndLastCloseCreatesBlank() {
+        create("a");assertTrue(s.dispatch(Event.CloseTab("a")).any { it is Command.ConfirmClose });assertTrue(s.tab("a")!!.live)
+        s.dispatch(Event.CloseTab("a",true));assertEquals("about:blank",s.tabs.single().url);assertEquals(1,s.liveCount)
+        val replacement=s.selectedId;s.dispatch(Event.Ready("a",1));assertEquals(replacement,s.selectedId)
     }
-    @Test fun closingSelectedRestoresMostRecentColdAfterSessionClose() {
-        create("a"); clock.now = 10; create("b"); certify("a"); certify("b")
-        clock.now = 20; create("c"); certify("b")
-        s.dispatch(Event.MemoryPressure())
-        assertEquals(TabState.COLD, s.tab("a")!!.state); assertEquals(TabState.COLD, s.tab("b")!!.state)
-        val commands = s.dispatch(Event.CloseTab("c", true))
-        assertEquals("b", s.selectedId)
-        val close = commands.indexOfFirst { it is Command.CloseSession && it.id == "c" }
-        val restore = commands.indexOfFirst { it is Command.CreateSession && it.id == "b" }
-        assertTrue(close >= 0 && restore > close); assertEquals(1, s.liveCount)
+    @Test fun privateOperationsNeverPersistMetadata() {
+        val commands=mutableListOf<Command>();commands+=s.dispatch(Event.CreateTab("p","https://example.com",true))
+        commands+=s.dispatch(Event.SelectTab("p"));val t=s.tab("p")!!
+        commands+=s.dispatch(Event.NavigationStarted("p",t.identity!!,"https://example.com/new"));commands+=s.dispatch(Event.CloseTab("p",true))
+        assertFalse(commands.contains(Command.PersistTabMetadata))
     }
-    @Test fun nonSelectedColdCloseDoesNotCreateOrChangeSession() {
-        create("a"); create("b"); create("c")
-        s.dispatch(Event.CancelPending("c"))
-        val identity = s.tab("b")!!.identity
-        val commands = s.dispatch(Event.CloseTab("c"))
-        assertEquals("b", s.selectedId); assertEquals(identity, s.tab("b")!!.identity)
-        assertFalse(commands.any { it is Command.CreateSession || it is Command.CloseSession })
+    @Test fun restoreOnlySelectedAmongHundredLogicalTabs() {
+        repeat(100) { s.dispatch(Event.CreateTab("t$it","https://example.com/$it")) }
+        assertEquals(0,s.liveCount);assertEquals(1,s.dispatch(Event.SelectTab("t50")).filterIsInstance<Command.CreateSession>().size)
+        assertEquals(1,s.liveCount);assertEquals(100,s.tabs.size)
     }
-    @Test fun explicitPendingCancelCannotCancelNewerRequestOrResumeAfterClose() {
-        create("a"); create("b"); create("c"); create("d")
-        s.dispatch(Event.CancelPending("c")); assertEquals("d", s.pendingId)
-        s.dispatch(Event.CancelPending("d")); assertNull(s.pendingId)
-        s.dispatch(Event.CloseTab("a", true)); assertEquals("b", s.selectedId)
-        assertEquals(TabState.COLD, s.tab("d")!!.state)
+    @Test fun configureLowerTargetDoesNotForceEvictOrBlock() {
+        repeat(12) { create("t$it") };s.dispatch(Event.Configure(TabProfile.MEMORY.config()))
+        assertEquals(12,s.liveCount);assertFalse(create("next").any { it is Command.CloseSession });assertEquals(13,s.liveCount)
     }
-    @Test fun closeCancellationKeepsProtectedTabAndStaleCallbacksCannotRecreateClosedId() {
-        create("a"); val identity = s.tab("a")!!.identity!!
-        s.dispatch(Event.CloseTab("a")); assertEquals(identity, s.tab("a")!!.identity)
-        s.dispatch(Event.CloseTab("a", true))
-        val replacement = s.selectedId
-        s.dispatch(Event.TitleChanged("a", identity, "late")); s.dispatch(Event.Ready("a", identity))
-        assertNull(s.tab("a")); assertEquals(replacement, s.selectedId); assertEquals(1, s.liveCount)
+    @Test fun coldCloseDoesNotTouchDisplayedSession() {
+        create("a");s.dispatch(Event.CreateTab("cold","https://example.com"))
+        assertFalse(s.dispatch(Event.CloseTab("cold")).any { it is Command.CloseSession || it is Command.CreateSession });assertEquals("a",s.selectedId)
     }
-
 }

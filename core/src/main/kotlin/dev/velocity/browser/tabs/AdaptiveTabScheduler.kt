@@ -6,7 +6,10 @@ import dev.velocity.browser.util.Clock
 sealed interface Event {
     data class CreateTab(val id: String, val url: String, val privateMode: Boolean = false, val readOnly: Boolean = false, val extensionBase: String? = null) : Event
     data class SelectTab(val id: String) : Event
+    data class Configure(val config: AdaptiveConfig) : Event
+    data class CreationFailed(val id: String, val identity: Long) : Event
     data class CancelPending(val id: String? = null) : Event
+    data class SetPinned(val id: String, val pinned: Boolean) : Event
     data class HideTab(val id: String) : Event
     data class CloseTab(val id: String, val confirmed: Boolean = false) : Event
     data class Ready(val id: String, val identity: Long) : Event
@@ -39,7 +42,9 @@ sealed interface Command {
 }
 
 /** Main threadなど単一の所有スレッドから呼ぶ。副作用はCommandのみ。 */
-class AdaptiveTabScheduler(val config: AdaptiveConfig, private val clock: Clock) {
+class AdaptiveTabScheduler(config: AdaptiveConfig, private val clock: Clock) {
+    var config = config; private set
+    private val creationPrevious = mutableMapOf<String, String?>()
     private val records = linkedMapOf<String, TabRecord>()
     val tabs: List<TabRecord> get() = records.values.map { it.detachedCopy() }
     var selectedId: String? = null; private set
@@ -59,6 +64,25 @@ class AdaptiveTabScheduler(val config: AdaptiveConfig, private val clock: Clock)
                 persist(records.getValue(event.id))
             }
             is Event.SelectTab -> select(event.id, out)
+            is Event.Configure -> config = event.config
+            is Event.SetPinned -> records[event.id]?.let {
+                it.pinned = event.pinned
+                if (event.pinned) it.protections += Protection.PINNED else it.protections -= Protection.PINNED
+                it.revision++; it.certifiedRevision = null; persist(it)
+            }
+            is Event.CreationFailed -> matching(event.id, event.identity)?.let { t ->
+                val previous = creationPrevious.remove(t.id)
+                out += Command.DetachSessionFromView(t.id)
+                out += Command.CloseSession(t.id, event.identity)
+                t.identity = null; t.state = TabState.FAILED
+                if (selectedId == t.id) {
+                    selectedId = null
+                    previous?.let { records[it] }?.takeIf { it.live }?.let { select(it.id, out) }
+                }
+                pendingId = t.id
+                out += Command.PersistTabMetadata
+                out += Command.ShowEvictionBlockedNotice(t.id)
+            }
             is Event.CancelPending -> if (event.id == null || pendingId == event.id) pendingId = null
             is Event.HideTab -> records[event.id]?.takeIf { it.id == selectedId }?.let {
                 pendingId = null; hide(it, out); selectedId = null
@@ -71,8 +95,8 @@ class AdaptiveTabScheduler(val config: AdaptiveConfig, private val clock: Clock)
                     if (wasSelected) { out += Command.DetachSessionFromView(t.id); out += Command.SetSessionActive(t.id, false); selectedId = null }
                     t.identity?.let { out += Command.CloseSession(t.id, it) }
                     records.remove(t.id); persist(t)
-                    if (pendingId != null && liveCount < config.maxLiveTabs) resumePending(out)
-                    else if (records.isEmpty()) {
+                    creationPrevious.remove(t.id)
+                    if (records.isEmpty()) {
                         // Explicit close creates a genuinely empty replacement, never a fake restore.
                         val id = java.util.UUID.randomUUID().toString()
                         records[id] = TabRecord(id, "about:blank", privateMode = t.privateMode)
@@ -84,6 +108,7 @@ class AdaptiveTabScheduler(val config: AdaptiveConfig, private val clock: Clock)
                 }
             }
             is Event.Ready -> matching(event.id, event.identity)?.let {
+                creationPrevious.remove(it.id)
                 it.state = if (selectedId == it.id) TabState.ACTIVE else TabState.WARM
                 out += Command.SetSessionActive(it.id, selectedId == it.id && foreground)
             }
@@ -105,7 +130,7 @@ class AdaptiveTabScheduler(val config: AdaptiveConfig, private val clock: Clock)
             }
             is Event.SafeCheckpoint -> matching(event.id, event.identity)?.takeIf {
                 !it.readOnly && it.epoch == event.epoch && it.revision == event.revision && it.saveGeneration == event.generation && it.protections.isEmpty()
-            }?.let { it.certifiedRevision = it.revision; if (it.state == TabState.SAVING) it.state = TabState.WARM; resumePending(out) }
+            }?.let { it.certifiedRevision = it.revision; if (it.state == TabState.SAVING) it.state = TabState.WARM }
             is Event.ReplayReady -> matching(event.id, event.identity)?.takeIf {
                 it.readOnly && !it.privateMode && it.epoch == event.epoch && event.token.isNotBlank()
             }?.let {
@@ -113,7 +138,6 @@ class AdaptiveTabScheduler(val config: AdaptiveConfig, private val clock: Clock)
                 if (it.protections.remove(Protection.UNKNOWN)) it.revision++
                 if (it.protections.isEmpty()) it.certifiedRevision = it.revision
                 if (it.state == TabState.SAVING) it.state = TabState.WARM
-                resumePending(out)
             }
             is Event.SaveTimedOut -> matching(event.id, event.identity)?.takeIf {
                 it.state == TabState.SAVING && it.saveGeneration == event.generation
@@ -136,7 +160,7 @@ class AdaptiveTabScheduler(val config: AdaptiveConfig, private val clock: Clock)
             is Event.MemoryPressure -> if (config.aggressiveMemoryReclaim && adaptiveEnabled) scan(clock.elapsedRealtimeMs(), event.severe, out)
             is Event.Tick -> if (foreground) scan(event.elapsedRealtimeMs, false, out)
         }
-        check(liveCount <= config.maxLiveTabs)
+        check(records.values.filter { it.live }.map { it.identity }.toSet().size == liveCount)
         check(records.values.count { it.state == TabState.ACTIVE } <= 1)
         return out.distinct()
     }
@@ -145,35 +169,23 @@ class AdaptiveTabScheduler(val config: AdaptiveConfig, private val clock: Clock)
         val t = records[id] ?: return
         pendingId = null
         if (selectedId == id && t.live) return
-        if (!t.live && liveCount >= config.maxLiveTabs) {
-            var victim = records.values.filter { it.live && it.id != selectedId && it.safelySaved }.minByOrNull { it.lastUsed }
-            if (victim == null) {
-                val current = selectedId?.let { records[it] }
-                // 明示切り替え時、再表示可能な現タブは先に非表示にしてから解放。
-                // CloseSession時点ではACTIVEではなく、再現不能な状態はこの経路へ入らない。
-                if (current?.safelySaved == true) { hide(current, out); selectedId = null; victim = current }
-            }
-            if (victim == null) {
-                pendingId = id
-                records.values.filter { it.live && it.id != selectedId }.forEach { requestSave(it, out) }
-                out += Command.ShowEvictionBlockedNotice(id); return
-            }
-            evict(victim, out)
+        if (!t.live && adaptiveEnabled && liveCount >= config.liveTarget) {
+            // Keep the displayed page available for rollback if allocation fails.
+            records.values.filter { it.live && it.id != selectedId && it.safelySaved }
+                .minByOrNull { it.lastUsed }?.let { evict(it, out) }
+            // No safe victim: admit above target rather than destroying unknown state.
         }
+        val previous = selectedId
         selectedId?.let { records[it] }?.let { hide(it, out) }
         selectedId = id; t.lastUsed = clock.elapsedRealtimeMs(); t.hiddenAt = null
         if (!t.live) {
+            creationPrevious[id] = previous
             val identity = ++nextIdentity; t.identity = identity; t.state = TabState.RESTORING
             out += Command.CreateSession(id, identity, t.privateMode, t.url, t.snapshot.takeIf { t.snapshotEpoch == t.epoch }, t.readOnly, t.extensionBase)
         } else t.state = TabState.ACTIVE
         out += Command.AttachSessionToView(id)
         out += Command.SetSessionActive(id, foreground)
         if (!t.privateMode) out += Command.PersistTabMetadata
-    }
-    private fun resumePending(out: MutableList<Command>) {
-        val id = pendingId ?: return
-        // 未証明の候補は触らず、別の証拠で安全になった時だけ選択を完了する。
-        if (liveCount < config.maxLiveTabs || records.values.any { it.live && it.safelySaved }) select(id, out)
     }
     private fun hide(t: TabRecord, out: MutableList<Command>) {
         out += Command.DetachSessionFromView(t.id)
@@ -187,7 +199,7 @@ class AdaptiveTabScheduler(val config: AdaptiveConfig, private val clock: Clock)
     }
     private fun scan(now: Long, pressure: Boolean, out: MutableList<Command>) {
         if (!adaptiveEnabled) return
-        records.values.filter { it.live && it.id != selectedId && (pressure || it.hiddenAt?.let { at -> now - at >= config.discardAfterMs } == true) }.forEach {
+        records.values.filter { it.live && it.id != selectedId && (pressure || it.hiddenAt?.let { at -> now - at >= config.discardAfterMs } == true) }.sortedBy { it.lastUsed }.forEach {
             if (it.safelySaved) evict(it, out) else requestSave(it, out)
         }
     }

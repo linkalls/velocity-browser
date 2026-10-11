@@ -5,7 +5,7 @@ enum class TabState { COLD, RESTORING, ACTIVE, WARM, SAVING, FAILED }
 data class TabRecord(
     val id: String, var url: String, val privateMode: Boolean = false,
     val readOnly: Boolean = false, val extensionBase: String? = null, var replayToken: String? = null,
-    var title: String = "", var state: TabState = TabState.COLD,
+    var title: String = "", var pinned: Boolean = false, var state: TabState = TabState.COLD,
     var identity: Long? = null, var epoch: Long = 0, var revision: Long = 0,
     var hiddenAt: Long? = null, var lastUsed: Long = 0,
     var snapshot: String? = null, var snapshotEpoch: Long = -1,

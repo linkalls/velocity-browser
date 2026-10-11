@@ -99,25 +99,25 @@ class BrowserUiIntegrationTest {
             };click("完了")
         } finally { cleanup() } }
     }
-    @Test fun capacityCancelRotationAndConfirmedCloseKeepOtherDraft() {
+    @Test fun protectedThirdSeventhAndTwentiethTabsKeepDraftAfterRotation() {
         launch();Fixture().use { f -> try {
             val first=form(f);field()!!.text="FIRST_DRAFT"
             main { app.coordinator.scheduler.tabs.filter { it.id!=first }.forEach { app.coordinator.close(it.id,true) } }
             val second=form(f);field()!!.text="SECOND_DRAFT"
-            main { val t=app.coordinator.scheduler.tab(second)!!;app.coordinator.dispatch(Event.TitleChanged(second,t.identity!!,"SECOND_TAB"));app.coordinator.createTab() }
-            var target="";var firstIdentity:Long?=null;main { target=app.coordinator.scheduler.pendingId!!;firstIdentity=app.coordinator.scheduler.tab(first)!!.identity;assertEquals(2,app.coordinator.scheduler.liveCount) }
-            click("キャンセル");main { assertNull(app.coordinator.scheduler.pendingId);assertNotNull(app.coordinator.scheduler.tab(second)) }
-            assertEquals("SECOND_DRAFT",field()!!.text)
-            main { app.coordinator.select(target) }
-            val old=app.coordinator.host
-            device.setOrientationLeft();device.waitForIdle()
+            var firstIdentity:Long?=null; var secondIdentity:Long?=null
+            main {
+                firstIdentity=app.coordinator.scheduler.tab(first)!!.identity
+                secondIdentity=app.coordinator.scheduler.tab(second)!!.identity
+                repeat(18) { app.coordinator.createTab(f.url) }
+                assertEquals(20,app.coordinator.scheduler.liveCount);assertNull(app.coordinator.scheduler.pendingId)
+                assertEquals(firstIdentity,app.coordinator.scheduler.tab(first)!!.identity)
+                assertEquals(secondIdentity,app.coordinator.scheduler.tab(second)!!.identity)
+                app.coordinator.memoryPressure();assertEquals(20,app.coordinator.scheduler.liveCount)
+            }
+            val old=app.coordinator.host;device.setOrientationLeft();device.waitForIdle()
             await("fresh activity after rotation") { app.coordinator.host!==old && app.coordinator.host!=null }
-            assertTrue(device.wait(Until.hasObject(By.desc("『SECOND_TAB』を閉じて表示")),10000))
-            clickDescription("『SECOND_TAB』を閉じて表示");click("キャンセル")
-            main { assertNull(app.coordinator.scheduler.pendingId);assertNotNull(app.coordinator.scheduler.tab(second));app.coordinator.select(target) }
-            clickDescription("『SECOND_TAB』を閉じて表示");click("このタブを閉じる")
-            main { assertEquals(target,app.coordinator.scheduler.selectedId);assertNull(app.coordinator.scheduler.tab(second));assertEquals(firstIdentity,app.coordinator.scheduler.tab(first)!!.identity);assertEquals(2,app.coordinator.scheduler.liveCount);app.coordinator.select(first) }
-            awaitField();assertEquals("FIRST_DRAFT",field()!!.text)
+            main { app.coordinator.select(first) };awaitField();assertEquals("FIRST_DRAFT",field()!!.text)
+            main { app.coordinator.select(second) };awaitField();assertEquals("SECOND_DRAFT",field()!!.text)
         } finally { cleanup() } }
     }
     @Test fun appearancePersistsAndUpdatesWebSchemeWithoutReloadOrDraftLoss() {

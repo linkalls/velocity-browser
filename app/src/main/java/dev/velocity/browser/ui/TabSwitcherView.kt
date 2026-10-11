@@ -61,7 +61,7 @@ class TabSwitcherView(context: Context, private val appearance: ThemeController,
         else dialog.window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         pending.removeAllViews()
         pendingId?.let { id ->
-            pending.addView(TextView(c).apply { text = "表示を保留しています。保持中のタブを閉じるか、要求をキャンセルしてください。"; textSize = 13f; setTextColor(p.text) })
+            pending.addView(TextView(c).apply { text = "ページを開けませんでした。再試行するか、タブを整理できます。"; textSize = 13f; setTextColor(p.text) })
             pending.addView(Button(c).apply { text = "表示要求をキャンセル"; setTextColor(p.accent); setOnClickListener { cancel(id) } })
         }
         rows.removeAllViews()

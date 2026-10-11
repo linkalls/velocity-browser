@@ -69,6 +69,8 @@ class AdaptiveTabCoordinator(private val context: Context) {
     init {
         preconnect.enabled = settings.getBoolean("preconnect", true)
         scheduler.adaptiveEnabled = settings.getBoolean("adaptive", true)
+        scheduler.dispatch(Event.Configure(AdaptiveConfig(liveTarget = settings.getInt("live_target", 6).coerceIn(2,32),
+            discardAfterMs = settings.getLong("idle_ms",120_000).coerceIn(30_000,1_800_000))))
     }
     fun bind(host: BrowserHost, view: GeckoView) {
         this.host = host; this.view = view
@@ -77,7 +79,9 @@ class AdaptiveTabCoordinator(private val context: Context) {
         if (!started) {
             started = true
             repository.load { stored -> handler.post {
-                stored.tabs.forEach { t -> if (scheduler.tab(t.id) == null) dispatch(Event.CreateTab(t.id, t.url, readOnly = t.readOnly)) }
+                stored.tabs.forEach { t -> if (scheduler.tab(t.id) == null) {
+                    dispatch(Event.CreateTab(t.id,t.url,readOnly=t.readOnly));dispatch(Event.SetPinned(t.id,t.pinned))
+                } }
                 if (scheduler.tabs.isEmpty()) createTab("about:blank")
                 else if (scheduler.selectedId == null) dispatch(Event.SelectTab(stored.selectedId ?: scheduler.tabs.first().id))
                 render()
@@ -106,14 +110,15 @@ class AdaptiveTabCoordinator(private val context: Context) {
             while (queue.isNotEmpty()) {
                 val commands = scheduler.dispatch(queue.removeFirst())
                 commands.forEach { execute(it) }
-                check(adapters.size <= scheduler.config.maxLiveTabs)
+                check(adapters.values.all { scheduler.tab(it.id)?.identity == it.identity })
             }
         } finally { draining = false }
         // COLDタブの手動closeにはCloseSession commandが出ない。残るstate参照も解放。
         documents.keys.removeAll { scheduler.tab(it) == null }
         if (snapshots.isNotEmpty()) snapshots.keys.removeAll { scheduler.tab(it) == null }
         if (hadPrivate && scheduler.tabs.none { it.privateMode }) (context.applicationContext as dev.velocity.browser.VelocityApp).blocker.resetPrivate()
-        metrics.record("LIVE_COUNT", scheduler.liveCount.toLong()); render()
+        metrics.record("LIVE_COUNT", scheduler.liveCount.toLong())
+        metrics.record("TARGET_EXCESS", (scheduler.liveCount - scheduler.config.liveTarget).coerceAtLeast(0).toLong()); render()
     }
     private fun execute(c: Command) {
         when (c) {
@@ -137,7 +142,8 @@ class AdaptiveTabCoordinator(private val context: Context) {
                         }
                     } else if (state == null) adapter.load(c.url) else try { adapter.session.restoreState(state) } catch (_: Exception) { dispatch(Event.RestoreFailed(c.id, c.identity)) }
                     dispatch(Event.Ready(c.id, c.identity))
-                } catch (_: Exception) { dispatch(Event.Crashed(c.id, c.identity)); notice(R.string.crash) }
+                } catch (_: Exception) { dispatch(Event.CreationFailed(c.id, c.identity)) }
+                catch (_: OutOfMemoryError) { dispatch(Event.CreationFailed(c.id, c.identity)) }
             }
             is Command.AttachSessionToView -> adapters[c.id]?.let { attach(it) }
             is Command.DetachSessionFromView -> view?.let { v -> if (v.session == adapters[c.id]?.session) v.releaseSession() }
@@ -233,7 +239,14 @@ class AdaptiveTabCoordinator(private val context: Context) {
         dispatch(Event.CreateTab(id, url, privateMode)); select(id)
     }
     fun select(id: String) { metrics.record("SELECT"); dispatch(Event.SelectTab(id)) }
-    fun close(id: String, confirmed: Boolean = false) = dispatch(Event.CloseTab(id, confirmed))
+    fun close(id: String, confirmed: Boolean = false) {
+        val t=scheduler.tab(id)
+        dispatch(Event.CloseTab(id,confirmed))
+        if (t != null && scheduler.tab(id)==null && !t.privateMode && t.extensionBase==null) {
+            undoTab=TabRecord(t.id,t.url,readOnly=t.readOnly,title=t.title,pinned=t.pinned)
+            undoUntil=clock.elapsedRealtimeMs()+10_000;render()
+        }
+    }
     fun navigate(input: String) {
         val url = UrlPolicy.input(input, searchEngine) ?: return notice(R.string.invalid_url)
         val id = scheduler.selectedId ?: return createTab(url)
@@ -263,16 +276,32 @@ class AdaptiveTabCoordinator(private val context: Context) {
         }
     }
     private fun selectedAdapter() = scheduler.selectedId?.let { adapters[it] }
-    fun pin(id: String) {
-        val t = scheduler.tab(id) ?: return
-        t.identity?.let { dispatch(Event.RiskChanged(id, it, Protection.PINNED, Protection.PINNED !in t.protections)) }
+    fun pin(id: String) { scheduler.tab(id)?.let { dispatch(Event.SetPinned(id,!it.pinned)) } }
+    private var undoTab: TabRecord? = null
+    private var undoUntil = 0L
+    fun canUndo() = undoTab != null && clock.elapsedRealtimeMs() < undoUntil
+    fun undoClose() {
+        val t = undoTab?.takeIf { canUndo() } ?: return
+        undoTab = null
+        val id=UUID.randomUUID().toString()
+        dispatch(Event.CreateTab(id,t.url,readOnly=t.readOnly)); dispatch(Event.SetPinned(id,t.pinned));select(id)
     }
     fun foreground(active: Boolean) {
+        if (!active) repository.flush()
         handler.removeCallbacks(scan)
         dispatch(Event.AppForegroundChanged(active))
         if (active) { lowMemory = false; handler.postDelayed(scan, scheduler.config.backgroundScanIntervalMs) }
     }
     fun memoryPressure() { lowMemory = true; dispatch(Event.MemoryPressure()) }
+    fun setTabConfig(config: AdaptiveConfig) {
+        settings.edit().putInt("live_target",config.liveTarget).putLong("idle_ms",config.discardAfterMs).apply()
+        dispatch(Event.Configure(config))
+    }
+    fun recommendedProfile(): TabProfile {
+        val info = android.app.ActivityManager.MemoryInfo()
+        context.getSystemService(android.app.ActivityManager::class.java).getMemoryInfo(info)
+        return if (info.totalMem < 4L * 1024 * 1024 * 1024) TabProfile.MEMORY else TabProfile.BALANCED
+    }
     fun setPreconnect(enabled: Boolean) { preconnect.enabled = enabled; settings.edit().putBoolean("preconnect", enabled).apply() }
     fun preconnectEnabled() = preconnect.enabled
     fun setAdaptive(enabled: Boolean) { scheduler.adaptiveEnabled = enabled; settings.edit().putBoolean("adaptive", enabled).apply() }
