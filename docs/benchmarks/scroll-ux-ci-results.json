@@ -1,0 +1,26 @@
+{
+  "sourceCommit": "1f46028ad297cde7b64ac89577c3e6c17ee96d09",
+  "applicationSourceCommit": "8183e961016f2f42e205475562fe0289342b2e2a",
+  "run": 38154856383,
+  "conclusion": "SUCCESS",
+  "build": "PASS",
+  "bunTests": 23,
+  "bunFailures": 0,
+  "typecheck": "PASS",
+  "device": {
+    "api": 36,
+    "abi": "x86_64",
+    "engine": "GeckoView",
+    "tests": 21,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "localLint": {
+    "errors": 0,
+    "warnings": 34
+  },
+  "physicalScroll": "UNVERIFIED",
+  "frameTime": "NOT_MEASURED",
+  "historyReport": "../scroll-ux-validation.md"
+}

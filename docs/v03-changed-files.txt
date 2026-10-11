@@ -5,7 +5,9 @@ app/src/androidTest/java/dev/velocity/browser/AdguardIntegrationTest.kt
 app/src/androidTest/java/dev/velocity/browser/BlockIntegrationTest.kt
 app/src/androidTest/java/dev/velocity/browser/BrowserIntegrationTest.kt
 app/src/androidTest/java/dev/velocity/browser/BrowserUiIntegrationTest.kt
+app/src/androidTest/java/dev/velocity/browser/CompatibilityIntegrationTest.kt
 app/src/androidTest/java/dev/velocity/browser/CosmeticLayoutIntegrationTest.kt
+app/src/androidTest/java/dev/velocity/browser/MainThread.kt
 app/src/androidTest/java/dev/velocity/browser/ReadingIntegrationTest.kt
 app/src/main/assets/velocity-block/background.js
 app/src/main/assets/velocity-block/cosmetic.js
@@ -37,6 +39,8 @@ docs/benchmark-methodology.md
 docs/benchmarks/compat-release-artifact.json
 docs/benchmarks/compat-size.json
 docs/benchmarks/release-artifact.json
+docs/benchmarks/scroll-ux-artifact.json
+docs/benchmarks/scroll-ux-ci-results.json
 docs/benchmarks/size.json
 docs/benchmarks/v03-device-results.json
 docs/benchmarks/v03-validation.json
@@ -44,6 +48,7 @@ docs/compatibility-validation.md
 docs/device-tests.md
 docs/known-limitations.md
 docs/next-stage.md
+docs/scroll-ux-validation.md
 docs/v03-changed-files.txt
 docs/v03-cosmetics.md
 docs/v03-picker.md
@@ -54,3 +59,5 @@ docs/v03-validation.md
 docs/verification.md
 spec.md
 tools/bench-runner/src/blocker.test.ts
+tools/bench-runner/src/cosmetic-scheduling.test.ts
+tools/device-smoke.sh

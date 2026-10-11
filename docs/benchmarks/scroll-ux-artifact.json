@@ -1,0 +1,15 @@
+{
+  "version": "0.3.1",
+  "versionCode": 6,
+  "sourceCommit": "8183e961016f2f42e205475562fe0289342b2e2a",
+  "file": "velocity-browser-0.3.1-release-test-signed.apk",
+  "bytes": 191410886,
+  "sha256": "a545c984e98e5f4b38f5a26dc039de5df558c5535d64117e00b6c8d4bd206d95",
+  "signing": "TEST_ONLY: local Android Debug key; not production",
+  "unsignedBytes": 191391731,
+  "minimalGeckoBytes": 191118123,
+  "additionalBytes": 273608,
+  "physicalInstall": "UNVERIFIED",
+  "frameTime": "NOT_MEASURED",
+  "signatureVerification": "PASS: v2/v3 and 16KiB zipalign"
+}

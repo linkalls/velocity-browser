@@ -1,12 +1,14 @@
-# Velocity Browser 0.3.0
+# Velocity Browser 0.3.1
 
 GeckoView Stable **157.0.20261005135250**を唯一のエンジンとする、Kotlin・Android標準Viewのブラウザです。
 
 ライブセッションの2枚固定上限を撤廃しました。既定は**6枚のソフト目標**、非表示120秒から安全に休眠できるタブを評価します。フォーム・認証・メディア・ファイル操作・UNKNOWNのページは保持し、必要なら目標を超えます。RAM使用量の削減や無制限に開ける保証ではありません。生成失敗時は元の画面を保持し、再試行・整理・キャンセルを選べます。
 
-タブ一覧は再利用型の2列グリッド／一覧、ローカル検索、通常／非公開切替、固定、スワイプ終了、通常タブの短期Undoに対応。UndoはURLの再読み込みで、閉じたページの入力やJS状態は復元しません。設定はカテゴリー別の専用画面です。アドレスバー位置、バー内スワイプ、システム／ライト／ダークを選べます。
+タブ一覧は再利用型の2列グリッド／一覧、ローカル検索、通常／非公開切替、固定、スワイプ終了、通常タブの短期Undoに対応。UndoはURLの再読み込みで、閉じたページの入力やJS状態は復元しません。設定は検索・スイッチ・項目名と説明を分けたカテゴリー別の専用画面です。アドレスバー位置、バー内スワイプ、システム／ライト／ダークを選べます。
 
 Velocity Block Liteは新規プロファイルで既定ON（既存の選択設定は維持）。ネットワーク遮断、限定されたドメイン別CSS・例外、広告専用空枠の可逆な折りたたみ、要素選択・プレビュー・サイト別規則削除／Undoを提供します。本文・フォーム・メディアを保護します。AdGuard全構文には対応せず、遮断率は未測定です。
+
+0.3.1ではLiteの補助DOM検査をスクロール終了後へ遅らせ、UIの同値更新を減らしました。実機のフレーム時間・カクつき改善は未測定です。[変更と検証](docs/scroll-ux-validation.md)。
 
 ## ビルド
 
@@ -35,6 +37,6 @@ AdGuard公式署名XPIの追加は実験機能です。GPL本体は同梱しま�
 
 ## 検証
 
-最新の実行結果・APKサイズ・未検証項目は[v0.3検証](docs/v03-validation.md)、実装は[タブ管理](docs/v03-tabs.md)・[UI](docs/v03-ui.md)・[Cosmetic](docs/v03-cosmetics.md)・[要素選択器](docs/v03-picker.md)を参照してください。以前の結果は[0.2.3](docs/compatibility-validation.md)・[0.2.2](docs/fix-validation.md)として保存しています。
+最新の実行結果・APKサイズ・未検証項目は[0.3.1検証](docs/scroll-ux-validation.md)、以前の0.3.0は[v0.3検証](docs/v03-validation.md)、実装は[タブ管理](docs/v03-tabs.md)・[UI](docs/v03-ui.md)・[Cosmetic](docs/v03-cosmetics.md)・[要素選択器](docs/v03-picker.md)を参照してください。以前の結果は[0.2.3](docs/compatibility-validation.md)・[0.2.2](docs/fix-validation.md)として保存しています。
 
 RAM/PSS・CPU・Speedometer・Chrome/Firefox比較・実機スクロール性能は**NOT_MEASURED**です。エミュレーターfixtureを物理端末の結果と扱いません。[性能測定手順](docs/benchmark-methodology.md)・[既知制限](docs/known-limitations.md)・[広告ブロックのライセンス](docs/adblock-decisions.md)。
