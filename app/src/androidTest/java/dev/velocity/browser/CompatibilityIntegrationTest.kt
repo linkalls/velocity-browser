@@ -23,7 +23,7 @@ class CompatibilityIntegrationTest {
     private val app get()=inst.targetContext.applicationContext as VelocityApp
     private val device get()=UiDevice.getInstance(inst)
     private fun documents()=By.pkg(java.util.regex.Pattern.compile("(?:com.android|com.google.android).documentsui"))
-    private fun main(block:()->Unit)=inst.runOnMainSync(block)
+    private fun main(block:()->Unit)=inst.onMainForTest(block)
     private fun await(message:String,condition:()->Boolean) {
         val end=SystemClock.elapsedRealtime()+30000
         while(SystemClock.elapsedRealtime()<end) { var ok=false;main { ok=condition() };if(ok)return;SystemClock.sleep(100) };fail(message)

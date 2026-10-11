@@ -28,22 +28,22 @@ class AdguardIntegrationTest {
         fun waitFor(condition: () -> Boolean) {
             val deadline = SystemClock.elapsedRealtime() + 120000
             while (SystemClock.elapsedRealtime() < deadline) {
-                var ok = false; inst.runOnMainSync { ok = condition() }; if (ok) return
+                var ok = false; inst.onMainForTest { ok = condition() }; if (ok) return
                 SystemClock.sleep(100)
             }; fail("AdGuard operation timed out")
         }
         waitFor { !app.blocker.busy && app.blocker.status != "NOT_INITIALIZED" }
         var existed = false; var previous = BlockController.Mode.ETP_ONLY
-        inst.runOnMainSync { existed = app.blocker.hasAdguard(); previous = app.blocker.mode }
+        inst.onMainForTest { existed = app.blocker.hasAdguard(); previous = app.blocker.mode }
         assumeTrue("Dedicated clean profile required; do not replace existing XPI", !existed)
         try {
-            inst.runOnMainSync { app.blocker.installAdguard(app.coordinator.host!!.activity) }
+            inst.onMainForTest { app.blocker.installAdguard(app.coordinator.host!!.activity) }
             assertTrue(device.wait(Until.hasObject(By.text("AdGuardの権限確認")), 120000))
             device.findObject(By.text("許可")).click()
             waitFor { !app.blocker.busy && app.blocker.hasAdguard() && app.blocker.mode == BlockController.Mode.ADGUARD }
             val latch = java.util.concurrent.CountDownLatch(1)
             var extension: org.mozilla.geckoview.WebExtension? = null
-            inst.runOnMainSync {
+            inst.onMainForTest {
                 GeckoRuntimeHolder.get(app).webExtensionController.list().accept({ list -> extension = list?.find { it.id == BlockController.ADGUARD_ID }; latch.countDown() }, { latch.countDown() })
             }
             assertTrue(latch.await(30, java.util.concurrent.TimeUnit.SECONDS))
@@ -53,7 +53,7 @@ class AdguardIntegrationTest {
             assertFalse(extension!!.metaData.allowedInPrivateBrowsing)
             // Protected tabs no longer block options; reuse the same options session.
             var target = ""; var other = ""; var otherIdentity: Long? = null
-            inst.runOnMainSync {
+            inst.onMainForTest {
                 assertFalse(app.blocker.enabled(false));assertFalse(app.blocker.enabled(true))
                 app.coordinator.scheduler.tabs.forEach { app.coordinator.close(it.id,true) }
                 other=app.coordinator.scheduler.selectedId!!;otherIdentity=app.coordinator.scheduler.tab(other)!!.identity
@@ -71,9 +71,9 @@ class AdguardIntegrationTest {
             // Gecko installの成功・mode/private範囲だけ検証。遮断率・更新・Popupは別ゲート。
         } finally {
             waitFor { !app.blocker.busy }
-            inst.runOnMainSync { if (app.blocker.hasAdguard()) app.blocker.removeAdguard() }
+            inst.onMainForTest { if (app.blocker.hasAdguard()) app.blocker.removeAdguard() }
             waitFor { !app.blocker.busy && !app.blocker.hasAdguard() }
-            inst.runOnMainSync { app.blocker.setMode(previous) }
+            inst.onMainForTest { app.blocker.setMode(previous) }
         }
     }
 
@@ -91,35 +91,35 @@ class AdguardIntegrationTest {
         fun waitFor(condition: () -> Boolean) {
             val deadline = SystemClock.elapsedRealtime() + 30000
             while (SystemClock.elapsedRealtime() < deadline) {
-                var ok = false; inst.runOnMainSync { ok = condition() }; if (ok) return
+                var ok = false; inst.onMainForTest { ok = condition() }; if (ok) return
                 SystemClock.sleep(100)
             }; fail("AdGuard fixture setup or mode switch failed")
         }
         waitFor { !app.blocker.busy && app.blocker.status != "NOT_INITIALIZED" }
         var installed = false; var previous = BlockController.Mode.ETP_ONLY
-        inst.runOnMainSync { installed = app.blocker.hasAdguard(); previous = app.blocker.mode }
+        inst.onMainForTest { installed = app.blocker.hasAdguard(); previous = app.blocker.mode }
         assumeTrue("Preinstalled XPI with ||ads.velocity.test^ user rule required", installed)
         try {
-            inst.runOnMainSync {
+            inst.onMainForTest {
                 app.coordinator.scheduler.tabs.forEach { app.coordinator.close(it.id, true) }
                 app.blocker.setMode(BlockController.Mode.ETP_ONLY)
             }
             waitFor { !app.blocker.busy && app.blocker.status.startsWith("DISABLED") }
-            inst.runOnMainSync { app.coordinator.createTab("$origin/") }
+            inst.onMainForTest { app.coordinator.createTab("$origin/") }
             assertTrue(device.wait(Until.hasObject(By.text("AD_ALLOWED CONTROL_OK")), 30000))
-            inst.runOnMainSync { app.blocker.setMode(BlockController.Mode.ADGUARD) }
+            inst.onMainForTest { app.blocker.setMode(BlockController.Mode.ADGUARD) }
             waitFor { !app.blocker.busy && app.blocker.status.startsWith("ADGUARD_ENABLED") }
-            inst.runOnMainSync { app.coordinator.reload() }
+            inst.onMainForTest { app.coordinator.reload() }
             assertTrue(device.wait(Until.hasObject(By.text("AD_FAILED CONTROL_OK")), 30000))
             val input = device.findObjects(By.clazz("android.widget.EditText")).first { it.resourceName != "dev.velocity.browser:id/address" }
             input.text = "ADGUARD_DRAFT_PRESERVED"
             var identity: Long? = null; var id = ""
-            inst.runOnMainSync { id = app.coordinator.scheduler.selectedId!!; identity = app.coordinator.scheduler.tab(id)!!.identity; app.blocker.setMode(BlockController.Mode.ETP_ONLY) }
+            inst.onMainForTest { id = app.coordinator.scheduler.selectedId!!; identity = app.coordinator.scheduler.tab(id)!!.identity; app.blocker.setMode(BlockController.Mode.ETP_ONLY) }
             waitFor { !app.blocker.busy }
             assertEquals("ADGUARD_DRAFT_PRESERVED", input.text)
-            inst.runOnMainSync { assertEquals(identity, app.coordinator.scheduler.tab(id)!!.identity); assertNull(app.coordinator.scheduler.pendingId) }
+            inst.onMainForTest { assertEquals(identity, app.coordinator.scheduler.tab(id)!!.identity); assertNull(app.coordinator.scheduler.pendingId) }
         } finally {
-            waitFor { !app.blocker.busy }; inst.runOnMainSync { app.blocker.setMode(previous) }
+            waitFor { !app.blocker.busy }; inst.onMainForTest { app.blocker.setMode(previous) }
         }
     }
 }

@@ -21,7 +21,7 @@ class BlockIntegrationTest {
         val context = inst.targetContext
         // 単独controllerでprivate設定のみ変更。Runtimeや既存通常設定は変更しない。
         val block = BlockController(context)
-        inst.runOnMainSync {
+        inst.onMainForTest {
             block.setUserRules("||private-only.example^", true)
             block.toggleException("https://private-only.example", true)
             assertTrue(block.isException("https://private-only.example", true))
@@ -50,13 +50,13 @@ class BlockIntegrationTest {
         fun waitFor(condition: () -> Boolean) {
             val limit = SystemClock.elapsedRealtime() + 30000
             while (SystemClock.elapsedRealtime() < limit) {
-                var ok = false; inst.runOnMainSync { ok = condition() }; if (ok) return
+                var ok = false; inst.onMainForTest { ok = condition() }; if (ok) return
                 SystemClock.sleep(100)
             }; fail("blocker did not reach expected state: ${app.blocker.status}")
         }
         waitFor { !app.blocker.busy && app.blocker.status != "NOT_INITIALIZED" }
         var previousUser = ""; var previousMode = BlockController.Mode.ETP_ONLY; var hadException = false
-        inst.runOnMainSync {
+        inst.onMainForTest {
             previousUser = app.blocker.userRules(false); previousMode = app.blocker.mode
             hadException = app.blocker.isException(origin, false)
             if (hadException) app.blocker.toggleException(origin, false)
@@ -66,27 +66,27 @@ class BlockIntegrationTest {
         }
         try {
             waitFor { !app.blocker.busy && app.blocker.status.startsWith("DISABLED") }
-            inst.runOnMainSync { app.coordinator.createTab("$origin/") }
+            inst.onMainForTest { app.coordinator.createTab("$origin/") }
             // 必ず先に同じ広告originのTLS/DNS/HTTP到達成功を証明。
             assertTrue("OFF baseline: ${device.findObject(By.textStartsWith("AD_"))?.text}; blocker=${app.blocker.status}", device.wait(Until.hasObject(By.text("AD_ALLOWED CONTROL_OK")), 30000))
-            inst.runOnMainSync { app.blocker.setMode(BlockController.Mode.LITE) }
+            inst.onMainForTest { app.blocker.setMode(BlockController.Mode.LITE) }
             waitFor { app.blocker.status.startsWith("READY_CONFIG_ACK") }
-            inst.runOnMainSync { app.coordinator.reload() }
+            inst.onMainForTest { app.coordinator.reload() }
             assertTrue(device.wait(Until.hasObject(By.text("AD_FAILED CONTROL_OK")), 30000))
             waitFor { app.blocker.normalDecisions > 0 }
             assertTrue(device.wait(Until.hasObject(By.textContains("FORM_MUST_REMAIN")), 15000))
             assertFalse("standalone ad slot must be hidden", device.hasObject(By.text("CSS広告枠")))
             val field = device.findObjects(By.clazz("android.widget.EditText")).first { it.resourceName != "dev.velocity.browser:id/address" }
             field.text = "LITE_DRAFT_PRESERVED"
-            inst.runOnMainSync { assertNull(app.coordinator.scheduler.pendingId); app.blocker.toggleException(origin, false) }
+            inst.onMainForTest { assertNull(app.coordinator.scheduler.pendingId); app.blocker.toggleException(origin, false) }
             waitFor { app.blocker.status.startsWith("READY_CONFIG_ACK") }
             assertEquals("mode/config change must not reload draft", "LITE_DRAFT_PRESERVED", field.text)
-            inst.runOnMainSync { app.coordinator.reload() }
+            inst.onMainForTest { app.coordinator.reload() }
             assertTrue(device.wait(Until.hasObject(By.text("AD_ALLOWED CONTROL_OK")), 30000))
-            inst.runOnMainSync { assertNull(app.coordinator.scheduler.pendingId) }
+            inst.onMainForTest { assertNull(app.coordinator.scheduler.pendingId) }
         } finally {
             waitFor { !app.blocker.busy }
-            inst.runOnMainSync {
+            inst.onMainForTest {
                 if (app.blocker.isException(origin, false) != hadException) app.blocker.toggleException(origin, false)
                 app.blocker.setUserRules(previousUser, false); app.blocker.setMode(previousMode)
             }

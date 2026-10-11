@@ -69,7 +69,13 @@ jobs:
           api-level: 36
           arch: x86_64
           script: |
+            set +e
             ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notAnnotation=dev.velocity.browser.RequiresExternalFixture
+            result=$?
+            if [ "$result" -ne 0 ]; then
+              adb logcat -d -v brief AndroidRuntime:E '*:S' | tail -100
+            fi
+            exit "$result"
       - name: Report device test outcomes
         if: always()
         run: |

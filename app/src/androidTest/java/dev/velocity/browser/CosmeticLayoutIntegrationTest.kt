@@ -12,7 +12,7 @@ import org.junit.Test
 class CosmeticLayoutIntegrationTest {
     @Test fun dedicated250pxGapCollapsesAndRestoresWithoutTouchingDraft() {
         val inst=InstrumentationRegistry.getInstrumentation();val app=inst.targetContext.applicationContext as VelocityApp
-        val device=UiDevice.getInstance(inst);fun main(action:()->Unit)=inst.runOnMainSync(action)
+        val device=UiDevice.getInstance(inst);fun main(action:()->Unit)=inst.onMainForTest(action)
         fun await(label:String,condition:()->Boolean){val limit=SystemClock.elapsedRealtime()+30000;while(SystemClock.elapsedRealtime()<limit){var ok=false;main {ok=condition()};if(ok)return;SystemClock.sleep(100)};fail(label)}
         val server=java.net.ServerSocket(0,16,java.net.InetAddress.getByName("127.0.0.1"));val io=java.util.concurrent.Executors.newSingleThreadExecutor()
         val origin="http://127.0.0.1:${server.localPort}";var previousMode=BlockController.Mode.ETP_ONLY;var previousCosmetic=true;var previousCollapse=true

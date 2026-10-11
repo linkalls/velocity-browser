@@ -19,7 +19,7 @@ class BrowserUiIntegrationTest {
     private val inst = InstrumentationRegistry.getInstrumentation()
     private val app get() = inst.targetContext.applicationContext as VelocityApp
     private val device get() = UiDevice.getInstance(inst)
-    private fun main(action: () -> Unit) = inst.runOnMainSync(action)
+    private fun main(action: () -> Unit) = inst.onMainForTest(action)
     private fun await(message: String, condition: () -> Boolean) {
         val until = SystemClock.elapsedRealtime() + 30000
         while (SystemClock.elapsedRealtime() < until) {
@@ -92,6 +92,14 @@ class BrowserUiIntegrationTest {
             click("完了"); awaitField();assertEquals("KEEP_ON_CANCEL",field()!!.text)
             device.findObject(By.descStartsWith("タブ ")).click()
             clickDescription("『UI_FIXTURE』を閉じる");click("このタブを閉じる")
+            // Late page-risk updates can invalidate a confirmation. Reconfirm from
+            // the still-open sheet; never bypass the stale-confirmation guard.
+            var retained = false
+            main { retained = app.coordinator.scheduler.tab(id) != null }
+            if (retained) {
+                main { assertEquals(identity, app.coordinator.scheduler.tab(id)!!.identity) }
+                clickDescription("『UI_FIXTURE』を閉じる");click("このタブを閉じる")
+            }
             main {
                 assertNull(app.coordinator.scheduler.tab(id));assertEquals(1,app.coordinator.scheduler.tabs.size)
                 assertEquals("about:blank",app.coordinator.scheduler.tabs.single().url)

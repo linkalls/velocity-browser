@@ -20,12 +20,12 @@ class BrowserIntegrationTest {
         val device = UiDevice.getInstance(inst)
         assertTrue(device.wait(Until.hasObject(By.res("dev.velocity.browser", "address")), 15000))
         val owner = (context.applicationContext as VelocityApp).coordinator
-        inst.runOnMainSync {
+        inst.onMainForTest {
             assertTrue(owner.scheduler.tabs.any { it.url == "https://example.com/" })
             assertTrue(owner.scheduler.liveCount <= 2)
         }
         device.setOrientationLeft(); device.waitForIdle(); device.setOrientationNatural(); device.unfreezeRotation()
-        inst.runOnMainSync { assertSame(owner, (context.applicationContext as VelocityApp).coordinator); assertTrue(owner.scheduler.liveCount <= 2) }
+        inst.onMainForTest { assertSame(owner, (context.applicationContext as VelocityApp).coordinator); assertTrue(owner.scheduler.liveCount <= 2) }
     }
     @Test fun repositoryFiltersPrivateTabs() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -43,7 +43,7 @@ class BrowserIntegrationTest {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("javascript:alert(1)"), context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         val device = UiDevice.getInstance(inst)
         assertTrue(device.wait(Until.hasObject(By.res("dev.velocity.browser", "address")), 15000))
-        inst.runOnMainSync {
+        inst.onMainForTest {
             assertTrue((context.applicationContext as VelocityApp).coordinator.scheduler.tabs.none { it.url.startsWith("javascript:") })
         }
     }
@@ -73,7 +73,7 @@ class BrowserIntegrationTest {
             assertTrue(device.wait(Until.hasObject(By.res("dev.velocity.browser", "address")), 15000))
             lateinit var formId: String
             var identity: Long? = null
-            inst.runOnMainSync {
+            inst.onMainForTest {
                 owner.scheduler.tabs.forEach { owner.close(it.id, true) }
                 owner.createTab("http://127.0.0.1:${server.localPort}/")
                 formId = owner.scheduler.selectedId!!; identity = owner.scheduler.tab(formId)!!.identity
@@ -84,7 +84,7 @@ class BrowserIntegrationTest {
             while (formField() == null && android.os.SystemClock.elapsedRealtime() < deadline) android.os.SystemClock.sleep(50)
             val field = formField() ?: throw AssertionError("Gecko form accessibility input not found")
             field.text = "入力保持を検証"
-            inst.runOnMainSync {
+            inst.onMainForTest {
                 repeat(19) { owner.createTab() }
                 owner.dispatch(Event.Tick(android.os.SystemClock.elapsedRealtime() + 120001))
                 owner.memoryPressure()
@@ -98,7 +98,7 @@ class BrowserIntegrationTest {
                 device.wait(Until.hasObject(By.clazz("android.widget.EditText").text("入力保持を検証")), 10000))
             assertEquals("入力保持を検証", formField()?.text)
         } finally {
-            inst.runOnMainSync { owner.scheduler.tabs.forEach { owner.close(it.id, true) } }
+            inst.onMainForTest { owner.scheduler.tabs.forEach { owner.close(it.id, true) } }
             server.close(); executor.shutdownNow()
         }
     }

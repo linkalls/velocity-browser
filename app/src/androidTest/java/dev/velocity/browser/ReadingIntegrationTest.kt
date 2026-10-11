@@ -40,7 +40,7 @@ class ReadingIntegrationTest {
         fun waitFor(condition: () -> Boolean) {
             val deadline = SystemClock.elapsedRealtime() + 30000
             while (SystemClock.elapsedRealtime() < deadline) {
-                var ready = false; inst.runOnMainSync { ready = condition() }
+                var ready = false; inst.onMainForTest { ready = condition() }
                 if (ready) return
                 SystemClock.sleep(100)
             }; fail("reading page did not become safely replayable")
@@ -49,22 +49,22 @@ class ReadingIntegrationTest {
             inst.targetContext.startActivity(Intent(inst.targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             assertTrue(device.wait(Until.hasObject(By.res("dev.velocity.browser", "address")), 15000))
             waitFor { app.blocker.status != "NOT_INITIALIZED" && !app.blocker.busy }
-            var allowed = false; inst.runOnMainSync { allowed = app.blocker.readingAllowed() }
+            var allowed = false; inst.onMainForTest { allowed = app.blocker.readingAllowed() }
             assumeTrue("External extension installed: reading mode unavailable", allowed)
-            inst.runOnMainSync { app.coordinator.scheduler.tabs.forEach { app.coordinator.close(it.id, true) } }
+            inst.onMainForTest { app.coordinator.scheduler.tabs.forEach { app.coordinator.close(it.id, true) } }
             var firstId = ""; var firstIdentity: Long? = null
             repeat(20) { n ->
                 val url = "http://127.0.0.1:${server.localPort}/$n"
-                inst.runOnMainSync { app.coordinator.createReadingTab(url) }
+                inst.onMainForTest { app.coordinator.createReadingTab(url) }
                 waitFor { app.coordinator.scheduler.tabs.any { it.url == url && it.safelySaved && it.id == app.coordinator.scheduler.selectedId } }
                 assertTrue(device.wait(Until.hasObject(By.textContains("READING_BODY_/$n")), 15000))
-                inst.runOnMainSync {
+                inst.onMainForTest {
                     assertTrue(app.coordinator.scheduler.liveCount <= app.coordinator.scheduler.config.liveTarget)
                     if (n == 0) { firstId = app.coordinator.scheduler.selectedId!!; firstIdentity = app.coordinator.scheduler.tab(firstId)!!.identity }
                 }
             }
             val count = requests.get()
-            inst.runOnMainSync {
+            inst.onMainForTest {
                 assertEquals(TabState.COLD, app.coordinator.scheduler.tab(firstId)!!.state)
                 app.coordinator.select(firstId)
             }
@@ -72,13 +72,13 @@ class ReadingIntegrationTest {
             assertTrue(device.wait(Until.hasObject(By.textContains("READING_BODY_/0")), 15000))
             assertFalse(device.hasObject(By.textContains("DO_NOT_COPY_DRAFT")))
             assertFalse(device.hasObject(By.textContains("SCRIPT_RAN")))
-            inst.runOnMainSync {
+            inst.onMainForTest {
                 assertNotEquals(firstIdentity, app.coordinator.scheduler.tab(firstId)!!.identity)
                 assertTrue(app.coordinator.scheduler.liveCount <= app.coordinator.scheduler.config.liveTarget)
             }
             assertEquals("replay must use retained document", count, requests.get())
         } finally {
-            inst.runOnMainSync { app.coordinator.scheduler.tabs.forEach { app.coordinator.close(it.id, true) } }
+            inst.onMainForTest { app.coordinator.scheduler.tabs.forEach { app.coordinator.close(it.id, true) } }
             server.close(); io.shutdownNow()
         }
     }
@@ -88,7 +88,7 @@ class ReadingIntegrationTest {
         val app = inst.targetContext.applicationContext as VelocityApp
         inst.targetContext.startActivity(Intent(inst.targetContext, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         assertTrue(UiDevice.getInstance(inst).wait(Until.hasObject(By.res("dev.velocity.browser", "address")), 15000))
-        inst.runOnMainSync {
+        inst.onMainForTest {
             app.coordinator.scheduler.tabs.forEach { app.coordinator.close(it.id, true) }
             app.coordinator.createTab(privateMode = true)
             val id = app.coordinator.scheduler.selectedId
