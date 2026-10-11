@@ -67,7 +67,7 @@ class BlockIntegrationTest {
             waitFor { !app.blocker.busy && app.blocker.status.startsWith("DISABLED") }
             inst.runOnMainSync { app.coordinator.createTab("$origin/") }
             // 必ず先に同じ広告originのTLS/DNS/HTTP到達成功を証明。
-            assertTrue(device.wait(Until.hasObject(By.text("AD_ALLOWED CONTROL_OK")), 30000))
+            assertTrue("OFF baseline: ${device.findObject(By.textStartsWith("AD_"))?.text}; blocker=${app.blocker.status}", device.wait(Until.hasObject(By.text("AD_ALLOWED CONTROL_OK")), 30000))
             inst.runOnMainSync { app.blocker.setMode(BlockController.Mode.LITE) }
             waitFor { app.blocker.status.startsWith("READY_CONFIG_ACK") }
             inst.runOnMainSync { app.coordinator.reload() }
@@ -102,14 +102,18 @@ class BlockIntegrationTest {
         io.execute {
             try {
                 while (!server.isClosed) server.accept().use { socket ->
+                    // Gecko may preconnect and close without sending an HTTP request.
+                    // A timeout/empty connection must not terminate the fixture accept loop.
+                    try {
                     socket.soTimeout = 5000
                     val reader = socket.getInputStream().bufferedReader()
-                    val path = reader.readLine().split(' ')[1]
+                    val path = reader.readLine()?.split(' ')?.getOrNull(1) ?: return@use
                     while (!reader.readLine().isNullOrEmpty()) { }
                     val payload = if (path == "/") body else "OK".toByteArray()
                     socket.getOutputStream().apply {
                         write("HTTP/1.1 200 OK\r\nContent-Type: ${if (path == "/") "text/html; charset=utf-8" else "text/plain"}\r\nAccess-Control-Allow-Origin: $origin\r\nCache-Control: no-store\r\nContent-Length: ${payload.size}\r\nConnection: close\r\n\r\n".toByteArray()); write(payload); flush()
                     }
+                    } catch (_: java.io.IOException) { }
                 }
             } catch (_: java.io.IOException) { }
         }
