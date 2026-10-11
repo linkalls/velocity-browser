@@ -9,6 +9,6 @@ object GeckoRuntimeHolder {
     fun get(context: Context): GeckoRuntime {
         check(android.os.Looper.myLooper() == android.os.Looper.getMainLooper())
         return runtime ?: GeckoRuntime.create(context.applicationContext,
-            GeckoRuntimeSettings.Builder().remoteDebuggingEnabled(false).consoleOutput(false).preferredColorScheme((context.applicationContext as dev.velocity.browser.VelocityApp).appearance.geckoScheme()).build()).also { runtime = it; (context.applicationContext as dev.velocity.browser.VelocityApp).blocker.attach(it) }
+            GeckoRuntimeSettings.Builder().remoteDebuggingEnabled(false).consoleOutput(false).preferredColorScheme((context.applicationContext as dev.velocity.browser.VelocityApp).appearance.geckoScheme()).build()).also { runtime = it; val app = context.applicationContext as dev.velocity.browser.VelocityApp; it.activityDelegate = app.coordinator.runtimeActivities.delegate; app.blocker.attach(it) }
     }
 }

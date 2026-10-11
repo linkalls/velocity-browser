@@ -8,7 +8,7 @@ import dev.velocity.browser.tabs.TabRecord
 /** All destructive choices still pass through the coordinator's protected-close warning. */
 class CapacityDialog(activity: Activity, val targetId: String, private val adguard: Boolean,
     private val appearance: ThemeController, private val close: (String) -> Unit,
-    private val cancel: (String) -> Unit) {
+    private val cancel: (String) -> Unit, private val organize: () -> Unit) {
     private val dialog = Dialog(appearance.dialogContext(activity))
     private val panel = LinearLayout(dialog.context).apply { orientation = LinearLayout.VERTICAL; setPadding(context.dp(20),context.dp(20),context.dp(20),context.dp(20)) }
     private var programmatic = false
@@ -32,10 +32,11 @@ class CapacityDialog(activity: Activity, val targetId: String, private val adgua
                 setOnClickListener { close(t.id) }
             },LinearLayout.LayoutParams(-1,-2).apply { topMargin = c.dp(8) })
         }
+        panel.addView(Button(c).apply { text = "タブ一覧を開く"; setTextColor(p.accent); setOnClickListener { dismiss(); organize() } })
         panel.addView(Button(c).apply { text = "キャンセル"; setTextColor(p.accent); setOnClickListener { cancel(targetId); dismiss() } })
         if (tabs.any { it.privateMode }) dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
         appearance.tintDialog(dialog)
         // tintDialog styles standard controls; destructive row buttons retain their semantic color.
-        for (i in 2 until panel.childCount-1) (panel.getChildAt(i) as? Button)?.setTextColor(p.danger)
+        for (i in 2 until panel.childCount-2) (panel.getChildAt(i) as? Button)?.setTextColor(p.danger)
     }
 }

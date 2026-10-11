@@ -45,6 +45,10 @@ class AdaptiveTabCoordinator(private val context: Context) {
     private var draining = false
     private var view: GeckoView? = null
     var host: BrowserHost? = null; private set
+    val externalActivities = ExternalActivityBroker(this)
+    val runtimeActivities = RuntimeActivityController(this)
+    val uploads = FileUploadController(context,this)
+    val downloads = dev.velocity.browser.download.DownloadController(context,this)
     val permissions = PermissionController(this)
     val prompts = PromptController(this)
     private var started = false
@@ -68,6 +72,7 @@ class AdaptiveTabCoordinator(private val context: Context) {
     }
     fun bind(host: BrowserHost, view: GeckoView) {
         this.host = host; this.view = view
+        downloads.bind()
         view.postOnAnimation { handler.post { if (this.host === host) metrics.record("UI_READY") } }
         if (!started) {
             started = true
@@ -83,12 +88,16 @@ class AdaptiveTabCoordinator(private val context: Context) {
     }
     fun unbind(host: BrowserHost) {
         if (this.host !== host) return
-        permissions.cancelAll(); prompts.cancelAll()
+        permissions.cancelAll(); prompts.cancelAll(); downloads.unbind()
         view?.releaseSession(); view = null; this.host = null
     }
     fun isCurrent(id: String, identity: Long) = scheduler.tab(id)?.identity == identity
     fun dispatch(event: Event) {
         check(Looper.myLooper() == Looper.getMainLooper())
+        if (event is Event.SelectTab && event.id != scheduler.selectedId) scheduler.selectedId?.let { uploads.cancelPendingFor(it);externalActivities.cancelFor(it) }
+        if (event is Event.NavigationStarted && isCurrent(event.id,event.identity)) {
+            uploads.cancelPendingFor(event.id);externalActivities.cancelFor(event.id)
+        }
         val hadPrivate = scheduler.tabs.any { it.privateMode }
         queue.addLast(event)
         if (draining) return
@@ -146,7 +155,7 @@ class AdaptiveTabCoordinator(private val context: Context) {
                 }
             }
             is Command.CloseSession -> adapters[c.id]?.takeIf { it.identity == c.identity }?.let {
-                permissions.cancelFor(it); prompts.cancelFor(it)
+                permissions.cancelFor(it); prompts.cancelFor(it); uploads.documentEnded(c.id); downloads.cancelFor(it); externalActivities.cancelFor(c.id)
                 it.close(); adapters.remove(c.id)
                 // 自動休眠は安全な空ページstateを保持。手動close/失敗は参照を解放。
                 if (scheduler.tab(c.id)?.state != TabState.COLD) snapshots.remove(c.id)

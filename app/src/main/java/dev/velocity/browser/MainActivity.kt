@@ -23,7 +23,7 @@ class MainActivity : Activity(), BrowserHost {
     private fun applyAppearance() {
         setTheme(appearance.style()); appearance.applyWindow(this)
         if (::chrome.isInitialized) chrome.applyPalette(appearance.palette())
-        tabSheet?.applyPalette(); capacity?.update(coordinator.scheduler.tabs)
+        tabSheet?.applyPalette(); capacity?.update(coordinator.scheduler.tabs); coordinator.downloads.refresh()
     }
     private lateinit var chrome: BrowserChromeView
     private var permissionResult: ((Boolean) -> Unit)? = null
@@ -58,6 +58,10 @@ class MainActivity : Activity(), BrowserHost {
         coordinator.bind(this, chrome.geckoView)
         if (savedInstanceState == null) openIntent(intent)
     }
+    @Deprecated("Legacy Activity result bridge for GeckoRuntime and the system SAF picker")
+    override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
+        if (!coordinator.externalActivities.result(requestCode,resultCode,data)) { @Suppress("DEPRECATION") super.onActivityResult(requestCode,resultCode,data) }
+    }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); setIntent(intent); openIntent(intent) }
     private fun openIntent(intent: Intent) {
         if (intent.action != Intent.ACTION_VIEW) return
@@ -76,6 +80,7 @@ class MainActivity : Activity(), BrowserHost {
     override fun onDestroy() {
         if (android.os.Build.VERSION.SDK_INT >= 33 && backRegistered) onBackInvokedDispatcher.unregisterOnBackInvokedCallback(modernBack)
         appearance.remove(appearanceChanged); tabSheet?.dismiss(); capacity?.dismiss(); appearance.dismissFor(this)
+        if (isFinishing && coordinator.host === this) coordinator.externalActivities.cancelAll()
         coordinator.unbind(this); super.onDestroy()
     }
     override fun render(tabs: List<TabRecord>, selectedId: String?, canBack: Boolean, canForward: Boolean, loading: Boolean) {
@@ -107,7 +112,7 @@ class MainActivity : Activity(), BrowserHost {
         capacity?.dismiss()
         capacity = CapacityDialog(this,id,adguard,appearance,{ coordinator.close(it) },{ target ->
             if (coordinator.host === this) coordinator.cancelPending(target)
-        }).also { it.update(coordinator.scheduler.tabs); it.show() }
+        }, { capacity = null; chrome.onTabs() }).also { it.update(coordinator.scheduler.tabs); it.show() }
     }
     override fun confirmClose(id: String) {
         val tab = coordinator.scheduler.tab(id) ?: return
@@ -142,7 +147,7 @@ class MainActivity : Activity(), BrowserHost {
     }
     private fun settings() {
         val labels = arrayOf(getString(R.string.search_engine), getString(R.string.preconnect) + " [${coordinator.preconnectEnabled()}]",
-            getString(R.string.allow_origin), getString(R.string.pin), getString(R.string.adaptive) + " [${coordinator.scheduler.adaptiveEnabled}]", getString(R.string.export_metrics), getString(R.string.reading_new), getString(R.string.reading_original), "ライセンス", getString(R.string.appearance))
+            getString(R.string.allow_origin), getString(R.string.pin), getString(R.string.adaptive) + " [${coordinator.scheduler.adaptiveEnabled}]", getString(R.string.export_metrics), getString(R.string.reading_new), getString(R.string.reading_original), "ライセンス", getString(R.string.appearance), getString(R.string.downloads), getString(R.string.passkey_diagnostics), getString(R.string.data_protection))
         dialog().setTitle(R.string.settings).setItems(labels) { _, which ->
             when (which) {
                 0 -> dialog().setTitle(R.string.search_engine).setSingleChoiceItems(SearchEngine.entries.map { it.name }.toTypedArray(), coordinator.searchEngine.ordinal) { dialog, n -> coordinator.searchEngine = SearchEngine.entries[n]; dialog.dismiss() }.showThemed()
@@ -153,6 +158,11 @@ class MainActivity : Activity(), BrowserHost {
                 5 -> coordinator.exportMetrics()
                 6 -> readingDialog()
                 7 -> coordinator.scheduler.selectedId?.let { coordinator.scheduler.tab(it) }?.takeIf { it.readOnly }?.let { coordinator.createTab(it.url) }
+                10 -> coordinator.downloads.show()
+                11 -> dialog().setTitle(R.string.passkey_diagnostics).setMessage(getString(R.string.passkey_diagnostic_text,android.os.Build.VERSION.SDK_INT,
+                    packageManager.hasSystemFeature("android.software.credentials"),coordinator.runtimeActivities.requested,coordinator.runtimeActivities.returned,coordinator.runtimeActivities.canceled) + "\nOrigin権限: " + (checkSelfPermission("android.permission.CREDENTIAL_MANAGER_SET_ORIGIN")==PackageManager.PERMISSION_GRANTED) +
+                    "\nGMS: " + runCatching { @Suppress("DEPRECATION") packageManager.getPackageInfo("com.google.android.gms",0).versionName }.getOrDefault("なし") ).setPositiveButton(R.string.close_confirm,null).showThemed()
+                12 -> dialog().setTitle(R.string.data_protection).setMessage(R.string.restore_limits).setPositiveButton(R.string.close_confirm,null).showThemed()
                 9 -> dialog().setTitle(R.string.appearance).setSingleChoiceItems(arrayOf("システムに合わせる", "ライト", "ダーク"),appearance.mode.ordinal) { d,n -> appearance.select(ThemeController.Mode.entries[n]); d.dismiss() }.showThemed()
                 8 -> dialog().setTitle("ライセンス").setMessage(assets.open("licenses/PETER_LOWES_LIST.txt").bufferedReader().use { it.readText() } + "\n" + assets.open("licenses/JSOUP.txt").bufferedReader().use { it.readText() }).setPositiveButton(R.string.close_confirm, null).showThemed()
             }

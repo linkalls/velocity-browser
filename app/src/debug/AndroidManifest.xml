@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<application>
+<activity android:name=".fixture.BridgeResultActivity" android:exported="false"/>
+<profileable android:shell="true"/>
+<provider android:name=".fixture.TransferDocumentsProvider" android:authorities="dev.velocity.browser.transfer-fixture" android:exported="true" android:grantUriPermissions="true" android:permission="android.permission.MANAGE_DOCUMENTS">
+<intent-filter><action android:name="android.content.action.DOCUMENTS_PROVIDER"/></intent-filter>
+</provider>
+</application>
+</manifest>

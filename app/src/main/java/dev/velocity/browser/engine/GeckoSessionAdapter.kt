@@ -68,8 +68,7 @@ class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boole
             override fun onFirstContentfulPaint(s: GeckoSession) { if (owner.isCurrent(id, identity)) owner.firstContent(id) }
             override fun onCrash(s: GeckoSession) { emit(Event.Crashed(id, identity)); owner.notice(dev.velocity.browser.R.string.crash) }
             override fun onExternalResponse(s: GeckoSession, response: WebResponse) {
-                // ストリームを放置しない。ダウンロードは成功扱いせず拒否する。
-                runCatching { response.body?.close() }; owner.notice(dev.velocity.browser.R.string.unsupported)
+                owner.downloads.offer(this@GeckoSessionAdapter,response)
             }
         }
         session.mediaSessionDelegate = object : MediaSession.Delegate {

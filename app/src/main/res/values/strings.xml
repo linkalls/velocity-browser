@@ -36,4 +36,7 @@
 <string name="block_busy">拡張の準備中です。状態が更新されてから操作してください。</string>
 <string name="block_reload_hint">準備完了後、ページを更新して適用を確認してください。未保存の入力がある場合は更新を待ってください。入力保全のため自動では更新しません。</string>
 <string name="appearance">外観</string><string name="adguard_missing">AdGuardはインストールされていません。</string><string name="adguard_disabled">AdGuardが無効になっています。モード設定を確認してください。</string><string name="adguard_missing_options">この拡張には設定ページがありません。</string>
+<string name="downloads">ダウンロード</string><string name="choose_destination">保存先を選ぶ</string><string name="download_failed">ダウンロードを開始できませんでした。保存は完了していません。</string><string name="upload_failed">ファイルを添付できませんでした。最大16個・合計256MiBまでです。</string><string name="private_upload_unavailable">非公開タブの添付は一時ファイル保存が必要なため未対応です。入力は保持しています。</string><string name="http_auth">HTTP認証</string><string name="auth_username">ユーザー名</string><string name="auth_password">パスワード</string><string name="auth_login">ログイン</string><string name="passkey_diagnostics">Passkey診断</string><string name="passkey_diagnostic_text">Android API %1$d / Credential機能: %2$b
+Gecko Activity要求: %3$d / OS正常戻り: %4$d / 取消・失敗: %5$d
+OSからの正常戻りはWebAuthn成功を証明しません。端末・Provider・ブラウザの権限や署名の条件があります。Credential Manager直接経路はこのカウンターに含まれません。資格情報は記録しません。</string><string name="data_protection">データ保護と復元</string><string name="restore_limits">通常タブのURL・並び順・選択状態を保存します。フォーム・JavaScript・認証処理の状態は、このプロセスが動いている間だけ保持します。アプリ終了・OSによる終了・クラッシュ後の完全復元は保証できません。非公開タブは保存しません。安全を確認できないタブを自動で破棄しません。</string>
 </resources>
