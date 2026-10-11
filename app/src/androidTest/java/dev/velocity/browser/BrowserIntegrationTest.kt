@@ -88,7 +88,7 @@ class BrowserIntegrationTest {
                 repeat(19) { owner.createTab() }
                 owner.dispatch(Event.Tick(android.os.SystemClock.elapsedRealtime() + 120001))
                 owner.memoryPressure()
-                assertTrue(owner.scheduler.liveCount <= 2)
+                assertNull(owner.scheduler.pendingId);assertTrue(owner.scheduler.tabs.size >= 20)
                 assertEquals(identity, owner.scheduler.tab(formId)!!.identity)
                 owner.select(formId)
             }

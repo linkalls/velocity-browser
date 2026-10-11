@@ -1,3 +1,5 @@
+> v0.3では、ユーザー承認済みの [改修仕様](docs/v03-spec.md) がライブ2枚固定・UI・cosmetic部分を置き換えます。以下は元のv0.2仕様です。
+
 # Velocity Browser — GeckoView Ultra-Light Adaptive Browser
 
 > **開発仕様書 / Codex Cloud実装指示書**  

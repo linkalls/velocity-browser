@@ -285,7 +285,7 @@ class MainActivity : Activity(), BrowserHost {
         cosmeticRows[3].liveText={"広告の空白を折りたたむ · ${blocker.collapseEnabled}\n広告専用の空枠のみ。高負荷時は監視を停止"}
         cosmeticRows[4].liveText={"このサイトの折りたたみ · "+if(origin!=null&&blocker.collapseExcluded(origin,privateMode))"OFF" else "ON"}
         val counts=if(blocker.mode==dev.velocity.browser.block.BlockController.Mode.ADGUARD)"AdGuardの非表示・折りたたみ: 未取得" else "全${if(privateMode)"非公開" else "通常"}タブの観測数 · 非表示 ${if(privateMode)blocker.privateHiddenElements else blocker.hiddenElements} / 折りたたみ ${if(privateMode)blocker.privateCollapsedElements else blocker.collapsedElements}（各ページ100候補まで）"
-        showSettings("block","広告とトラッカーのブロック",listOf(SettingsView.Row("状態",origin?:"ページ未選択","${blocker.mode.name} · 遮断判定 ${if(privateMode)blocker.privateDecisions else blocker.normalDecisions}（広告の個数ではありません）\n$counts") {})+cosmeticRows+rows)
+        showSettings("block","広告とトラッカーのブロック",listOf(SettingsView.Row("状態",origin?:"ページ未選択","${blocker.mode.name} · 遮断判定 ${if(privateMode)blocker.privateDecisions else blocker.normalDecisions}（広告の個数ではありません）\n$counts") {})+rows.take(2)+cosmeticRows+rows.drop(2))
     }
 
 }

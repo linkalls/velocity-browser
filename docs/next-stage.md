@@ -1,3 +1,5 @@
+> 以下には0.2系の設計・結果を含みます。v0.3の変更と最新の実行結果は [v03-validation](v03-validation.md) を参照してください。
+
 # 次段階: 安全な閲覧範囲とネイティブUI
 
 起点: checkout時点のmain b487694。開発中にmainを再取得し、ecd714fのAPK-only artifact変更をmergeして保持した。既存GitHub Actions run 38119712582 はbuild / Bunとも成功。GeckoView Stable 157.0.20261005135250固定。Android非依存AdaptiveTabSchedulerと実装名AdaptiveTabCoordinator（Gecko側の仲介）を精査した。
