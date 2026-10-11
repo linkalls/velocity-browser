@@ -33,4 +33,6 @@ class TabRepository(context: Context, preferencesName: String = "normal_tabs") {
             .put("selected", selectedId?.takeIf { id -> normal.any { it.id == id } } ?: JSONObject.NULL).toString()
         io.execute { preferences.edit().putString("metadata", json).commit() }
     }
+    /** Queue barrier: earlier snapshots are already committed by the IO owner. */
+    fun flush() { io.execute {} }
 }
