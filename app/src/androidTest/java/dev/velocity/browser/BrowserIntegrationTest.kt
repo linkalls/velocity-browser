@@ -92,7 +92,10 @@ class BrowserIntegrationTest {
                 assertEquals(identity, owner.scheduler.tab(formId)!!.identity)
                 owner.select(formId)
             }
-            device.waitForIdle()
+            // GeckoView reattaches asynchronously; idle native UI does not mean its
+            // accessibility tree is ready. Require the preserved value, not just a field.
+            assertTrue("Preserved draft must reappear after selecting its live session",
+                device.wait(Until.hasObject(By.clazz("android.widget.EditText").text("入力保持を検証")), 10000))
             assertEquals("入力保持を検証", formField()?.text)
         } finally {
             inst.runOnMainSync { owner.scheduler.tabs.forEach { owner.close(it.id, true) } }
