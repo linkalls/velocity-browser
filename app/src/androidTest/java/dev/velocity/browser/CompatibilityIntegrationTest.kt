@@ -31,6 +31,11 @@ class CompatibilityIntegrationTest {
     private fun click(text:String) {
         assertTrue("missing $text",device.wait(Until.hasObject(By.text(text)),15000));device.findObject(By.text(text)).click();device.waitForIdle()
     }
+    private fun screen(text:String,message:()->String) {
+        if(device.wait(Until.hasObject(By.text(text)),15000))return
+        val out=java.io.ByteArrayOutputStream();device.dumpWindowHierarchy(out)
+        fail(message()+"\n"+out.toString("UTF-8").take(22000))
+    }
     private fun launch() {
         inst.targetContext.startActivity(Intent(inst.targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         assertTrue(device.wait(Until.hasObject(By.res("dev.velocity.browser","address")),15000))
@@ -47,17 +52,24 @@ class CompatibilityIntegrationTest {
         val url="http://127.0.0.1:${server.localPort}"
         private val io=java.util.concurrent.Executors.newSingleThreadExecutor()
         val authRequests=java.util.concurrent.atomic.AtomicInteger()
+        val authAccepted=java.util.concurrent.atomic.AtomicInteger()
+        val uploadRequests=java.util.concurrent.atomic.AtomicInteger()
+        val uploadBytes=java.util.concurrent.atomic.AtomicInteger()
         init { io.execute { while(!server.isClosed) try { server.accept().use { socket ->
             socket.soTimeout=5000;val input=socket.getInputStream().buffered();val header=StringBuilder()
             while(!header.endsWith("\r\n\r\n")) { val n=input.read();if(n<0)return@use;header.append(n.toChar());if(header.length>16384)return@use }
             val headers=header.toString();val path=headers.lineSequence().first().split(' ')[1].substringBefore('?')
-            val length=Regex("Content-Length: ([0-9]+)",RegexOption.IGNORE_CASE).find(headers)?.groupValues?.get(1)?.toInt() ?: 0
-            val body=ByteArray(length.coerceAtMost(65536));var position=0
-            while(position<body.size) { val n=input.read(body,position,body.size-position);if(n<0)break;position+=n }
+            val length=Regex("(?im)^Content-Length:\\s*([0-9]+)").find(headers)?.groupValues?.get(1)?.toInt() ?: 0
+            if(headers.contains("Expect: 100-continue",true))socket.getOutputStream().apply { write("HTTP/1.1 100 Continue\r\n\r\n".toByteArray());flush() }
+            val body=if(headers.contains("Transfer-Encoding: chunked",true)) {
+                val bytes=java.io.ByteArrayOutputStream()
+                fun line():String { val s=StringBuilder();while(!s.endsWith("\r\n")){val c=input.read();if(c<0)error("incomplete chunk");s.append(c.toChar());if(s.length>4096)error("chunk header too large")};return s.dropLast(2).toString() }
+                while(true){val size=line().substringBefore(';').toInt(16);if(size==0){line();break};require(size>0 && bytes.size()+size<=65536);repeat(size){val c=input.read();if(c<0)error("incomplete chunk");bytes.write(c)};require(line().isEmpty())};bytes.toByteArray()
+            } else ByteArray(length.coerceAtMost(65536)).also { body -> var position=0;while(position<body.size){val n=input.read(body,position,body.size-position);if(n<0)break;position+=n} }
             var status="200 OK";var extra="";var type="text/html; charset=utf-8"
             val payload=when(path) {
-                "/auth" -> { authRequests.incrementAndGet();if(!headers.contains("Authorization: Basic Zml4dHVyZTpmaXh0dXJl",ignoreCase=true)) { status="401 Unauthorized";extra="WWW-Authenticate: Basic realm=\"fixture\"\r\n";"AUTH_REQUIRED" } else "<p>AUTH_OK</p>" }
-                "/upload" -> if(body.toString(Charsets.UTF_8).contains("fixture-alpha"))"UPLOAD_OK" else "UPLOAD_BAD"
+                "/auth" -> { authRequests.incrementAndGet();val encoded=Regex("(?im)^Authorization:\\s*Basic\\s+([^\\s]+)").find(headers)?.groupValues?.get(1);if(encoded!="Zml4dHVyZTpmaXh0dXJl") { status="401 Unauthorized";extra="WWW-Authenticate: Basic realm=\"fixture\"\r\n";"AUTH_REQUIRED" } else {authAccepted.incrementAndGet();"<p>AUTH_OK</p>"} }
+                "/upload" -> {uploadRequests.incrementAndGet();uploadBytes.set(body.size);val text=body.toString(Charsets.UTF_8);val fields=Regex("Content-Disposition: form-data",RegexOption.IGNORE_CASE).findAll(text).count();if(text.contains("fixture-alpha") && (fields==1 || fields==2 && text.contains("fixture-beta")))"UPLOAD_OK" else "UPLOAD_BAD"}
                 "/download" -> { type="text/plain";extra="Content-Disposition: attachment; filename=\"velocity-download.txt\"\r\n";"download-real-gecko-stream" }
                 else -> """<!doctype html><meta charset=utf-8><title>COMPAT_FIXTURE</title><label>DRAFT<input aria-label=DRAFT></label><input id=one type=file accept=.txt><input id=many type=file accept=text/plain multiple><button onclick="one.click()">PICK_SINGLE</button><button onclick="many.click()">PICK_MULTIPLE</button><a href=/download download>DOWNLOAD_FIXTURE</a><p id=result>READY</p><script>for(const id of ['one','many']) document.getElementById(id).onchange=async function(){const fd=new FormData();for(const f of this.files)fd.append('file',f);document.getElementById('result').textContent=await(await fetch('/upload',{method:'POST',body:fd})).text()+'_'+this.files.length};async function credentialTest(){const publicKey={challenge:new Uint8Array(32),rpId:location.hostname,allowCredentials:[{id:new Uint8Array(16),type:'public-key'}],timeout:5000};const controller=new AbortController();controller.abort();try{await navigator.credentials.get({publicKey,signal:controller.signal});result.textContent='UNEXPECTED_CREDENTIAL'}catch(e){result.textContent='CANCELED_'+e.name}}async function invalidRp(){try{await navigator.credentials.get({publicKey:{challenge:new Uint8Array(32),rpId:'unrelated.invalid',allowCredentials:[],timeout:5000}});result.textContent='UNEXPECTED_CREDENTIAL'}catch(e){result.textContent='RP_REJECTED_'+e.name}}</script><button onclick=credentialTest()>PASSKEY_CANCEL</button><button onclick=invalidRp()>PASSKEY_INVALID_RP</button>"""
             }.toByteArray()
@@ -72,6 +84,7 @@ class CompatibilityIntegrationTest {
     }
     private fun root() {
         assertTrue("system SAF picker",device.wait(Until.hasObject(documents()),15000))
+        if(device.hasObject(By.text("alpha.txt")))return
         if(!device.hasObject(By.text("Velocity fixtures"))) {
             val roots=device.findObject(By.desc("Show roots")) ?: device.findObject(By.desc("Open navigation drawer"))
             assertNotNull("system SAF roots button",roots);roots!!.click()
@@ -81,12 +94,12 @@ class CompatibilityIntegrationTest {
     @Test fun singleAndMultipleSafAttachmentsActuallyUploadAndRemainProtected() {
         launch();Fixture().use { f -> try {
             val id=page(f);assertNotNull(draft());draft()!!.text="KEEP_SELECTED_FILES";click("PICK_SINGLE");root();click("alpha.txt")
-            assertTrue(device.wait(Until.hasObject(By.text("UPLOAD_OK_1")),15000))
+            screen("UPLOAD_OK_1") { "real upload: requests=${f.uploadRequests.get()} bytes=${f.uploadBytes.get()}, stagedFiles="+java.io.File(inst.targetContext.cacheDir,"selected-files").walkTopDown().count { it.isFile } }
             assertEquals("KEEP_SELECTED_FILES",draft()!!.text)
             main { assertTrue(Protection.UPLOAD in app.coordinator.scheduler.tab(id)!!.protections);assertTrue(app.coordinator.scheduler.liveCount<=2) }
             click("PICK_MULTIPLE");root()
             device.findObject(By.text("alpha.txt")).longClick();click("beta.txt")
-            val select=device.findObject(By.res("com.android.documentsui","action_menu_select")) ?: device.findObject(By.res("com.google.android.documentsui","action_menu_select")) ?: device.findObject(By.text("Select")) ?: device.findObject(By.desc("Select"))
+            val select=device.findObject(By.res("com.android.documentsui","action_menu_select")) ?: device.findObject(By.res("com.google.android.documentsui","action_menu_select")) ?: device.findObject(By.text(java.util.regex.Pattern.compile("(?i)select"))) ?: device.findObject(By.desc(java.util.regex.Pattern.compile("(?i)select")))
             assertNotNull("multiple file selection action",select);select!!.click()
             assertTrue(device.wait(Until.hasObject(By.text("UPLOAD_OK_2")),15000))
             assertEquals("KEEP_SELECTED_FILES",draft()!!.text)
@@ -105,7 +118,8 @@ class CompatibilityIntegrationTest {
             val id=page(f);click("DOWNLOAD_FIXTURE")
             await("download offer") { app.coordinator.downloads.snapshot().any { it.state==DownloadController.State.OFFERED } }
             click("保存先を選ぶ");root()
-            val save=device.findObject(By.res("com.android.documentsui","button_save")) ?: device.findObject(By.res("com.google.android.documentsui","button_save")) ?: device.findObject(By.text("Save"))
+            assertTrue("SAF save action",device.wait(Until.hasObject(By.text(java.util.regex.Pattern.compile("(?i)save"))),15000))
+            val save=device.findObject(By.res("android","button1")) ?: device.findObject(By.res("com.android.documentsui","button_save")) ?: device.findObject(By.res("com.google.android.documentsui","button_save")) ?: device.findObject(By.text(java.util.regex.Pattern.compile("(?i)save")))
             assertNotNull("SAF save",save);save!!.click()
             await("download completion") { app.coordinator.downloads.snapshot().any { it.state==DownloadController.State.COMPLETE } }
             var uri:android.net.Uri?=null
@@ -129,7 +143,7 @@ class CompatibilityIntegrationTest {
             device.findObject(By.hint("ユーザー名")).text="fixture"
             device.findObject(By.hint("パスワード")).text="fixture"
             click("ログイン")
-            assertTrue(device.wait(Until.hasObject(By.text("AUTH_OK")),15000))
+            screen("AUTH_OK") { "real auth: requests=${f.authRequests.get()} accepted=${f.authAccepted.get()}" }
             assertTrue(f.authRequests.get()>=2)
             main { assertTrue(app.coordinator.scheduler.liveCount<=2) }
         } finally { cleanup() } }
