@@ -16,12 +16,14 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
     data class Row(val category: String, val label: String, val detail: String = "", val action: () -> Unit) {
         var liveText: (() -> String)? = null
         var checked: (() -> Boolean)? = null
+        var navigation: Boolean = true
     }
     private data class Binding(val row: Row, val root: LinearLayout, val label: TextView,
         val detail: TextView, val trailing: TextView?, val toggle: Switch?)
     private val dialog = Dialog(context).apply { requestWindowFeature(Window.FEATURE_NO_TITLE) }
     private val panel = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
     private val bindings = mutableListOf<Binding>()
+    private val separators=mutableListOf<View>()
     private val headings = mutableMapOf<String, TextView>()
     private val heading = TextView(context).apply { text = title; textSize = 24f; typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL) }
     private val close = Button(context).apply { text = "閉じる"; isAllCaps = false; minHeight = context.dp(48); setOnClickListener { dialog.dismiss() } }
@@ -31,11 +33,10 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
         contentDescription = "設定を検索"
     }
     private val empty = TextView(context).apply { text = "一致する設定がありません"; textSize = 16f; setPadding(context.dp(16), context.dp(24), context.dp(16), 0) }
-    private val ticker = object : Runnable {
-        override fun run() { if (!dialog.isShowing) return; refreshValues(); panel.postDelayed(this, 500) }
-    }
+    private val preferences=listOf("settings","appearance","block_settings").map {context.getSharedPreferences(it,Context.MODE_PRIVATE)}
+    private val preferenceChanged=android.content.SharedPreferences.OnSharedPreferenceChangeListener {_,_->refresh()}
     val isShowing get() = dialog.isShowing
-    private val refresh: () -> Unit = { applyPalette() }
+    private val themeChanged: () -> Unit = { applyPalette(); refresh() }
     init {
         panel.setPadding(context.dp(16), context.dp(12), context.dp(16), context.dp(12))
         panel.isFocusableInTouchMode = true
@@ -67,11 +68,12 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
                 }
                 root.addView(LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; addView(label); addView(detail) }, LinearLayout.LayoutParams(0, -2, 1f))
                 val toggle = row.checked?.let { Switch(context).apply { isClickable = false; isFocusable = false; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO } }
-                val trailing = if (toggle == null) TextView(context).apply { text = "›"; textSize = 24f; setPadding(context.dp(12), 0, context.dp(4), 0) } else null
-                if (toggle != null) root.addView(toggle) else root.addView(trailing)
+                val trailing = if (toggle == null && row.navigation) TextView(context).apply { text = "›"; textSize = 24f; setPadding(context.dp(12), 0, context.dp(4), 0) } else null
+                if (toggle != null) root.addView(toggle) else if(trailing!=null)root.addView(trailing)
                 val binding = Binding(row, root, label, detail, trailing, toggle); bindings += binding
                 root.setOnClickListener { row.action(); refreshValues() }
-                content.addView(root, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = context.dp(2) })
+                content.addView(root, LinearLayout.LayoutParams(-1, -2))
+                content.addView(View(context).apply {setBackgroundColor(appearance.palette().border);separators+=this},LinearLayout.LayoutParams(-1,context.dp(1)))
             }
         }
         content.addView(empty)
@@ -82,8 +84,9 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
             override fun afterTextChanged(s: Editable?) {}
         })
         dialog.setContentView(panel)
-        dialog.setOnDismissListener { appearance.remove(refresh); panel.removeCallbacks(ticker); onDismiss() }
+        dialog.setOnDismissListener { appearance.remove(themeChanged);preferences.forEach {it.unregisterOnSharedPreferenceChangeListener(preferenceChanged)};onDismiss() }
     }
+    fun refresh() { if(dialog.isShowing)refreshValues() }
     private fun refreshValues() {
         bindings.forEach { b ->
             val value = b.row.liveText?.invoke() ?: b.row.label
@@ -112,15 +115,15 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
         dialog.show(); dialog.window?.apply {
             setLayout(-1, -1); setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
         }
-        appearance.track(dialog); appearance.observe(refresh); applyPalette(); refreshValues(); panel.requestFocus(); panel.post(ticker)
+        appearance.track(dialog); appearance.observe(themeChanged);preferences.forEach {it.registerOnSharedPreferenceChangeListener(preferenceChanged)};applyPalette();refreshValues();panel.requestFocus()
     }
     private fun applyPalette() {
         val p = appearance.palette(); panel.setBackgroundColor(p.background); heading.setTextColor(p.text)
         close.setTextColor(p.accent); close.background = RippleDrawable(ColorStateList.valueOf(p.pressed), close.context.rounded(p.surface, 12), null)
         search.applyTextPalette(p); search.background = search.context.rounded(p.surface, 12)
-        empty.setTextColor(p.muted); headings.values.forEach { it.setTextColor(p.accent) }
+        empty.setTextColor(p.muted); headings.values.forEach { it.setTextColor(p.muted) };separators.forEach {it.setBackgroundColor(p.border)}
         bindings.forEach { b ->
-            b.root.background = RippleDrawable(ColorStateList.valueOf(p.pressed), b.root.context.rounded(p.card, 12), null)
+            b.root.background = RippleDrawable(ColorStateList.valueOf(p.pressed), b.root.context.rounded(p.background, 0), null)
             b.label.setTextColor(p.text); b.detail.setTextColor(p.muted); b.trailing?.setTextColor(p.muted)
             b.toggle?.thumbTintList = ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(p.accent, p.muted))
         }
