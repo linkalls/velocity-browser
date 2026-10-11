@@ -40,6 +40,7 @@ docs/benchmarks/release-artifact.json
 docs/benchmarks/size.json
 docs/benchmarks/v03-device-results.json
 docs/benchmarks/v03-validation.json
+docs/compatibility-validation.md
 docs/device-tests.md
 docs/known-limitations.md
 docs/next-stage.md

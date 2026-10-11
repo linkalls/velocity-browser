@@ -28,3 +28,7 @@ Signing uses the same local test Android Debug certificate as prior local 0.2.x 
 ## Boundaries
 
 GeckoView remains the sole engine. Balanced six is a soft target; UNKNOWN/protected sessions may exceed it. OS or engine allocation failures cannot guarantee unlimited tabs or survival of process termination. Private tab metadata/rules remain excluded from disk. Undo reloads a URL and cannot recreate closed JS state. No full AdGuard compatibility or universal empty-space removal is claimed. [Known limitations](known-limitations.md).
+
+## Actions runtime maintenance
+
+All seven actions are pinned to published Node.js 24 versions; build, Bun and device jobs use Ubuntu 24.04 explicitly. This avoids the announced Ubuntu latest migration. Validation of this workflow revision is pending; prior successful device results above remain tied to their recorded run.
