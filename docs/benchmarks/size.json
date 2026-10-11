@@ -1,13 +1,13 @@
 {
   "status": "MEASURED",
-  "implementationVersion": "0.2.2",
-  "apkBytes": 191347946,
+  "implementationVersion": "0.2.3",
+  "apkBytes": 191353994,
   "baselineBytes": 191118123,
-  "additionalBytes": 229823,
-  "aabFileBytes": 92328823,
+  "additionalBytes": 235871,
+  "aabFileBytes": 92361482,
   "geckoNativeLibrariesIdentical": 13,
   "installSize": "NOT_MEASURED",
-  "apkMiB": 182.48362159729004,
-  "additionalKiB": 224.4365234375,
+  "apkMiB": 182.48938941955566,
+  "additionalKiB": 230.3427734375,
   "withinEffortBudget": true
 }

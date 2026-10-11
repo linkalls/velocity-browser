@@ -20,8 +20,8 @@ main 23d39efからfix.mdの修正要求を実装した。GeckoView Stable 157.0.
 - Java17 / SDK37.1のローカル全体ビルド成功（3分24秒）。core:test、app:testDebugUnitTest、lintDebug、debug/AndroidTest/release/AAB、minimal GeckoView release、benchmarkモジュール、app benchmarkを含む。最後のUI試験修正はAndroidTest APKを18秒で追加生成した。
 - JVM43件: failure/error/skipすべて0。app:testDebugUnitTestはNO-SOURCEであり成功件数に加えない。Bun1.4.3は18件成功、TypeScript型検査成功。
 - lintDebug: エラー0、警告22。文言等のresources化は残課題。
-- unsigned Release arm64: 191,347,946 bytes（182.484MiB）。同条件の最小GeckoView: 191,118,123 bytes。差分229,823 bytes（224.437KiB）。Bun size CLIとファイル長の再計測が一致。Gecko native shared object 13個はbaselineと同一hash。[サイズJSON](benchmarks/size.json)。インストール容量とAAB配信量は未測定。
-- test-signed Release: 191,365,753 bytes。apksigner v2/v3、16KiB zipalign、zip整合性、arm64のみを検証。[署名・SHA-256](benchmarks/release-artifact.json)。CIのbenchmark APKとは別の成果物。
+- unsigned Release arm64: 191,347,946 bytes（182.484MiB）。同条件の最小GeckoView: 191,118,123 bytes。差分229,823 bytes（224.437KiB）。Bun size CLIとファイル長の再計測が一致。Gecko native shared object 13個はbaselineと同一hash。[サイズJSON](benchmarks/fix-size.json)。インストール容量とAAB配信量は未測定。
+- test-signed Release: 191,365,753 bytes。apksigner v2/v3、16KiB zipalign、zip整合性、arm64のみを検証。[署名・SHA-256](benchmarks/fix-release-artifact.json)。CIのbenchmark APKとは別の成果物。
 - [Actions 38133338162](https://github.com/linkalls/velocity-browser/actions/runs/38133338162)、3e5f369: build / Bun / device-smokeの3ジョブ成功。API36 x86_64 emulatorの実Geckoスモーク12件、failure/error/skipすべて0。外部fixture3件は除外し未検証のまま。
 - 新UIの4試験: 削除ボタン48dp、取消後のnative一覧表示とフォーム保持、最後のclose後の新blank、2保護タブの保留取消・回転後の再選択・確認後の自動表示と他タブの入力保持、LIGHT/DARK/SYSTEM・OS nightのWeb配色追従・保存/再作成・identity/epoch/入力保持、private警告と色contrast。
 - Liteの既存loopback試験も成功: OFF時到達→ON時cancel、CSS、フォーム保全、例外、native判定通知。一般サイトの広告率とは区別する。

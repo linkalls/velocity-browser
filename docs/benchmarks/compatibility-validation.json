@@ -1,0 +1,94 @@
+{
+  "implementationVersion": "0.2.3",
+  "productionCodeCommit": "af0b6ad548c9f5ae552ec57665da0a0543ea0ec0",
+  "testCodeCommit": "45121ab477685cf5d11af668eceb7ed5680160f2",
+  "finalBuild": "BUILD SUCCESSFUL in 3m 51s",
+  "jvm": {
+    "tests": 48,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "appUnitTest": "NO-SOURCE, not counted as a passed test",
+  "bun": {
+    "tests": 18,
+    "failures": 0,
+    "typecheck": "PASS"
+  },
+  "lint": {
+    "Error": 0,
+    "Warning": 27
+  },
+  "physicalDevice": "UNVERIFIED",
+  "adguardAndHttpsFixtures": "UNVERIFIED: 3 excluded conditional tests",
+  "performance": "NOT_MEASURED",
+  "ci": {
+    "runId": 38142027301,
+    "url": "https://github.com/linkalls/velocity-browser/actions/runs/38142027301",
+    "build": "SUCCESS",
+    "bun": "SUCCESS",
+    "deviceSmoke": "SUCCESS",
+    "artifact": "Velocity-Browser-APK only"
+  },
+  "size": {
+    "status": "MEASURED",
+    "implementationVersion": "0.2.3",
+    "apkBytes": 191353994,
+    "baselineBytes": 191118123,
+    "additionalBytes": 235871,
+    "aabFileBytes": 92361482,
+    "geckoNativeLibrariesIdentical": 13,
+    "installSize": "NOT_MEASURED",
+    "apkMiB": 182.48938941955566,
+    "additionalKiB": 230.3427734375,
+    "withinEffortBudget": true
+  },
+  "releaseArtifact": {
+    "file": "velocity-browser-0.2.3-release-test-signed.apk",
+    "version": "0.2.3",
+    "buildType": "release",
+    "abi": "arm64-v8a",
+    "bytes": 191369849,
+    "sha256": "d39730ca37aefadd9aeda8e1a2179de1dd3c10363540693156881dac8fa2b088",
+    "signing": "TEST_ONLY: same Android Debug key as local 0.2.1 APK, not a production key",
+    "signatureVerification": "PASS: apksigner v2/v3; zipalign 16KiB",
+    "physicalDeviceInstall": "UNVERIFIED"
+  },
+  "localInstrumentation": "UNVERIFIED: no connected device or /dev/kvm",
+  "device": {
+    "status": "PASS",
+    "runId": 38142027301,
+    "url": "https://github.com/linkalls/velocity-browser/actions/runs/38142027301",
+    "sourceCommit": "45121ab477685cf5d11af668eceb7ed5680160f2",
+    "apiLevel": 36,
+    "abi": "x86_64",
+    "engine": "GeckoView Stable 157.0.20261005135250",
+    "tests": 18,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "excludedExternalFixtures": 3,
+    "physicalArm64": "UNVERIFIED",
+    "actualPasskeyCreateAndLogin": "UNVERIFIED",
+    "cases": [
+      "dev.velocity.browser.BlockIntegrationTest privateRulesAndExceptionsAreNotPersistent",
+      "dev.velocity.browser.BlockIntegrationTest liteLoopbackBlockingCssAndDraftPreservation",
+      "dev.velocity.browser.BrowserIntegrationTest repositoryFiltersPrivateTabs",
+      "dev.velocity.browser.BrowserIntegrationTest formTabSurvivesTwentyItemsAndDiscardCandidateTick",
+      "dev.velocity.browser.BrowserIntegrationTest externalIntentCreatesHttpTabAndRotationRetainsCoordinator",
+      "dev.velocity.browser.BrowserIntegrationTest unknownExternalSchemeCannotBecomeBrowserTab",
+      "dev.velocity.browser.BrowserUiIntegrationTest privateCloseWarningAndNativePaletteHaveSafeContrast",
+      "dev.velocity.browser.BrowserUiIntegrationTest appearancePersistsAndUpdatesWebSchemeWithoutReloadOrDraftLoss",
+      "dev.velocity.browser.BrowserUiIntegrationTest closeCancelRetainsSheetDraftAndAccessible48dpTarget",
+      "dev.velocity.browser.BrowserUiIntegrationTest capacityCancelRotationAndConfirmedCloseKeepOtherDraft",
+      "dev.velocity.browser.CompatibilityIntegrationTest webauthnAbortAndInvalidRpAreRealGeckoErrorsInNormalAndPrivateTabs",
+      "dev.velocity.browser.CompatibilityIntegrationTest httpAuthenticationCancelThenRetryUsesExplicitCredentials",
+      "dev.velocity.browser.CompatibilityIntegrationTest singleAndMultipleSafAttachmentsActuallyUploadAndRemainProtected",
+      "dev.velocity.browser.CompatibilityIntegrationTest downloadSavesRealResponseToSafAndCancellationNeverReportsSuccess",
+      "dev.velocity.browser.CompatibilityIntegrationTest runtimeActivityBridgeReturnsCancellationAndRetryAcrossRotationWithoutCredentials",
+      "dev.velocity.browser.CompatibilityIntegrationTest repositoryLatestSnapshotWinsAndPreservesOrderWithoutPrivateRecords",
+      "dev.velocity.browser.ReadingIntegrationTest privateReadingRequestDoesNotCreateNormalMetadata",
+      "dev.velocity.browser.ReadingIntegrationTest twentyRealReadingPagesReplayWithoutThirdLiveSessionOrRefetch"
+    ]
+  }
+}

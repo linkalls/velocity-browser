@@ -1,6 +1,6 @@
-# Velocity Browser 0.2
+# Velocity Browser 0.2.3
 
-GeckoViewだけでWebページを表示する、標準View/KotlinのAndroidブラウザです。M0 → M1 → M2 → M3 → M4のソースと、JVM/Androidテスト、GitHub Actions、Macrobenchmark、Bun集計ツールとM6 Velocity Block Liteを含みます。実行結果は [docs/fix-validation.md](docs/fix-validation.md) を参照してください。
+GeckoViewだけでWebページを表示する、標準View/KotlinのAndroidブラウザです。M0 → M1 → M2 → M3 → M4のソースと、JVM/Androidテスト、GitHub Actions、Macrobenchmark、Bun集計ツールとM6 Velocity Block Liteを含みます。最新0.2.3は [compatibility-validation](docs/compatibility-validation.md)、以前の0.2.2は [fix-validation](docs/fix-validation.md) を参照してください。
 
 **安全性を判定できない通常Webタブは自動破棄しません。** 動的Webページ2枚の保護中は3枚目が保留となります。今回、公開URLの本文を保持して再表示する「閲覧専用タブ」を追加しました。フォームやスクリプトを含まないコピーをGeckoViewで表示し、最大2ライブを維持して往復できます。通常ページや入力を無断で変換・破棄しません。設定・ホーム・タブ一覧から選べます。画像・リンク操作・認証・JS・スクロール復元はこのコピー経路で未対応です。[次段階の設計・制約](docs/next-stage.md)。
 
@@ -29,17 +29,19 @@ adb shell am start -n dev.velocity.browser/.MainActivity
 ./gradlew :app:assembleRelease :app:bundleRelease
 ```
 
-Debugはarm64-v8a/x86_64。Releaseはarm64-v8a、R8とresource shrinkingを適用。Release APKは未署名で、配布には自分の署名設定が必要です。benchmarkビルドだけはdebugキーで署名し、debuggable=false、profileableにします。秘密鍵をリポジトリに含めません。
+Debugはarm64-v8a/x86_64。Releaseはarm64-v8a、R8とresource shrinkingを適用。Release APKは未署名で、配布には自分の署名設定が必要です。計測用benchmarkビルドはdebugキーで署名し、debuggable=false、profileableにします。秘密鍵をリポジトリに含めません。
 
-今回のダウンロード用 `velocity-browser-0.2.2-release-test-signed.apk` はReleaseビルドをAndroid Debugキーでテスト用に署名したものです（arm64-v8a）。v2/v3署名検証は成功、実機インストールは未検証です。本番配布用の鍵ではありません。[ハッシュ・検証情報](docs/benchmarks/release-artifact.json)。
+今回のダウンロード用 `velocity-browser-0.2.3-release-test-signed.apk` はReleaseビルドをAndroid Debugキーでテスト用に署名したものです（arm64-v8a）。v2/v3署名検証は成功、実機インストールは未検証です。本番配布用の鍵ではありません。[ハッシュ・検証情報](docs/benchmarks/release-artifact.json)。
 
 ## 操作
 
 URLまたは検索語を入力して「開く」。検索先は設定からDuckDuckGo/Googleを選べます。HTTP(S)を優先判定し、危険なschemeを検索に偽装して送信しません。戻る・進む・更新/中断・タブ一覧・タブ追加・プライベートタブ・閉じる・保持固定を提供します。ページ表示エラーは安全性を迂回せず停止します。
 
-通常タブのID、タイトル、URL、選択IDのみアプリ内保存。プライベートタブ、フォーム、SessionStateはディスク保存しません。回転時はプロセス内CoordinatorとRuntimeを共有。プロセス終了後は保存済み通常URLを再読み込みし、未保存入力の完全復元は保証しません。
+通常タブのID、タイトル、URL、並び順、選択IDのみアプリ内保存。プライベートタブ、フォーム、SessionStateはディスク保存しません。回転時はプロセス内CoordinatorとRuntimeを共有。プロセス終了後は保存済み通常URLを再読み込みし、未保存入力の完全復元は保証しません。
 
 Adaptiveは最大2オープンGeckoSession、非表示120秒で候補判定、前景15秒スキャン。バックグラウンドはタイマー停止、復帰時に再評価。OFFでも2ライブ安全上限は維持します。
+
+0.2.3は通常タブの単一・複数ファイル添付、保存先を選ぶダウンロード、進捗・取消、HTTP認証に対応。添付は最大16ファイル・一時コピー合計256MiBで、タブclose時に削除します。非公開タブ添付・folder/camera・転送再開・proxy認証は未対応。非公開タブのファイル保存は警告後の明示的exportです。設定 → ダウンロード、Passkey診断、データ保護と復元を確認できます。PasskeyはGecko標準のOS Activity経路を接続しましたが、実credential作成・ログインの物理端末検証は完了していません。
 
 接続先読みの設定初期値はON。ただし明示的に許可した通常HTTPSルートで、同一オリジン・非従量制・データセーバーOFF・節電OFF・前景・低メモリでない条件のみ発行。パス/クエリ/フラグメント付き候補は拒否。HTML取得・3つ目の隠しタブは作りません。金融/認証サイトは許可しないでください。独自テレメトリー送信はなく、内部計測JSONは設定からアプリ内に保存できます。
 
@@ -63,7 +65,7 @@ bun run typecheck
 bun src/cli.ts aggregate fixtures/synthetic.json ../../docs/benchmarks/synthetic-example
 ```
 
-通常の端末スモークは12件。外部HTTPS・AdGuardの3件は除外し、未検証として別管理します。実行方法は[端末テスト](docs/device-tests.md)。引数なしの全件実行では、現在のAGPがJUnitのAssumptionを失敗として記録する場合があります。
+通常の端末スモークは18件。外部HTTPS・AdGuardの3件は除外し、未検証として別管理します。実行方法は[端末テスト](docs/device-tests.md)。引数なしの全件実行では、現在のAGPがJUnitのAssumptionを失敗として記録する場合があります。
 
 SchedulerをAndroid非依存の`:core`へ分離しています。上限、LRU、120秒境界、保護、保存未確認、世代/identity不一致、100タブ、復元失敗、先読み条件、ログ情報制限をJVMテストで検証。Syntheticファイルはテスト専用で実機結果ではありません。実機テストを実行できなかったものは「未検証」、性能は「NOT_MEASURED」と記録します。
 

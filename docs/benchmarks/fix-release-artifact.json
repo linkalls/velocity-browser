@@ -1,0 +1,11 @@
+{
+  "file": "velocity-browser-0.2.2-release-test-signed.apk",
+  "version": "0.2.2",
+  "buildType": "release",
+  "abi": "arm64-v8a",
+  "bytes": 191365753,
+  "sha256": "92b089ad87218ddd39fe689fa4a2f1d9e527ff657c1b140e9d7fe488fd3248ff",
+  "signing": "TEST_ONLY: same Android Debug key as local 0.2.1 APK, not a production key",
+  "signatureVerification": "PASS: apksigner v2/v3; zipalign 16KiB",
+  "physicalDeviceInstall": "UNVERIFIED"
+}
