@@ -64,6 +64,8 @@ class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boole
             }
         }
         session.contentDelegate = object : GeckoSession.ContentDelegate {
+            override fun onShowDynamicToolbar(s: GeckoSession) { if (owner.isCurrent(id,identity) && owner.scheduler.selectedId==id) owner.host?.toolbarVisibility(true) }
+            override fun onHideDynamicToolbar(s: GeckoSession) { if (owner.isCurrent(id,identity) && owner.scheduler.selectedId==id) owner.host?.toolbarVisibility(false) }
             override fun onTitleChange(s: GeckoSession, title: String?) { emit(Event.TitleChanged(id, identity, title.orEmpty())) }
             override fun onFirstContentfulPaint(s: GeckoSession) { if (owner.isCurrent(id, identity)) owner.firstContent(id) }
             override fun onCrash(s: GeckoSession) { emit(Event.Crashed(id, identity)); owner.notice(dev.velocity.browser.R.string.crash) }

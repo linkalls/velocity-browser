@@ -19,6 +19,7 @@ interface BrowserHost {
     fun render(tabs: List<TabRecord>, selectedId: String?, canBack: Boolean, canForward: Boolean, loading: Boolean)
     fun notice(message: Int)
     fun capacityBlocked(id: String, adguard: Boolean)
+    fun toolbarVisibility(show: Boolean) {}
     fun confirmClose(id: String)
     fun requestAndroidPermissions(permissions: Array<String>, done: (Boolean) -> Unit)
 }

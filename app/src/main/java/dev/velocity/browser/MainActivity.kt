@@ -18,6 +18,7 @@ class MainActivity : Activity(), BrowserHost {
     private var tabSheet: TabSwitcherView? = null
     private var capacity: CapacityDialog? = null
     private var settingsScreen:String?=null
+    private var settingsView:SettingsView?=null
     private val appearanceChanged: () -> Unit = { applyAppearance() }
     private fun dialog() = appearance.builder(this)
     private fun AlertDialog.Builder.showThemed() = appearance.show(this)
@@ -53,7 +54,9 @@ class MainActivity : Activity(), BrowserHost {
             }
         }
         chrome.onCreateTab={privateMode->coordinator.createTab(privateMode=privateMode)}
-        chrome.onHome={coordinator.navigate("about:blank")}
+        chrome.onHome={coordinator.createTab(getSharedPreferences("settings",MODE_PRIVATE).getString("home_url","about:blank")!!)}
+        chrome.onAddShortcut=::shortcutSettings
+        chrome.onMenu=::browserMenu
         chrome.onSwitchTab={direction->
             val tabs=coordinator.scheduler.tabs;val current=tabs.indexOfFirst {it.id==coordinator.scheduler.selectedId}
             tabs.getOrNull(current+direction)?.let {coordinator.select(it.id)}
@@ -64,7 +67,7 @@ class MainActivity : Activity(), BrowserHost {
         appearance.observe(appearanceChanged); applyAppearance()
         coordinator.bind(this, chrome.geckoView)
         if (savedInstanceState == null) openIntent(intent)
-        else chrome.post {when(savedInstanceState.getString("settings_screen")){"settings"->settings();"block"->blockSettings();"site"->siteRules()};if(savedInstanceState.getBoolean("tabs_open"))chrome.onTabs() }
+        else chrome.post {when(savedInstanceState.getString("settings_screen")){"menu"->browserMenu();"settings"->settings();"block"->blockSettings();"site"->siteRules()};if(savedInstanceState.getBoolean("tabs_open"))chrome.onTabs() }
     }
     override fun onSaveInstanceState(outState:Bundle) {
         outState.putString("settings_screen",settingsScreen);outState.putBoolean("tabs_open",tabSheet?.isShowing==true)
@@ -72,7 +75,7 @@ class MainActivity : Activity(), BrowserHost {
     }
     private fun showSettings(kind:String,title:String,rows:List<SettingsView.Row>) {
         appearance.dismissFor(this);settingsScreen=kind
-        SettingsView(this,appearance,title,rows) {if(settingsScreen==kind)settingsScreen=null}.show()
+        settingsView=SettingsView(this,appearance,title,rows) {if(settingsScreen==kind){settingsScreen=null;settingsView=null}}.also {it.show()}
     }
     @Deprecated("Legacy Activity result bridge for GeckoRuntime and the system SAF picker")
     override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
@@ -99,7 +102,10 @@ class MainActivity : Activity(), BrowserHost {
         if (isFinishing && coordinator.host === this) coordinator.externalActivities.cancelAll()
         coordinator.unbind(this); super.onDestroy()
     }
+    override fun onWindowFocusChanged(hasFocus:Boolean) { super.onWindowFocusChanged(hasFocus);if(::chrome.isInitialized)chrome.setModalBlocked(!hasFocus) }
+    override fun toolbarVisibility(show:Boolean) {chrome.onEngineToolbar(show)}
     override fun render(tabs: List<TabRecord>, selectedId: String?, canBack: Boolean, canForward: Boolean, loading: Boolean) {
+        settingsView?.refresh()
         tabSheet?.takeIf { it.isShowing }?.update(tabs,selectedId,coordinator.scheduler.pendingId)
         val waiting = coordinator.scheduler.pendingId
         if (capacity != null && capacity?.targetId != waiting) { capacity?.dismiss(); capacity = null }
@@ -169,10 +175,47 @@ class MainActivity : Activity(), BrowserHost {
     override fun onBackPressed() {
         if (chrome.back.isEnabled) coordinator.back() else super.onBackPressed()
     }
+    private fun browserMenu() {
+        val current=coordinator.scheduler.selectedId?.let(coordinator.scheduler::tab)
+        fun row(label:String,action:()->Unit)=SettingsView.Row("ブラウザ",label,action={appearance.dismissFor(this);action()}).apply {navigation=label in listOf("設定","広告ブロック設定","ダウンロード","リーダー表示")}
+        showSettings("menu","メニュー",listOf(
+            row("新しいタブ") {coordinator.createTab()},
+            row("新しいプライベートタブ") {coordinator.createTab(privateMode=true)},
+            row("進む") {coordinator.forward()},
+            row(chrome.reload.text.toString()) {coordinator.reload()},
+            row("共有") {val url=current?.url?.takeIf {UrlPolicy.httpUrl(it)!=null};if(url!=null)startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {type="text/plain";putExtra(Intent.EXTRA_TEXT,url)},"ページを共有"))},
+            row("ホーム") {chrome.onHome()},
+            row("ダウンロード") {coordinator.downloads.show()},
+            row("リーダー表示",::readingDialog),
+            row("広告ブロック設定",::blockSettings),
+            row("設定",::settings)
+        ))
+    }
+    private fun shortcutSettings() {
+        val prefs=getSharedPreferences("settings",MODE_PRIVATE)
+        val list=runCatching {org.json.JSONArray(prefs.getString("home_shortcuts","[]"))}.getOrElse {org.json.JSONArray()}
+        val items=(0 until list.length()).map {list.getJSONObject(it).optString("title")}.toMutableList();items.add("＋ ショートカットを追加")
+        dialog().setTitle("ホームのショートカット").setItems(items.toTypedArray()) {_,index->
+            if(index<list.length())dialog().setTitle("ショートカットを削除").setMessage(items[index]).setPositiveButton("削除") {_,_->list.remove(index);prefs.edit().putString("home_shortcuts",list.toString()).apply()}.setNegativeButton(R.string.cancel,null).showThemed()
+            else if(list.length()<12){
+                val panel=android.widget.LinearLayout(this).apply {orientation=android.widget.LinearLayout.VERTICAL;setPadding(24,12,24,12)}
+                val name=android.widget.EditText(this).apply {hint="表示名";isSaveEnabled=false}
+                val url=android.widget.EditText(this).apply {hint="https://example.com";isSaveEnabled=false;inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_URI}
+                panel.addView(name);panel.addView(url)
+                val d=dialog().setTitle("ショートカットを追加").setView(panel).setPositiveButton("追加",null).setNegativeButton(R.string.cancel,null).showThemed()
+                d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    val target=UrlPolicy.httpUrl(url.text.toString().trim())
+                    if(target==null){url.error="HTTPまたはHTTPSのURLを入力";return@setOnClickListener}
+                    list.put(org.json.JSONObject().put("title",name.text.toString().take(80).ifBlank {java.net.URI(target).host}).put("url",target))
+                    prefs.edit().putString("home_shortcuts",list.toString()).apply();d.dismiss()
+                }
+            }
+        }.showThemed()
+    }
     private fun settings() {
         val labels = arrayOf(getString(R.string.search_engine), getString(R.string.preconnect) + " [${coordinator.preconnectEnabled()}]",
             getString(R.string.allow_origin), getString(R.string.pin), getString(R.string.adaptive) + " [${coordinator.scheduler.adaptiveEnabled}]", getString(R.string.export_metrics), getString(R.string.reading_new), getString(R.string.reading_original), "ライセンス", getString(R.string.appearance), getString(R.string.downloads), getString(R.string.passkey_diagnostics), getString(R.string.data_protection))
-        val categories=mapOf(0 to "一般",1 to "タブとメモリ",2 to "タブとメモリ",3 to "タブとメモリ",4 to "タブとメモリ",5 to "詳細情報",6 to "詳細情報",7 to "詳細情報",8 to "詳細情報",9 to "外観",10 to "ダウンロードと権限",11 to "詳細情報",12 to "詳細情報")
+        val categories=mapOf(0 to "一般",1 to "タブとパフォーマンス",2 to "タブとパフォーマンス",3 to "タブとパフォーマンス",4 to "タブとパフォーマンス",5 to "詳細設定",6 to "詳細設定",7 to "詳細設定",8 to "詳細設定",9 to "外観",10 to "ダウンロードと権限",11 to "詳細設定",12 to "プライバシー")
         val rows=labels.mapIndexed {which,label->SettingsView.Row(categories[which]?:"詳細情報",label,action={
             when (which) {
                 0 -> dialog().setTitle(R.string.search_engine).setSingleChoiceItems(SearchEngine.entries.map { it.name }.toTypedArray(), coordinator.searchEngine.ordinal) { dialog, n -> coordinator.searchEngine = SearchEngine.entries[n]; dialog.dismiss() }.showThemed()
@@ -193,14 +236,27 @@ class MainActivity : Activity(), BrowserHost {
             }
         }) }.toMutableList()
         rows[0].liveText = { getString(R.string.search_engine) + " · " + coordinator.searchEngine.name }
-        rows[1].liveText = { getString(R.string.preconnect) }; rows[1].checked = { coordinator.preconnectEnabled() }
-        rows[4].liveText = { getString(R.string.adaptive) }; rows[4].checked = { coordinator.scheduler.adaptiveEnabled }
+        rows[1].liveText = { getString(R.string.preconnect) }; rows[1].navigation=false;rows[1].checked = { coordinator.preconnectEnabled() }
+        rows[4].liveText = { getString(R.string.adaptive) }; rows[4].navigation=false;rows[4].checked = { coordinator.scheduler.adaptiveEnabled }
         rows[9].liveText = { getString(R.string.appearance) + " · " + arrayOf("システム", "ライト", "ダーク")[appearance.mode.ordinal] }
-        rows.add(0,SettingsView.Row("タブとメモリ","ライブ目標 ${coordinator.scheduler.config.liveTarget}枚 · ${coordinator.scheduler.config.discardAfterMs/1000}秒","保護中は目標を超えて保持します。RAMの推奨: ${coordinator.recommendedProfile().name}",::memorySettings).apply { liveText = { "ライブ目標 ${coordinator.scheduler.config.liveTarget}枚 · ${coordinator.scheduler.config.discardAfterMs/1000}秒" } })
-        rows.add(SettingsView.Row("外観","アドレスバー位置",if(chrome.bottomAddress)"下" else "上") {chrome.setAddressBottom(!chrome.bottomAddress)}.apply {liveText={"アドレスバー位置 · "+if(chrome.bottomAddress)"下" else "上"}})
+        rows.add(0,SettingsView.Row("タブとパフォーマンス","ライブ目標 ${coordinator.scheduler.config.liveTarget}枚 · ${coordinator.scheduler.config.discardAfterMs/1000}秒","保護中は目標を超えて保持します。RAMの推奨: ${coordinator.recommendedProfile().name}",::memorySettings).apply { liveText = { "ライブ目標 ${coordinator.scheduler.config.liveTarget}枚 · ${coordinator.scheduler.config.discardAfterMs/1000}秒" } })
+        rows.add(SettingsView.Row("一般","アドレスバー位置",if(chrome.bottomAddress)"下" else "上") {chrome.setAddressBottom(!chrome.bottomAddress)}.apply {liveText={"アドレスバー位置 · "+if(chrome.bottomAddress)"下" else "上"}})
         rows.add(SettingsView.Row("外観","アドレスバーのスワイプ","左右にスワイプしてタブを切り替える") {chrome.swipeEnabled=!chrome.swipeEnabled}.apply {liveText={"アドレスバーのスワイプ"};checked={chrome.swipeEnabled}})
-        rows.add(SettingsView.Row("プライバシーと広告ブロック","広告ブロック",blocker.mode.name,::blockSettings))
-        val categoryOrder = listOf("一般", "外観", "プライバシーと広告ブロック", "タブとメモリ", "ダウンロードと権限", "詳細情報")
+        rows.add(SettingsView.Row("プライバシー","広告ブロック",blocker.mode.name,::blockSettings))
+        rows.add(SettingsView.Row("一般","ホームページ","新規ページに設定するURL") {
+            val prefs=getSharedPreferences("settings",MODE_PRIVATE)
+            val input=android.widget.EditText(this).apply {isSaveEnabled=false;hint="https://example.com";setText(prefs.getString("home_url",""))}
+            val d=dialog().setTitle("ホームページ").setView(input).setPositiveButton("保存",null).setNegativeButton(R.string.cancel,null).showThemed()
+            d.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val raw=input.text.toString().trim();val url=if(raw.isEmpty())"about:blank" else UrlPolicy.httpUrl(raw)
+                if(url==null){input.error="HTTPまたはHTTPSのURLを入力"}else{prefs.edit().putString("home_url",url).apply();d.dismiss()}
+            }
+        })
+        rows.add(SettingsView.Row("外観","スクロールでツールバーを隠す","入力中・メニュー表示中・TalkBackでは表示を維持") {val p=getSharedPreferences("settings",MODE_PRIVATE);p.edit().putBoolean("toolbar_scroll",!p.getBoolean("toolbar_scroll",true)).apply()}.apply {checked={getSharedPreferences("settings",MODE_PRIVATE).getBoolean("toolbar_scroll",true)}})
+        rows.add(SettingsView.Row("外観","タブ表示","コンパクト一覧 / 2列グリッド") {val p=getSharedPreferences("settings",MODE_PRIVATE);p.edit().putBoolean("tabs_list",!p.getBoolean("tabs_list",true)).apply()}.apply {liveText={"タブ表示 · "+if(getSharedPreferences("settings",MODE_PRIVATE).getBoolean("tabs_list",true))"一覧" else "グリッド"};navigation=false})
+        rows.add(SettingsView.Row("外観","文字サイズ","Androidの設定に従います") {startActivity(Intent(android.provider.Settings.ACTION_DISPLAY_SETTINGS))})
+        rows.add(SettingsView.Row("ダウンロードと権限","サイト権限","Android設定でアプリの権限を確認・取り消し") {startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.parse("package:$packageName")))})
+        val categoryOrder = listOf("一般", "外観", "プライバシー", "タブとパフォーマンス", "ダウンロードと権限", "詳細設定")
         showSettings("settings","設定",rows.sortedBy {categoryOrder.indexOf(it.category)})
     }
     private fun memorySettings() {
