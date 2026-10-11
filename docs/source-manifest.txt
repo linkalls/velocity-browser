@@ -1,5 +1,5 @@
 SHA-256 / source relative path (manifest itself excluded)
-fe479b2ab2928c99e1849bb024544aa84bb31c55f36a1c63c6a6ca8a7d5fcab5  .github/workflows/android.yml
+e2f1f80bb1c439ddf5a82d070e315b4cc70630534af0da8de2ffde38fefb1196  .github/workflows/android.yml
 d19b5e5c85525b60facc755521ca918592d5e525a6d82928f6942cc0f605694d  .gitignore
 8a39803b4d17bc0d9ba8d76eb71bac674318f5802810a717b5af38b7f759eb6e  LICENSE
 6bac6e0767fbbf3561a581ea071c49a4d2e060df9c5f0bac0eb809e401d0d324  README.md
