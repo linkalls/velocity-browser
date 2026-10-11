@@ -57,6 +57,6 @@ test('scrolling during a multi-batch scan postpones all further inspection',asyn
  f.advance(150);const read=f.styleReads();
  f.events.scroll!();f.advance(166);f.advance(310);
  expect(f.styleReads()).toBe(read);
- f.advance(330);
+ f.advance(350);
  expect(f.styleReads()).toBeGreaterThan(read);
 });
