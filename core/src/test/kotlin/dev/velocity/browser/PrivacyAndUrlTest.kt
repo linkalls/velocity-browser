@@ -18,4 +18,8 @@ class PrivacyAndUrlTest {
         assertFalse(metrics.snapshot().toString().contains("secret"))
         repeat(600) { metrics.record("LIVE_COUNT", 2) }; assertEquals(512, metrics.snapshot().size)
     }
+    @Test fun softTargetExcessMetricIsAcceptedWithoutUserData() {
+        val metrics=Metrics(Clock {10});metrics.record("TARGET_EXCESS",14)
+        assertEquals(14L,metrics.snapshot().single().value)
+    }
 }
