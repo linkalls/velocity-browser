@@ -50,7 +50,7 @@ class BlockController(private val context: Context) {
     var updatedAt = 0L; private set
     var accepted = 0; private set
     var skipped = 0; private set
-    var mode = runCatching { Mode.valueOf(prefs.getString("mode", Mode.ETP_ONLY.name)!!) }.getOrDefault(Mode.ETP_ONLY); private set
+    var mode = runCatching { Mode.valueOf(prefs.getString("mode", Mode.LITE.name)!!) }.getOrDefault(Mode.ETP_ONLY); private set
     var cosmeticEnabled=prefs.getBoolean("cosmetic",true);private set
     var collapseEnabled=prefs.getBoolean("collapse",true);private set
     var hiddenElements=0;private set

@@ -39,11 +39,11 @@ function batch(){
   if(root.matches(wrapper)||selectors.some(s=>root.matches(s)))candidates.add(root);
   const matching=root.querySelectorAll([wrapper,...selectors].join(','));
   for(const e of matching){if(candidates.size>=100)break;candidates.add(e);}
-  if(performance.now()-started>8){stopped=true;break;}
+  if(performance.now()-started>32){stopped=true;break;}
  }
  for(const e of [...hiddenSet])if(!e.isConnected||getComputedStyle(e).display!=='none')hiddenSet.delete(e);
  for(const e of candidates){
-  if(++processed>100||performance.now()-started>8){stopped=true;break;}
+  if(++processed>100||performance.now()-started>32){stopped=true;break;}
   if(!safe(e))continue;
   if(selectors.some(s=>e.matches(s))&&getComputedStyle(e).display==='none'){if(hiddenSet.size<100)hiddenSet.add(e);}
   if(!policy.collapse)continue;

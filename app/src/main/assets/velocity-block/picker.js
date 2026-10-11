@@ -21,7 +21,7 @@ browser.runtime.onMessage.addListener(message=>{
  function choose(e){if(!safe(e)){status.textContent='この領域は保護されています';return;}unhighlight();selected=e;originalOutline=e.style.getPropertyValue('outline');originalPriority=e.style.getPropertyPriority('outline');e.style.setProperty('outline','3px solid #20c9a8','important');status.textContent=proposal(e)?'選択範囲を確認してください':'一意なID・クラスを持つ小さな領域を選んでください';}
  function finish(){unhighlight();panel.remove();previewSheet.remove();document.removeEventListener('click',click,true);for(const name of ['pointerdown','pointerup','touchstart','touchend'])document.removeEventListener(name,guard,true);window.removeEventListener('pagehide',finish);document.removeEventListener('visibilitychange',hidden);pickerExit=null;}
  function hidden(){if(document.hidden)finish();}
- function guard(event){if(!panel.contains(event.target)){event.stopImmediatePropagation();if(event.cancelable)event.preventDefault();}}
+ function guard(event){if(!panel.contains(event.target)){event.stopImmediatePropagation();}}
  function click(event){if(panel.contains(event.target))return;event.preventDefault();event.stopImmediatePropagation();choose(event.target);}
  function button(label,action){const b=document.createElement('button');b.textContent=label;b.style.cssText='min-height:48px!important;min-width:48px!important;font:16px sans-serif!important;border:0!important;border-radius:8px!important;padding:8px!important;background:#fff!important;color:#14232a!important;';b.addEventListener('click',action);panel.appendChild(b);}
  button('範囲を広げる',()=>{if(selected?.parentElement&&safe(selected.parentElement)){previousChild=selected;choose(selected.parentElement);}});
