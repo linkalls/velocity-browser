@@ -47,9 +47,15 @@ class MainActivity : Activity(), BrowserHost {
                 val before = coordinator.scheduler.selectedId
                 coordinator.createTab(privateMode = privateMode)
                 coordinator.scheduler.selectedId != before && coordinator.scheduler.pendingId == null
-            }, { coordinator.close(it) }, coordinator::cancelPending, ::readingDialog).also {
+            }, { coordinator.close(it) }, coordinator::cancelPending, ::readingDialog, coordinator::undoClose, coordinator::canUndo, coordinator::pin).also {
                 it.update(coordinator.scheduler.tabs,coordinator.scheduler.selectedId,coordinator.scheduler.pendingId); it.show()
             }
+        }
+        chrome.onCreateTab={privateMode->coordinator.createTab(privateMode=privateMode)}
+        chrome.onHome={coordinator.navigate("about:blank")}
+        chrome.onSwitchTab={direction->
+            val tabs=coordinator.scheduler.tabs;val current=tabs.indexOfFirst {it.id==coordinator.scheduler.selectedId}
+            tabs.getOrNull(current+direction)?.let {coordinator.select(it.id)}
         }
         chrome.onReading = ::readingDialog
         chrome.onSettings = { settings() }
@@ -148,7 +154,8 @@ class MainActivity : Activity(), BrowserHost {
     private fun settings() {
         val labels = arrayOf(getString(R.string.search_engine), getString(R.string.preconnect) + " [${coordinator.preconnectEnabled()}]",
             getString(R.string.allow_origin), getString(R.string.pin), getString(R.string.adaptive) + " [${coordinator.scheduler.adaptiveEnabled}]", getString(R.string.export_metrics), getString(R.string.reading_new), getString(R.string.reading_original), "ライセンス", getString(R.string.appearance), getString(R.string.downloads), getString(R.string.passkey_diagnostics), getString(R.string.data_protection))
-        dialog().setTitle(R.string.settings).setItems(labels) { _, which ->
+        val categories=mapOf(0 to "一般",1 to "タブとメモリ",2 to "タブとメモリ",3 to "タブとメモリ",4 to "タブとメモリ",5 to "詳細情報",6 to "詳細情報",7 to "詳細情報",8 to "詳細情報",9 to "外観",10 to "ダウンロードと権限",11 to "詳細情報",12 to "詳細情報")
+        val rows=labels.mapIndexed {which,label->SettingsView.Row(categories[which]?:"詳細情報",label,action={
             when (which) {
                 0 -> dialog().setTitle(R.string.search_engine).setSingleChoiceItems(SearchEngine.entries.map { it.name }.toTypedArray(), coordinator.searchEngine.ordinal) { dialog, n -> coordinator.searchEngine = SearchEngine.entries[n]; dialog.dismiss() }.showThemed()
                 1 -> coordinator.setPreconnect(!coordinator.preconnectEnabled())
@@ -166,6 +173,27 @@ class MainActivity : Activity(), BrowserHost {
                 9 -> dialog().setTitle(R.string.appearance).setSingleChoiceItems(arrayOf("システムに合わせる", "ライト", "ダーク"),appearance.mode.ordinal) { d,n -> appearance.select(ThemeController.Mode.entries[n]); d.dismiss() }.showThemed()
                 8 -> dialog().setTitle("ライセンス").setMessage(assets.open("licenses/PETER_LOWES_LIST.txt").bufferedReader().use { it.readText() } + "\n" + assets.open("licenses/JSOUP.txt").bufferedReader().use { it.readText() }).setPositiveButton(R.string.close_confirm, null).showThemed()
             }
+        }) }.sortedBy { it.category }.toMutableList()
+        rows.add(0,SettingsView.Row("タブとメモリ","ライブ目標 ${coordinator.scheduler.config.liveTarget}枚 · ${coordinator.scheduler.config.discardAfterMs/1000}秒","保護中は目標を超えて保持します。RAMの推奨: ${coordinator.recommendedProfile().name}",::memorySettings))
+        rows.add(SettingsView.Row("外観","アドレスバー位置",if(chrome.bottomAddress)"下" else "上") {chrome.setAddressBottom(!chrome.bottomAddress)})
+        rows.add(SettingsView.Row("外観","アドレスバーのスワイプ",if(chrome.swipeEnabled)"ON" else "OFF") {chrome.swipeEnabled=!chrome.swipeEnabled})
+        rows.add(SettingsView.Row("プライバシーと広告ブロック","広告ブロック",blocker.mode.name,::blockSettings))
+        SettingsView(this,appearance,"設定",rows.sortedBy {it.category}).show()
+    }
+    private fun memorySettings() {
+        val options=arrayOf("省メモリ · 3枚 / 30秒","バランス · 6枚 / 120秒","高速重視 · 12枚 / 600秒","カスタム")
+        dialog().setTitle("タブとメモリ").setItems(options) {_,n->
+            if(n<3)coordinator.setTabConfig(TabProfile.entries[n].config()) else {
+                val panel=android.widget.LinearLayout(this).apply {orientation=android.widget.LinearLayout.VERTICAL}
+                val target=android.widget.EditText(this).apply {hint="目標枚数 2〜32";inputType=android.text.InputType.TYPE_CLASS_NUMBER;setText(coordinator.scheduler.config.liveTarget.toString())}
+                val idle=android.widget.EditText(this).apply {hint="非表示秒数 30〜1800";inputType=android.text.InputType.TYPE_CLASS_NUMBER;setText((coordinator.scheduler.config.discardAfterMs/1000).toString())}
+                panel.addView(target);panel.addView(idle)
+                dialog().setTitle("カスタム").setMessage("目標は上限ではありません。保護中のタブは閉じません。").setView(panel).setPositiveButton("適用") {_,_->
+                    val count=target.text.toString().toIntOrNull();val seconds=idle.text.toString().toLongOrNull()
+                    if(count!=null && count in 2..32 && seconds!=null && seconds in 30..1800)coordinator.setTabConfig(AdaptiveConfig(liveTarget=count,discardAfterMs=seconds*1000))
+                    else Toast.makeText(this,"設定範囲を確認してください",Toast.LENGTH_LONG).show()
+                }.setNegativeButton(R.string.cancel,null).showThemed()
+            }
         }.showThemed()
     }
     private fun readingDialog() {
@@ -182,8 +210,8 @@ class MainActivity : Activity(), BrowserHost {
             getString(R.string.block_exception) + " [${origin?.let { blocker.isException(it, privateMode) } ?: false}]",
             getString(R.string.block_update), getString(R.string.block_user_rules), getString(R.string.block_diagnostics),
             getString(R.string.block_modes), getString(R.string.adguard_install), getString(R.string.adguard_remove), getString(R.string.adguard_options))
-        dialog().setTitle(R.string.block_settings).setItems(items) { _, index ->
-            if (blocker.busy && index != 4) { notice(R.string.block_busy); return@setItems }
+        val rows=items.mapIndexed {index,label->SettingsView.Row(if(index>=5)"エンジン · 実験機能" else "このサイトとフィルター",label,action=action@ {
+            if (blocker.busy && index != 4) { notice(R.string.block_busy); return@action }
             when (index) {
                 0 -> { blocker.setLite(!blocker.enabled(privateMode), privateMode); notice(R.string.block_reload_hint) }
                 1 -> if (origin != null) dialog().setMessage(getString(R.string.block_exception_scope, origin))
@@ -207,7 +235,8 @@ class MainActivity : Activity(), BrowserHost {
                 7 -> if (!privateMode) blocker.removeAdguard()
                 8 -> if (!privateMode) blocker.openAdguardOptions()
             }
-        }.showThemed()
+        }) }
+        SettingsView(this,appearance,"広告とトラッカーのブロック",listOf(SettingsView.Row("状態",origin?:"ページ未選択","${blocker.mode.name} · 遮断判定 ${if(privateMode)blocker.privateDecisions else blocker.normalDecisions}（広告の個数ではありません）") {})+rows).show()
     }
 
 }

@@ -80,7 +80,7 @@ class AdaptiveTabCoordinator(private val context: Context) {
             started = true
             repository.load { stored -> handler.post {
                 stored.tabs.forEach { t -> if (scheduler.tab(t.id) == null) {
-                    dispatch(Event.CreateTab(t.id,t.url,readOnly=t.readOnly));dispatch(Event.SetPinned(t.id,t.pinned))
+                    dispatch(Event.CreateTab(t.id,t.url,readOnly=t.readOnly,title=t.title));dispatch(Event.SetPinned(t.id,t.pinned))
                 } }
                 if (scheduler.tabs.isEmpty()) createTab("about:blank")
                 else if (scheduler.selectedId == null) dispatch(Event.SelectTab(stored.selectedId ?: scheduler.tabs.first().id))
@@ -248,7 +248,7 @@ class AdaptiveTabCoordinator(private val context: Context) {
         }
     }
     fun navigate(input: String) {
-        val url = UrlPolicy.input(input, searchEngine) ?: return notice(R.string.invalid_url)
+        val url = if(input=="about:blank")input else UrlPolicy.input(input, searchEngine) ?: return notice(R.string.invalid_url)
         val id = scheduler.selectedId ?: return createTab(url)
         if (scheduler.tab(id)?.readOnly == true) { createReadingTab(url); return }
         val adapter = adapters[id] ?: return

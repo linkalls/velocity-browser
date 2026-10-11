@@ -34,7 +34,7 @@ class BlockIntegrationTest {
     }
     /** 専用信頼済みTLS fixtureをrunner引数で指定。未指定はskipであり成功ではない。 */
     @RequiresExternalFixture
-    @Test fun liteHttpsBlockingAndExceptionPreserveTwoLiveLimit() {
+    @Test fun liteHttpsBlockingAndExceptionPreserveProtectedSessions() {
         val args = InstrumentationRegistry.getArguments()
         val origin = args.getString("blockFixtureOrigin")
         assumeTrue("HTTPS fixture absent: UNVERIFIED", origin != null)
@@ -78,12 +78,12 @@ class BlockIntegrationTest {
             assertFalse("standalone ad slot must be hidden", device.hasObject(By.text("CSS広告枠")))
             val field = device.findObjects(By.clazz("android.widget.EditText")).first { it.resourceName != "dev.velocity.browser:id/address" }
             field.text = "LITE_DRAFT_PRESERVED"
-            inst.runOnMainSync { assertTrue(app.coordinator.scheduler.liveCount <= 2); app.blocker.toggleException(origin, false) }
+            inst.runOnMainSync { assertNull(app.coordinator.scheduler.pendingId); app.blocker.toggleException(origin, false) }
             waitFor { app.blocker.status.startsWith("READY_CONFIG_ACK") }
             assertEquals("mode/config change must not reload draft", "LITE_DRAFT_PRESERVED", field.text)
             inst.runOnMainSync { app.coordinator.reload() }
             assertTrue(device.wait(Until.hasObject(By.text("AD_ALLOWED CONTROL_OK")), 30000))
-            inst.runOnMainSync { assertTrue(app.coordinator.scheduler.liveCount <= 2) }
+            inst.runOnMainSync { assertNull(app.coordinator.scheduler.pendingId) }
         } finally {
             waitFor { !app.blocker.busy }
             inst.runOnMainSync {
