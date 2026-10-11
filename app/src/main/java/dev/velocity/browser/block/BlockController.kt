@@ -51,6 +51,17 @@ class BlockController(private val context: Context) {
     var accepted = 0; private set
     var skipped = 0; private set
     var mode = runCatching { Mode.valueOf(prefs.getString("mode", Mode.ETP_ONLY.name)!!) }.getOrDefault(Mode.ETP_ONLY); private set
+    var cosmeticEnabled=prefs.getBoolean("cosmetic",true);private set
+    var collapseEnabled=prefs.getBoolean("collapse",true);private set
+    var hiddenElements=0;private set
+    var collapsedElements=0;private set
+    var privateHiddenElements=0;private set
+    var privateCollapsedElements=0;private set
+    private val collapseExceptions=prefs.getStringSet("collapse_exceptions",emptySet())!!.toMutableSet()
+    private val privateCollapseExceptions=mutableSetOf<String>()
+    private var cleanup: (() -> Unit)? = null
+    private var rollbackMode=mode
+    private var rollbackPrivate=false
     private var base = ""
     private var user = prefs.getString("user", "").orEmpty()
     private var privateUser = ""
@@ -104,11 +115,14 @@ class BlockController(private val context: Context) {
                     port?.disconnect(); port = p
                     p.setDelegate(object : WebExtension.PortDelegate {
                         override fun onPortMessage(message: Any, p: WebExtension.Port) {
-                            if (port !== p || message !is JSONObject || message.length() > 4) return
+                            if (port !== p || message !is JSONObject || message.length() > 8) return
                             if (message.optString("type") == "stats" && message.optInt("generation", -1) == generation) {
                                 val n = message.optInt("blocked", -1); val pCount = message.optInt("privateBlocked", -1)
-                                if (n in 0..1_000_000 && pCount in 0..1_000_000) { normalDecisions = n; privateDecisions = pCount; onChanged?.invoke() }
-                            } else if (message.optString("type") == "ready" && message.optInt("generation", -1) == generation && message.optInt("accepted", -1) in 0..LiteRules.MAX_RULES && message.optInt("skipped", -1) in 0..200_000) status = "READY_CONFIG_ACK (blocking UNVERIFIED)"
+                                if (n in 0..1_000_000 && pCount in 0..1_000_000) { normalDecisions = n; privateDecisions = pCount
+                                    hiddenElements=message.optInt("hidden",0).coerceIn(0,1_000_000);collapsedElements=message.optInt("collapsed",0).coerceIn(0,1_000_000)
+                                    privateHiddenElements=message.optInt("privateHidden",0).coerceIn(0,1_000_000);privateCollapsedElements=message.optInt("privateCollapsed",0).coerceIn(0,1_000_000);onChanged?.invoke() }
+                            } else if (message.optString("type") == "ready" && message.optInt("generation", -1) == generation && message.optInt("accepted", -1) in 0..LiteRules.MAX_RULES && message.optInt("skipped", -1) in 0..200_000) { val continuation=cleanup;cleanup=null
+                                if(continuation!=null)continuation() else status = "READY_CONFIG_ACK (blocking UNVERIFIED)" }
                             else if (message.optString("type") == "error" && message.optString("code") == "CONFIG_INVALID") status = "CONFIG_INVALID"
                         }
                         override fun onDisconnect(p: WebExtension.Port) { if (port === p) { port = null; status = "DISCONNECTED" } }
@@ -117,7 +131,7 @@ class BlockController(private val context: Context) {
             }, "velocity_block_lite")
             controller.setAllowedInPrivateBrowsing(extension, true).accept({ updated ->
                 lite = updated ?: extension
-                prefs.edit().putString("builtInVersion", "0.2.0").apply()
+                prefs.edit().putString("builtInVersion", "0.3.0").apply()
                 controller.list().accept({ list ->
                     extensionInventoryKnown = list != null
                     if (list?.any { it.id != ID } == true) onUntrustedExtension?.invoke()
@@ -144,6 +158,7 @@ class BlockController(private val context: Context) {
     }
     fun setMode(next: Mode) {
         if (busy || (next == Mode.ADGUARD && adguard == null)) return
+        rollbackMode=mode;rollbackPrivate=privateEnabled
         mode = next
         if (next == Mode.ADGUARD) privateEnabled = false
         prefs.edit().putString("mode", next.name).apply(); applyMode()
@@ -152,6 +167,7 @@ class BlockController(private val context: Context) {
         val r = runtime ?: return; val l = lite ?: return
         busy = true; status = "APPLYING"; updateEtp()
         // 二重フィルタリングを避け、まず両エンジンを停止してから一方だけ有効化。
+        fun switchEngines() {
         r.webExtensionController.disable(l, WebExtensionController.EnableSource.APP).accept({ disabled ->
             lite = disabled ?: l
             fun enableSelected() {
@@ -165,16 +181,33 @@ class BlockController(private val context: Context) {
             val a = adguard
             if (a == null) enableSelected() else r.webExtensionController.disable(a, WebExtensionController.EnableSource.APP).accept({ disabledAdguard -> adguard = disabledAdguard ?: a; enableSelected() }, { failedMode() })
         }, { failedMode() })
+        }
+        if(l.metaData.enabled && port!=null) {
+            cleanup={switchEngines()};push(forceDisabled=true)
+            val expected=generation
+            main.postDelayed({if(cleanup!=null && expected==generation){cleanup=null;failedMode()}},5000)
+        } else if(l.metaData.enabled) failedMode() else switchEngines()
     }
-    private fun failedMode() { busy = false; status = "MODE_FAILED (actual extension state UNKNOWN)"; mode = Mode.ETP_ONLY; updateEtp(); prefs.edit().putString("mode", mode.name).apply() }
-    private fun push() {
-        normalDecisions = 0; privateDecisions = 0
+    private fun failedMode() { cleanup=null;busy=false;mode=rollbackMode;privateEnabled=rollbackPrivate;updateEtp();prefs.edit().putString("mode",mode.name).apply();push();status="MODE_FAILED (actual extension state UNKNOWN; previous preference retained)" }
+    private fun push(forceDisabled:Boolean=false) {
+        normalDecisions = 0; privateDecisions = 0;hiddenElements=0;collapsedElements=0;privateHiddenElements=0;privateCollapsedElements=0
         if (!dataReady) return
         if (port != null) status = "WAITING_CONFIG_ACK"
         port?.postMessage(JSONObject().put("type", "config").put("generation", ++generation)
-            .put("enabled", mode == Mode.LITE).put("privateEnabled", privateEnabled && mode != Mode.ADGUARD)
+            .put("enabled", !forceDisabled && mode == Mode.LITE).put("privateEnabled", !forceDisabled && privateEnabled && mode != Mode.ADGUARD)
+            .put("cosmeticEnabled",cosmeticEnabled).put("collapseEnabled",collapseEnabled)
+            .put("collapseExceptions",JSONArray(collapseExceptions.toList())).put("privateCollapseExceptions",JSONArray(privateCollapseExceptions.toList()))
             .put("rules", base + "\n" + user).put("privateRules", base + "\n" + privateUser)
             .put("exceptions", JSONArray(exceptions.toList())).put("privateExceptions", JSONArray(privateExceptions.toList())))
+    }
+    fun setCosmetic(enabled:Boolean) { if(busy)return;cosmeticEnabled=enabled;prefs.edit().putBoolean("cosmetic",enabled).apply();push() }
+    fun setCollapse(enabled:Boolean) { if(busy)return;collapseEnabled=enabled;prefs.edit().putBoolean("collapse",enabled).apply();push() }
+    fun collapseExcluded(origin:String,privateMode:Boolean)=(if(privateMode)privateCollapseExceptions else collapseExceptions).contains(origin)
+    fun toggleCollapseException(origin:String,privateMode:Boolean) {
+        require(LiteRules.origin(origin)==origin);if(busy)return
+        val list=if(privateMode)privateCollapseExceptions else collapseExceptions
+        if(!list.remove(origin)){require(list.size<1000);list+=origin}
+        if(!privateMode)prefs.edit().putStringSet("collapse_exceptions",list.toSet()).apply();push()
     }
     fun isException(origin: String, privateMode: Boolean) = (if (privateMode) privateExceptions else exceptions).contains(origin)
     fun toggleException(origin: String, privateMode: Boolean) {
@@ -193,7 +226,7 @@ class BlockController(private val context: Context) {
         if (privateMode) privateUser = result.text else { user = result.text; prefs.edit().putString("user", user).apply() }
         push(); return result
     }
-    fun resetPrivate() { privateUser = ""; privateExceptions.clear(); privateEnabled = false; push(); if (!busy) applyMode() }
+    fun resetPrivate() { privateUser = ""; privateExceptions.clear();privateCollapseExceptions.clear(); privateEnabled = false; push(); if (!busy) applyMode() }
     /** 明示操作でのみ開始。HTTP redirect禁止、2MiB上限、完全検査→AtomicFile置換。 */
     fun updateFilters(done: (Boolean) -> Unit) {
         if (busy) { done(false); return }; busy = true
@@ -235,6 +268,7 @@ class BlockController(private val context: Context) {
         mode = Mode.ETP_ONLY; privateEnabled = false; updateEtp(); push()
         prefs.edit().putString("mode", mode.name).apply()
         // install()が拡張を有効化する前にLite停止を確定させる。
+        fun installAfterCleanup() {
         runtime!!.webExtensionController.disable(lite!!, WebExtensionController.EnableSource.APP).accept({ disabledLite ->
             lite = disabledLite ?: lite
             if (installActivity !== activity || activity.isDestroyed || activity.isFinishing) { busy = false; status = "ADGUARD_CANCELLED"; return@accept }
@@ -245,6 +279,9 @@ class BlockController(private val context: Context) {
                 runtime!!.webExtensionController.setAllowedInPrivateBrowsing(extension, false).accept({ updated -> adguard = updated ?: extension; setMode(Mode.ADGUARD) }, { status = "ADGUARD_PRIVATE_GUARD_FAILED" })
             }, { installActivity = null; busy = false; status = "ADGUARD_INSTALL_FAILED" })
         }, { installActivity = null; busy = false; status = "LITE_DISABLE_FAILED (AdGuard not installed)" })
+        }
+        if(lite!!.metaData.enabled && port!=null){cleanup={installAfterCleanup()};push(forceDisabled=true);val expected=generation;main.postDelayed({if(cleanup!=null&&generation==expected){cleanup=null;installActivity=null;busy=false;status="CLEANUP_FAILED (AdGuard not installed)"}},5000)}
+        else if(lite!!.metaData.enabled){installActivity=null;busy=false;status="CLEANUP_FAILED (AdGuard not installed)"}else installAfterCleanup()
     }
     private fun guardTabs(extension: WebExtension) {
         extension.setTabDelegate(object : WebExtension.TabDelegate {

@@ -15,10 +15,10 @@ test('domain boundaries, exceptions and main document safety', () => {
   expect(engine.blocked(r, 'file:///ads.example', 'script')).toBe(false);
 });
 test('cosmetics scoped and form-safe, unsupported syntax skipped', () => {
-  const r = engine.compile('site.example##.ad-slot\nsite.example##body\nsite.example#%#alert(1)\n||ads.example^$script');
+  const r = engine.compile('site.example##.custom-ad\nsite.example##body\nsite.example#%#alert(1)\n||ads.example^$script');
   expect(r.skipped).toBe(3);
-  expect(engine.styles(r, 'https://site.example/page')).toContain(':not(:has(form,input,textarea,select,button))');
-  expect(engine.styles(r, 'https://unrelated.example/page')).toBe('');
+  expect(engine.styles(r, 'https://site.example/page')).toContain(':not(:has(form,input,textarea,select,button,video,audio,canvas,');
+  expect(engine.styles(r, 'https://unrelated.example/page')).not.toContain('.custom-ad');
 });
 test('bounded rules cannot inject CSS or execute code', () => {
   expect(() => engine.compile('x'.repeat(2097153))).toThrow();
@@ -41,12 +41,12 @@ test('site exceptions, private separation, atomic failure and disconnect', async
   const {handlers:h,posted} = background();
   const ad = {tabId:1,type:'script',url:'https://ads.example/a',incognito:false};
   expect(h.request(ad)).toEqual({});
-  h.config(config); expect(posted[0].type).toBe('ready');
+  await h.config(config); expect(posted[0].type).toBe('ready');
   expect(h.request(ad).cancel).toBe(true);
   h.request({tabId:1,type:'main_frame',url:'https://allowed.example/',incognito:false});
   expect(h.request(ad)).toEqual({});
   expect(h.request({...ad,incognito:true}).cancel).toBe(true);
-  h.config({...config,rules:'x'.repeat(2097153)});
+  await h.config({...config,rules:'x'.repeat(2097153)});
   expect(posted.at(-1).code).toBe('CONFIG_INVALID');
   expect(h.request({...ad,incognito:true}).cancel).toBe(true);
   const css = await h.cosmetic({type:'cosmetic'},{tab:{id:2,incognito:false},url:'https://site.example/'});
@@ -67,11 +67,28 @@ test('bundled Peter Lowe domain list fits supported bounded rule subset', () => 
   expect(rules.count).toBeGreaterThan(3500); expect(rules.count).toBeLessThan(20000); expect(rules.skipped).toBe(0);
 });
 
-test('decision counters are coalesced, private-separated and contain no URLs', () => {
-  const {handlers:h,posted,timers} = background(); h.config(config);
+test('decision counters are coalesced, private-separated and contain no URLs', async () => {
+  const {handlers:h,posted,timers} = background(); await h.config(config);
   for(let n=0;n<10;n++) h.request({tabId:1,type:'script',url:'https://ads.example/a',incognito:false});
   h.request({tabId:2,type:'image',url:'https://ads.example/b',incognito:true});
   expect(timers.length).toBe(1); timers[0]!();
-  expect(JSON.stringify(posted.at(-1))).toBe(JSON.stringify({type:'stats',generation:1,blocked:10,privateBlocked:1}));
+  expect(JSON.stringify(posted.at(-1))).toBe(JSON.stringify({type:'stats',generation:1,blocked:10,privateBlocked:1,hidden:0,collapsed:0,privateHidden:0,privateCollapsed:0}));
   expect(JSON.stringify(posted.at(-1))).not.toContain('https:');
+});
+
+test('shared selector corpus agrees with Kotlin normalization',()=>{
+ for(const line of readFileSync(resolve(import.meta.dir,'../../../core/src/test/resources/cosmetic-selectors.tsv'),'utf8').trimEnd().split('\n')){
+  const [raw,expected]=line.split('\t');expect(engine.selector(raw)).toBe(expected==='INVALID'?null:expected);
+ }
+ expect(engine.selector('.'+'a'.repeat(257))).toBe(null);
+});
+test('cosmetic exceptions win across suffixes and normalize duplicate rules',()=>{
+ const r=engine.compile('site.example##.custom-ad>.unit\nsite.example##.custom-ad > .unit\nsub.site.example#@#.custom-ad > .unit\n@@||site.example^');
+ expect(r.count).toBe(3);expect(engine.styles(r,'https://site.example')).toContain('.custom-ad > .unit');expect(engine.styles(r,'https://sub.site.example')).not.toContain('.custom-ad > .unit');
+});
+test('many tabs retain origin exceptions',async()=>{
+ const {handlers:h}=background();await h.config(config);h.request({tabId:1,type:'main_frame',url:'https://allowed.example/',incognito:false});
+ for(let n=2;n<=100;n++)h.request({tabId:n,type:'main_frame',url:'https://site.example/',incognito:false});
+ expect(h.request({tabId:1,type:'script',url:'https://ads.example/a',incognito:false})).toEqual({});
+ const excluded=await h.cosmetic({type:'cosmetic'},{tab:{id:1,incognito:false},url:'https://allowed.example/'});expect(excluded.css).toBe('');
 });

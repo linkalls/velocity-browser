@@ -236,7 +236,13 @@ class MainActivity : Activity(), BrowserHost {
                 8 -> if (!privateMode) blocker.openAdguardOptions()
             }
         }) }
-        SettingsView(this,appearance,"広告とトラッカーのブロック",listOf(SettingsView.Row("状態",origin?:"ページ未選択","${blocker.mode.name} · 遮断判定 ${if(privateMode)blocker.privateDecisions else blocker.normalDecisions}（広告の個数ではありません）") {})+rows).show()
+        val cosmeticRows=listOf(
+            SettingsView.Row("要素非表示","広告要素を非表示 · ${blocker.cosmeticEnabled}","Liteのみ。フォーム・本文領域を保護します") {blocker.setCosmetic(!blocker.cosmeticEnabled)},
+            SettingsView.Row("要素非表示","広告の空白を折りたたむ · ${blocker.collapseEnabled}","広告専用の空枠のみ。高負荷時は監視を停止") {blocker.setCollapse(!blocker.collapseEnabled)},
+            SettingsView.Row("要素非表示","このサイトの折りたたみ",if(origin!=null&&blocker.collapseExcluded(origin,privateMode))"OFF" else "ON") {if(origin!=null)blocker.toggleCollapseException(origin,privateMode)}
+        )
+        val counts=if(blocker.mode==dev.velocity.browser.block.BlockController.Mode.ADGUARD)"AdGuardの非表示・折りたたみ: 未取得" else "全${if(privateMode)"非公開" else "通常"}タブの観測数 · 非表示 ${if(privateMode)blocker.privateHiddenElements else blocker.hiddenElements} / 折りたたみ ${if(privateMode)blocker.privateCollapsedElements else blocker.collapsedElements}（各ページ100候補まで）"
+        SettingsView(this,appearance,"広告とトラッカーのブロック",listOf(SettingsView.Row("状態",origin?:"ページ未選択","${blocker.mode.name} · 遮断判定 ${if(privateMode)blocker.privateDecisions else blocker.normalDecisions}（広告の個数ではありません）\n$counts") {})+cosmeticRows+rows).show()
     }
 
 }

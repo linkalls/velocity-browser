@@ -160,5 +160,18 @@ class BrowserUiIntegrationTest {
                 }
             };click("キャンセル")
         } finally { cleanup() }
+    }    @Test fun hundredLogicalTabsSearchPinCloseUndoWithoutPreloading() {
+        launch();try {
+            main {repeat(100){app.coordinator.dispatch(Event.CreateTab("logical-$it","https://example.com/$it",title="Logical$it"))};assertEquals(1,app.coordinator.scheduler.liveCount)}
+            device.findObject(By.descStartsWith("タブ ")).click()
+            val query=device.findObject(By.desc("タブを検索"));assertNotNull(query);query.text="Logical99"
+            assertTrue(device.wait(Until.hasObject(By.desc("『Logical99』を閉じる")),10000))
+            click("固定");main {assertTrue(app.coordinator.scheduler.tab("logical-99")!!.pinned)}
+            clickDescription("『Logical99』を閉じる");main {assertNull(app.coordinator.scheduler.tab("logical-99"));assertTrue(app.coordinator.canUndo())}
+            click("閉じるを取り消す（ページを再読み込み）")
+            main {assertTrue(app.coordinator.scheduler.tabs.any {it.url=="https://example.com/99"&&it.pinned});assertFalse(app.coordinator.canUndo())}
+            click("完了")
+        } finally {cleanup()}
     }
+
 }
