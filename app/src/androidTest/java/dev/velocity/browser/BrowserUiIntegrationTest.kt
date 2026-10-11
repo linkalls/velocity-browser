@@ -37,6 +37,7 @@ class BrowserUiIntegrationTest {
         }
     }
     private fun click(text: String) { assertTrue("missing $text",device.wait(Until.hasObject(By.text(text)),10000)); device.findObject(By.text(text)).click(); device.waitForIdle() }
+    private fun clickDescription(description: String) { assertTrue("missing $description",device.wait(Until.hasObject(By.desc(description)),10000)); device.findObject(By.desc(description)).click();device.waitForIdle() }
     private fun field() = device.findObjects(By.clazz("android.widget.EditText")).firstOrNull { it.resourceName != "dev.velocity.browser:id/address" }
     private fun awaitField() {
         val deadline = SystemClock.elapsedRealtime()+15000
@@ -85,7 +86,7 @@ class BrowserUiIntegrationTest {
             main { assertEquals(identity,app.coordinator.scheduler.tab(id)!!.identity) }
             click("完了"); awaitField();assertEquals("KEEP_ON_CANCEL",field()!!.text)
             device.findObject(By.descStartsWith("タブ ")).click()
-            device.findObject(By.desc("『UI_FIXTURE』を閉じる")).click();click("このタブを閉じる")
+            clickDescription("『UI_FIXTURE』を閉じる");click("このタブを閉じる")
             main {
                 assertNull(app.coordinator.scheduler.tab(id));assertEquals(1,app.coordinator.scheduler.tabs.size)
                 assertEquals("about:blank",app.coordinator.scheduler.tabs.single().url)
@@ -107,14 +108,15 @@ class BrowserUiIntegrationTest {
             device.setOrientationLeft();device.waitForIdle()
             await("fresh activity after rotation") { app.coordinator.host!==old && app.coordinator.host!=null }
             assertTrue(device.wait(Until.hasObject(By.desc("『SECOND_TAB』を閉じて表示")),10000))
-            device.findObject(By.desc("『SECOND_TAB』を閉じて表示")).click();click("キャンセル")
+            clickDescription("『SECOND_TAB』を閉じて表示");click("キャンセル")
             main { assertNull(app.coordinator.scheduler.pendingId);assertNotNull(app.coordinator.scheduler.tab(second));app.coordinator.select(target) }
-            device.findObject(By.desc("『SECOND_TAB』を閉じて表示")).click();click("このタブを閉じる")
+            clickDescription("『SECOND_TAB』を閉じて表示");click("このタブを閉じる")
             main { assertEquals(target,app.coordinator.scheduler.selectedId);assertNull(app.coordinator.scheduler.tab(second));assertEquals(firstIdentity,app.coordinator.scheduler.tab(first)!!.identity);assertEquals(2,app.coordinator.scheduler.liveCount);app.coordinator.select(first) }
             awaitField();assertEquals("FIRST_DRAFT",field()!!.text)
         } finally { cleanup() } }
     }
     @Test fun appearancePersistsAndUpdatesWebSchemeWithoutReloadOrDraftLoss() {
+        val nightBefore = inst.targetContext.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
         launch();Fixture().use { f -> try {
             main { app.appearance.select(ThemeController.Mode.LIGHT) }
             val id=form(f);field()!!.text="THEME_DRAFT"
@@ -136,7 +138,7 @@ class BrowserUiIntegrationTest {
             assertTrue(device.wait(Until.hasObject(By.text("SCHEME_LIGHT")),15000))
             assertEquals("THEME_DRAFT",field()!!.text)
             main { assertEquals(identity,app.coordinator.scheduler.tab(id)!!.identity);assertEquals(epoch,app.coordinator.scheduler.tab(id)!!.epoch) }
-        } finally { device.executeShellCommand("cmd uimode night no");cleanup() } }
+        } finally { device.executeShellCommand("cmd uimode night " + if (nightBefore) "yes" else "no");cleanup() } }
     }
     @Test fun privateCloseWarningAndNativePaletteHaveSafeContrast() {
         launch();try {
