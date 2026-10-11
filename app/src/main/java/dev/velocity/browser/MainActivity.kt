@@ -47,7 +47,7 @@ class MainActivity : Activity(), BrowserHost {
                 val before = coordinator.scheduler.selectedId
                 coordinator.createTab(privateMode = privateMode)
                 coordinator.scheduler.selectedId != before && coordinator.scheduler.pendingId == null
-            }, { coordinator.close(it) }, coordinator::cancelPending, ::readingDialog, coordinator::undoClose, coordinator::canUndo, coordinator::pin).also {
+            }, { coordinator.close(it) }, coordinator::cancelPending, ::readingDialog, coordinator::undoClose, coordinator::canUndo, coordinator::pin, ::organizeTabs).also {
                 it.update(coordinator.scheduler.tabs,coordinator.scheduler.selectedId,coordinator.scheduler.pendingId); it.show()
             }
         }
@@ -201,6 +201,20 @@ class MainActivity : Activity(), BrowserHost {
         dialog().setTitle(R.string.reading_new).setMessage(R.string.reading_consent).setView(input)
             .setPositiveButton(R.string.go) { _, _ -> UrlPolicy.input(input.text.toString(), coordinator.searchEngine)?.let(coordinator::createReadingTab) }
             .setNegativeButton(R.string.cancel, null).showThemed()
+    }
+    private fun organizeTabs() {
+        dialog().setTitle("タブを整理").setItems(arrayOf("全て閉じる","他のタブを閉じる","重複URLのタブを整理")) {_,choice->
+            val tabs=coordinator.scheduler.tabs
+            val seen=mutableSetOf<Pair<Boolean,String>>()
+            val closing=tabs.filter {when(choice){0->true;1->it.id!=coordinator.scheduler.selectedId;else->!seen.add(it.privateMode to it.url)}}
+            if(closing.isEmpty())return@setItems
+            appearance.show(dialog().setTitle("${closing.size}枚のタブを閉じる")
+                .setMessage("未保存のフォームや操作中のデータも失われます。固定されたタブも対象です。取り消しで完全なページ状態は復元できません。")
+                .setPositiveButton("閉じる") {_,_->closing.forEach {t->
+                    val current=coordinator.scheduler.tab(t.id)
+                    if(current!=null&&current.identity==t.identity&&current.epoch==t.epoch&&current.revision==t.revision)coordinator.close(t.id,true)
+                }}.setNegativeButton(R.string.cancel,null),true)
+        }.showThemed()
     }
     private fun siteRules() {
         val t=coordinator.scheduler.selectedId?.let(coordinator.scheduler::tab)?:return

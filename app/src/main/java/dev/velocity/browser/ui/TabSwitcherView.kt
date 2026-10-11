@@ -16,7 +16,7 @@ class TabSwitcherView(context: Context, private val appearance: ThemeController,
     private val select: (String) -> Boolean, private val create: (Boolean) -> Boolean,
     private val close: (String) -> Unit, private val cancel: (String) -> Unit,
     private val reading: () -> Unit, private val undo: () -> Unit = {},
-    private val canUndo: () -> Boolean = { false }, private val pin: (String) -> Unit = {}) {
+    private val canUndo: () -> Boolean = { false }, private val pin: (String) -> Unit = {}, private val organize: () -> Unit = {}) {
     private val preferences=context.getSharedPreferences("settings",Context.MODE_PRIVATE)
     private val dialog=Dialog(context).apply { requestWindowFeature(Window.FEATURE_NO_TITLE) }
     private val panel=LinearLayout(context).apply { orientation=LinearLayout.VERTICAL;setPadding(context.dp(12),context.dp(12),context.dp(12),context.dp(12)) }
@@ -71,7 +71,7 @@ class TabSwitcherView(context: Context, private val appearance: ThemeController,
             addView(button("非公開タブ") {privateMode=true;filter()},LinearLayout.LayoutParams(0,-2,1f))
             addView(button("表示切替") {columns=if(columns==2)1 else 2;preferences.edit().putBoolean("tabs_list",columns==1).apply();grid.numColumns=columns;adapter.notifyDataSetChanged()},LinearLayout.LayoutParams(0,-2,1f))
         })
-        grid.numColumns=columns;grid.adapter=adapter;panel.addView(grid,LinearLayout.LayoutParams(-1,0,1f));panel.addView(undoButton)
+        grid.numColumns=columns;grid.adapter=adapter;panel.addView(grid,LinearLayout.LayoutParams(-1,0,1f));panel.addView(undoButton);panel.addView(button("一括整理",organize))
         search.addTextChangedListener(object:TextWatcher {override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){};override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int){filter()};override fun afterTextChanged(s:Editable?){} })
         dialog.setContentView(panel)
     }

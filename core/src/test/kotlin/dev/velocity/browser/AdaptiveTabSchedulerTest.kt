@@ -143,4 +143,9 @@ class AdaptiveTabSchedulerTest {
         create("a");s.dispatch(Event.CreateTab("cold","https://example.com"))
         assertFalse(s.dispatch(Event.CloseTab("cold")).any { it is Command.CloseSession || it is Command.CreateSession });assertEquals("a",s.selectedId)
     }
+    @Test fun logicalInsertionPreservesOrderWithoutPreloading() {
+        repeat(100){s.dispatch(Event.CreateTab("t$it","https://example.com/$it"))}
+        s.dispatch(Event.CloseTab("t50"));s.dispatch(Event.CreateTab("undo","https://example.com/50",position=50))
+        assertEquals("undo",s.tabs[50].id);assertEquals("t51",s.tabs[51].id);assertEquals(0,s.liveCount)
+    }
 }

@@ -241,10 +241,11 @@ class AdaptiveTabCoordinator(private val context: Context) {
     fun select(id: String) { metrics.record("SELECT"); dispatch(Event.SelectTab(id)) }
     fun close(id: String, confirmed: Boolean = false) {
         val t=scheduler.tab(id)
+        val index=scheduler.tabs.indexOfFirst {it.id==id}
         dispatch(Event.CloseTab(id,confirmed))
         if (t != null && scheduler.tab(id)==null && !t.privateMode && t.extensionBase==null) {
             undoTab=TabRecord(t.id,t.url,readOnly=t.readOnly,title=t.title,pinned=t.pinned)
-            undoUntil=clock.elapsedRealtimeMs()+10_000;render()
+            undoIndex=index;undoUntil=clock.elapsedRealtimeMs()+10_000;render()
         }
     }
     fun navigate(input: String) {
@@ -279,12 +280,13 @@ class AdaptiveTabCoordinator(private val context: Context) {
     fun pin(id: String) { scheduler.tab(id)?.let { dispatch(Event.SetPinned(id,!it.pinned)) } }
     private var undoTab: TabRecord? = null
     private var undoUntil = 0L
+    private var undoIndex=0
     fun canUndo() = undoTab != null && clock.elapsedRealtimeMs() < undoUntil
     fun undoClose() {
         val t = undoTab?.takeIf { canUndo() } ?: return
         undoTab = null
         val id=UUID.randomUUID().toString()
-        dispatch(Event.CreateTab(id,t.url,readOnly=t.readOnly)); dispatch(Event.SetPinned(id,t.pinned));select(id)
+        dispatch(Event.CreateTab(id,t.url,readOnly=t.readOnly,title=t.title,position=undoIndex)); dispatch(Event.SetPinned(id,t.pinned));select(id)
     }
     fun foreground(active: Boolean) {
         if (!active) repository.flush()
