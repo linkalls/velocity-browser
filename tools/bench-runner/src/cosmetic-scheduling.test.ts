@@ -6,9 +6,9 @@ function fixture(workload=0){
  let now=0,scans=0,styleReads=0,next=1;
  const events:Record<string,()=>void>={},timers=new Map<number,{at:number,run:()=>void}>();
  class Element {
-  childNodes:unknown[]=[];isConnected=true;
-  matches(selector:string){return selector==='.ad';}closest(){return null;}querySelector(){return null;}
-  querySelectorAll(){scans++;if(this===document.documentElement&&workload){now+=2;return Array.from({length:workload},()=>new Element());}return [];}
+  childNodes:unknown[]=[];isConnected=true;isAd=false;
+  matches(selector:string){return this.isAd&&selector==='.ad';}closest(){return null;}querySelector(){return null;}
+  querySelectorAll(){scans++;if(this===document.documentElement&&workload){now+=2;return Array.from({length:workload},()=>{const e=new Element();e.isAd=true;return e;});}return [];}
   appendChild(){}remove(){}setAttribute(){}removeAttribute(){}
  }
  const document={hidden:false,documentElement:new Element(),head:new Element(),activeElement:null,
