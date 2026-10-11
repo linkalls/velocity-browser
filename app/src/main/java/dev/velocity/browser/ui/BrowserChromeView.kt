@@ -16,7 +16,7 @@ import org.mozilla.geckoview.GeckoView
 /** ネイティブchromeのみ。ページ描画は1個のGeckoViewに集約。 */
 class BrowserChromeView(context: Context) : LinearLayout(context) {
     private val ink = Color.rgb(25, 34, 43)
-    private val muted = Color.rgb(109, 121, 131)
+    private val muted = Color.rgb(93, 105, 115)
     private val accent = Color.rgb(0, 122, 102)
     private val surface = Color.rgb(247, 249, 250)
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
@@ -92,7 +92,7 @@ class BrowserChromeView(context: Context) : LinearLayout(context) {
     fun updateState(tabCount: Int, privateMode: Boolean, mode: String, lite: Boolean, busy: Boolean, decisions: Int, status: String) {
         tabsButton.count = tabCount; tabsButton.invalidate(); tabsButton.contentDescription = "タブ $tabCount 件"
         privacy.text = if (privateMode) "PRIVATE" else ""
-        shield.text = when { busy -> "準備中…"; status.contains("FAILED") || status.contains("INVALID") || status == "DISCONNECTED" -> "拡張の状態を確認"; lite && !status.startsWith("READY_CONFIG_ACK") -> "Lite · 準備中…"; mode == "ADGUARD" -> "AdGuard · 設定"; lite -> "Lite · 遮断判定 $decisions"; mode == "ALL_OFF" -> "広告ブロック OFF"; else -> "追跡防止 · Lite OFF" }
+        shield.text = when { busy -> "準備中…"; status.contains("FAILED") || status.contains("INVALID") || status == "DISCONNECTED" -> "拡張の状態を確認"; lite && !status.startsWith("READY_CONFIG_ACK") -> "Lite · 準備中…"; mode == "ADGUARD" && privateMode -> "非公開 · AdGuard OFF"; mode == "ADGUARD" -> "AdGuard · 設定"; lite -> "Lite · 遮断判定 $decisions"; mode == "ALL_OFF" -> "広告ブロック OFF"; else -> "追跡防止 · Lite OFF" }
     }
     private fun submit() {
         val value = address.text.toString(); address.clearFocus()

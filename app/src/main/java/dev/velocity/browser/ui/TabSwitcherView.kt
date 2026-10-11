@@ -32,7 +32,7 @@ object TabSwitcherView {
             val label = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setOnClickListener { dialog.dismiss(); select(tab.id) }; contentDescription = "${tab.title.ifBlank { tab.url }}を選択"; isFocusable = true }
             val state = when (tab.state) { TabState.COLD -> "休眠"; TabState.ACTIVE -> "表示中"; TabState.RESTORING -> "再表示中"; TabState.FAILED -> "読み込み失敗"; else -> "保持中" }
             label.addView(TextView(context).apply { text = tab.title.ifBlank { if (tab.url == "about:blank") "新しいタブ" else tab.url }; textSize = 15f; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setTextColor(Color.rgb(25,34,43)) })
-            label.addView(TextView(context).apply { text = (if (tab.privateMode) "プライベート · " else "") + (if (tab.readOnly) "閲覧専用 · " else "") + state; textSize = 11f; setTextColor(Color.rgb(109,121,131)); setPadding(0,dp(5),0,0) })
+            label.addView(TextView(context).apply { text = (if (tab.privateMode) "プライベート · " else "") + (if (tab.readOnly) "閲覧専用 · " else "") + state; textSize = 11f; setTextColor(Color.rgb(93,105,115)); setPadding(0,dp(5),0,0) })
             row.addView(label,LinearLayout.LayoutParams(0,-2,1f))
             row.addView(Button(context).apply { text = "×"; textSize = 24f; contentDescription = "このタブを閉じる"; background = null; minWidth = 0; minimumWidth = 0; setOnClickListener { dialog.dismiss(); close(tab.id) } },LinearLayout.LayoutParams(dp(48),dp(48)))
             rows.addView(row,LinearLayout.LayoutParams(-1,-2).apply { topMargin = dp(8) })

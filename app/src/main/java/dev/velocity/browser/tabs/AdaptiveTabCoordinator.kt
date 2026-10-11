@@ -130,11 +130,11 @@ class AdaptiveTabCoordinator(private val context: Context) {
             is Command.RequestSessionStateFlush -> adapters[c.id]?.takeIf { it.identity == c.identity }?.let { adapter ->
                 handler.postDelayed({ dispatch(Event.SaveTimedOut(c.id, c.identity, c.generation)) }, 5000)
                 adapter.session.flushSessionState() // void、非同期。直後の保存完了判定は禁止。
-                if (adapter.pristineBlank && scheduler.tab(c.id)?.url == "about:blank") {
+                if (!untrustedExtensionSeen && (context.applicationContext as dev.velocity.browser.VelocityApp).blocker.readingAllowed() && adapter.pristineBlank && scheduler.tab(c.id)?.url == "about:blank") {
                     dispatch(Event.RiskChanged(c.id, c.identity, Protection.UNKNOWN, false))
                     handler.post {
                         val t = scheduler.tab(c.id)
-                        if (t != null && isCurrent(c.id, c.identity) && adapter.pristineBlank && t.url == "about:blank")
+                        if (!untrustedExtensionSeen && (context.applicationContext as dev.velocity.browser.VelocityApp).blocker.readingAllowed() && t != null && isCurrent(c.id, c.identity) && adapter.pristineBlank && t.url == "about:blank")
                             dispatch(Event.SafeCheckpoint(t.id, c.identity, t.epoch, t.revision, t.saveGeneration))
                     }
                 }
@@ -155,7 +155,7 @@ class AdaptiveTabCoordinator(private val context: Context) {
         view?.let { if (adapter.session.isOpen && it.session != adapter.session) { it.releaseSession(); it.setSession(adapter.session) } }
     }
     fun acceptBlankSnapshot(id: String, identity: Long, state: GeckoSession.SessionState) {
-        if (!isCurrent(id, identity)) return
+        if (untrustedExtensionSeen || !isCurrent(id, identity) || !(context.applicationContext as dev.velocity.browser.VelocityApp).blocker.readingAllowed()) return
         val t = scheduler.tab(id) ?: return
         snapshots[id] = state
         dispatch(Event.SessionStateChanged(id, identity, t.epoch, id))
@@ -178,7 +178,7 @@ class AdaptiveTabCoordinator(private val context: Context) {
     }
     fun untrustedExtensionInstalled() {
         untrustedExtensionSeen = true
-        scheduler.tabs.filter { it.live && it.readOnly }.forEach { t ->
+        scheduler.tabs.filter { it.live }.forEach { t ->
             dispatch(Event.RiskChanged(t.id, t.identity!!, Protection.PINNED, true))
         }
     }
