@@ -16,6 +16,7 @@ class PromptController(private val owner: AdaptiveTabCoordinator) {
         val result = GeckoResult<GeckoSession.PromptDelegate.PromptResponse>()
         val host = owner.host
         if (host == null || owner.scheduler.selectedId != a.id || !owner.scheduler.foreground) return GeckoResult.fromValue(prompt.dismiss())
+        val epoch=owner.scheduler.tab(a.id)?.epoch
         a.risk(Protection.PROMPT, true)
         var completed = false
         var dialog: AlertDialog? = null
@@ -24,7 +25,8 @@ class PromptController(private val owner: AdaptiveTabCoordinator) {
             if (completed) return
             completed = true; pending[a]?.remove(cancel)
             prompt.setDelegate(null)
-            if (!prompt.isComplete) result.complete(if (positive && owner.isCurrent(a.id, a.identity)) confirm(value) else prompt.dismiss())
+            if (!prompt.isComplete) result.complete(if (positive && owner.isCurrent(a.id, a.identity) && owner.scheduler.tab(a.id)?.epoch==epoch && owner.scheduler.selectedId==a.id && owner.scheduler.foreground) confirm(value) else prompt.dismiss())
+            else result.completeExceptionally(IllegalStateException("Prompt already completed"))
             dialog?.dismiss()
             if (pending[a].isNullOrEmpty()) a.risk(Protection.PROMPT, false)
         }
@@ -37,7 +39,9 @@ class PromptController(private val owner: AdaptiveTabCoordinator) {
         prompt.setDelegate(object : GeckoSession.PromptDelegate.PromptInstanceDelegate {
             override fun onPromptDismiss(prompt: GeckoSession.PromptDelegate.BasePrompt) { finish(false) }
         })
-        dialog = builder.create(); dialog.show(); (host.activity.application as dev.velocity.browser.VelocityApp).appearance.track(dialog); return result
+        dialog = builder.create(); dialog.show(); (host.activity.application as dev.velocity.browser.VelocityApp).appearance.track(dialog)
+        if(owner.scheduler.tab(a.id)?.privateMode==true)dialog.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        return result
     }
     private fun unsupported(a: GeckoSessionAdapter, p: GeckoSession.PromptDelegate.BasePrompt): GeckoResult<GeckoSession.PromptDelegate.PromptResponse> {
         owner.notice(R.string.unsupported); return GeckoResult.fromValue(p.dismiss())

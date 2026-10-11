@@ -22,6 +22,7 @@ class CompatibilityIntegrationTest {
     private val inst=InstrumentationRegistry.getInstrumentation()
     private val app get()=inst.targetContext.applicationContext as VelocityApp
     private val device get()=UiDevice.getInstance(inst)
+    private fun documents()=By.pkg(java.util.regex.Pattern.compile("(?:com.android|com.google.android).documentsui"))
     private fun main(block:()->Unit)=inst.runOnMainSync(block)
     private fun await(message:String,condition:()->Boolean) {
         val end=SystemClock.elapsedRealtime()+30000
@@ -38,7 +39,7 @@ class CompatibilityIntegrationTest {
     }
     private fun cleanup() {
         device.setOrientationNatural();device.unfreezeRotation()
-        if(device.hasObject(By.pkg("com.google.android.documentsui")) || device.hasObject(By.text("BRIDGE_CANCEL"))) device.pressBack()
+        repeat(3) { if(device.hasObject(documents()) || device.hasObject(By.text("BRIDGE_CANCEL"))) { device.pressBack();device.waitForIdle() } }
         main { app.coordinator.externalActivities.cancelAll();app.coordinator.downloads.snapshot().filter { it.active }.forEach { app.coordinator.downloads.cancel(it.id) };app.coordinator.downloads.dismiss();app.coordinator.scheduler.pendingId?.let(app.coordinator::cancelPending);app.coordinator.scheduler.tabs.forEach { app.coordinator.close(it.id,true) } }
     }
     private class Fixture:AutoCloseable {
@@ -49,7 +50,7 @@ class CompatibilityIntegrationTest {
         init { io.execute { while(!server.isClosed) try { server.accept().use { socket ->
             socket.soTimeout=5000;val input=socket.getInputStream().buffered();val header=StringBuilder()
             while(!header.endsWith("\r\n\r\n")) { val n=input.read();if(n<0)return@use;header.append(n.toChar());if(header.length>16384)return@use }
-            val headers=header.toString();val path=headers.lineSequence().first().split(' ')[1]
+            val headers=header.toString();val path=headers.lineSequence().first().split(' ')[1].substringBefore('?')
             val length=Regex("Content-Length: ([0-9]+)",RegexOption.IGNORE_CASE).find(headers)?.groupValues?.get(1)?.toInt() ?: 0
             val body=ByteArray(length.coerceAtMost(65536));var position=0
             while(position<body.size) { val n=input.read(body,position,body.size-position);if(n<0)break;position+=n }
@@ -60,7 +61,7 @@ class CompatibilityIntegrationTest {
                 "/download" -> { type="text/plain";extra="Content-Disposition: attachment; filename=\"velocity-download.txt\"\r\n";"download-real-gecko-stream" }
                 else -> """<!doctype html><meta charset=utf-8><title>COMPAT_FIXTURE</title><label>DRAFT<input aria-label=DRAFT></label><input id=one type=file accept=.txt><input id=many type=file accept=text/plain multiple><button onclick="one.click()">PICK_SINGLE</button><button onclick="many.click()">PICK_MULTIPLE</button><a href=/download download>DOWNLOAD_FIXTURE</a><p id=result>READY</p><script>for(const id of ['one','many']) document.getElementById(id).onchange=async function(){const fd=new FormData();for(const f of this.files)fd.append('file',f);document.getElementById('result').textContent=await(await fetch('/upload',{method:'POST',body:fd})).text()+'_'+this.files.length};async function credentialTest(){const publicKey={challenge:new Uint8Array(32),rpId:location.hostname,allowCredentials:[{id:new Uint8Array(16),type:'public-key'}],timeout:5000};const controller=new AbortController();controller.abort();try{await navigator.credentials.get({publicKey,signal:controller.signal});result.textContent='UNEXPECTED_CREDENTIAL'}catch(e){result.textContent='CANCELED_'+e.name}}async function invalidRp(){try{await navigator.credentials.get({publicKey:{challenge:new Uint8Array(32),rpId:'unrelated.invalid',allowCredentials:[],timeout:5000}});result.textContent='UNEXPECTED_CREDENTIAL'}catch(e){result.textContent='RP_REJECTED_'+e.name}}</script><button onclick=credentialTest()>PASSKEY_CANCEL</button><button onclick=invalidRp()>PASSKEY_INVALID_RP</button>"""
             }.toByteArray()
-            socket.getOutputStream().apply { write("HTTP/1.1 $status\r\nContent-Type: $type\r\n${extra}Content-Length: ${payload.size}\r\nConnection: close\r\n\r\n".toByteArray());write(payload);flush() }
+            socket.getOutputStream().apply { write("HTTP/1.1 $status\r\nContent-Type: $type\r\n${extra}Content-Length: ${payload.size}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n".toByteArray());write(payload);flush() }
         } } catch(_:java.io.IOException) { } } }
         override fun close(){server.close();io.shutdownNow()}
     }
@@ -70,24 +71,28 @@ class CompatibilityIntegrationTest {
         assertTrue(device.wait(Until.hasObject(By.text("READY")),15000));return id
     }
     private fun root() {
-        assertTrue(device.wait(Until.hasObject(By.pkg("com.google.android.documentsui")),15000))
+        assertTrue("system SAF picker",device.wait(Until.hasObject(documents()),15000))
         if(!device.hasObject(By.text("Velocity fixtures"))) {
             val roots=device.findObject(By.desc("Show roots")) ?: device.findObject(By.desc("Open navigation drawer"))
             assertNotNull("system SAF roots button",roots);roots!!.click()
         };click("Velocity fixtures")
     }
+    private fun draft()=device.findObjects(By.clazz("android.widget.EditText")).firstOrNull { it.resourceName!="dev.velocity.browser:id/address" }
     @Test fun singleAndMultipleSafAttachmentsActuallyUploadAndRemainProtected() {
         launch();Fixture().use { f -> try {
-            val id=page(f);click("PICK_SINGLE");root();click("alpha.txt")
+            val id=page(f);assertNotNull(draft());draft()!!.text="KEEP_SELECTED_FILES";click("PICK_SINGLE");root();click("alpha.txt")
             assertTrue(device.wait(Until.hasObject(By.text("UPLOAD_OK_1")),15000))
+            assertEquals("KEEP_SELECTED_FILES",draft()!!.text)
             main { assertTrue(Protection.UPLOAD in app.coordinator.scheduler.tab(id)!!.protections);assertTrue(app.coordinator.scheduler.liveCount<=2) }
             click("PICK_MULTIPLE");root()
             device.findObject(By.text("alpha.txt")).longClick();click("beta.txt")
-            val select=device.findObject(By.res("com.google.android.documentsui","action_menu_select")) ?: device.findObject(By.text("Select")) ?: device.findObject(By.desc("Select"))
+            val select=device.findObject(By.res("com.android.documentsui","action_menu_select")) ?: device.findObject(By.res("com.google.android.documentsui","action_menu_select")) ?: device.findObject(By.text("Select")) ?: device.findObject(By.desc("Select"))
             assertNotNull("multiple file selection action",select);select!!.click()
             assertTrue(device.wait(Until.hasObject(By.text("UPLOAD_OK_2")),15000))
+            assertEquals("KEEP_SELECTED_FILES",draft()!!.text)
             click("PICK_SINGLE");root();device.pressBack()
             assertTrue(device.wait(Until.hasObject(By.text("UPLOAD_OK_2")),15000))
+            assertEquals("KEEP_SELECTED_FILES",draft()!!.text)
             main { assertTrue(Protection.UPLOAD in app.coordinator.scheduler.tab(id)!!.protections) }
             main { app.coordinator.close(id,true) }
             val end=SystemClock.elapsedRealtime()+15000
@@ -100,7 +105,7 @@ class CompatibilityIntegrationTest {
             val id=page(f);click("DOWNLOAD_FIXTURE")
             await("download offer") { app.coordinator.downloads.snapshot().any { it.state==DownloadController.State.OFFERED } }
             click("保存先を選ぶ");root()
-            val save=device.findObject(By.res("com.google.android.documentsui","button_save")) ?: device.findObject(By.text("Save"))
+            val save=device.findObject(By.res("com.android.documentsui","button_save")) ?: device.findObject(By.res("com.google.android.documentsui","button_save")) ?: device.findObject(By.text("Save"))
             assertNotNull("SAF save",save);save!!.click()
             await("download completion") { app.coordinator.downloads.snapshot().any { it.state==DownloadController.State.COMPLETE } }
             var uri:android.net.Uri?=null
@@ -116,9 +121,11 @@ class CompatibilityIntegrationTest {
     @Test fun httpAuthenticationCancelThenRetryUsesExplicitCredentials() {
         launch();Fixture().use { f -> try {
             main { app.coordinator.createTab(f.url+"/auth") }
+            assertTrue("initial auth dialog",device.wait(Until.hasObject(By.text("HTTP認証")),15000))
             click("キャンセル")
-            main { app.coordinator.navigate(f.url+"/auth") }
-            assertTrue(device.wait(Until.hasObject(By.text("HTTP認証")),15000))
+            assertTrue("canceled request must settle before retry",device.wait(Until.hasObject(By.text("更新")),15000))
+            main { app.coordinator.navigate(f.url+"/auth?retry=1") }
+            assertTrue("retry auth dialog, requests=${f.authRequests.get()}",device.wait(Until.hasObject(By.text("HTTP認証")),15000))
             device.findObject(By.hint("ユーザー名")).text="fixture"
             device.findObject(By.hint("パスワード")).text="fixture"
             click("ログイン")
@@ -137,6 +144,10 @@ class CompatibilityIntegrationTest {
                 click("PASSKEY_INVALID_RP")
                 assertTrue(device.wait(Until.hasObject(By.text("RP_REJECTED_SecurityError")),15000))
                 main { assertNotNull(app.coordinator.scheduler.tab(id));assertTrue(app.coordinator.scheduler.liveCount<=2) }
+                if(privateMode) {
+                    click("PICK_SINGLE");device.waitForIdle();assertFalse("private upload must not launch disk staging",device.hasObject(documents()))
+                    main { assertEquals(id,app.coordinator.scheduler.selectedId);assertFalse(Protection.UPLOAD in app.coordinator.scheduler.tab(id)!!.protections) }
+                }
             }
         } finally { cleanup() } }
     }
@@ -153,6 +164,12 @@ class CompatibilityIntegrationTest {
             device.setOrientationLeft();device.waitForIdle();click("BRIDGE_RETURN")
             assertTrue(completed.await(10,TimeUnit.SECONDS));assertTrue(data?.getBooleanExtra("bridge_fixture",false)==true)
             main { assertEquals(id,app.coordinator.scheduler.selectedId);assertTrue(app.coordinator.scheduler.liveCount<=2);assertFalse(Protection.WEBAUTHN in app.coordinator.scheduler.tab(id)!!.protections) }
+            val obsolete=java.util.concurrent.CountDownLatch(1);val callbacks=java.util.concurrent.atomic.AtomicInteger();var obsoleteError:Throwable?=null
+            main { app.coordinator.runtimeActivities.delegate.onStartActivityForResult(pending)!!.accept({ callbacks.incrementAndGet();obsolete.countDown() },{ obsoleteError=it;callbacks.incrementAndGet();obsolete.countDown() }) }
+            assertTrue(device.wait(Until.hasObject(By.text("BRIDGE_RETURN")),15000))
+            main { app.coordinator.navigate(f.url+"/?different-document=1") }
+            assertTrue(obsolete.await(10,TimeUnit.SECONDS));assertNotNull(obsoleteError);click("BRIDGE_RETURN")
+            assertEquals("late Activity result must not complete an obsolete request twice",1,callbacks.get())
         } finally { cleanup() } }
     }
     @Test fun repositoryLatestSnapshotWinsAndPreservesOrderWithoutPrivateRecords() {
