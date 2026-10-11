@@ -70,8 +70,31 @@ jobs:
           script: |
             ./gradlew :app:connectedDebugAndroidTest
             adb exec-out screencap -p > app/build/reports/androidTests/device-ui.png
+      - name: Report device test outcomes
+        if: always()
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          files = list(Path('app/build/outputs/androidTest-results').rglob('TEST-*.xml'))
+          if not files:
+              raise SystemExit('No device test XML results; device validation is unverified')
+          totals = dict(tests=0, failures=0, errors=0, skipped=0)
+          for path in files:
+              suite = ET.parse(path).getroot()
+              for key in totals:
+                  totals[key] += int(suite.get(key, 0))
+              for case in suite.findall('testcase'):
+                  outcome = 'SKIPPED' if case.find('skipped') is not None else 'FAIL' if case.find('failure') is not None or case.find('error') is not None else 'PASS'
+                  print(outcome, case.get('classname'), case.get('name'))
+          print('DEVICE_TOTALS', totals)
+          if totals['failures'] or totals['errors']:
+              raise SystemExit(1)
+          PYTHON
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: instrumentation-reports
-          path: app/build/reports/androidTests/
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
