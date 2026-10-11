@@ -25,9 +25,9 @@
     "localEmulator": "UNAVAILABLE: no KVM or adb device"
   },
   "lastSuccessfulDeviceRun": {
-    "runId": 38147354368,
-    "jobId": 114493413370,
-    "commit": "4c5bca4dc00c86f8116c83e9ee88aff7eaffe4f5",
+    "runId": 38147819890,
+    "jobId": 114494766622,
+    "commit": "576a641ca16a0e11391c61bdd4d77921b80e9fc2",
     "platform": "API36 x86_64 emulator, real GeckoView",
     "tests": 20,
     "failures": 0,
@@ -37,13 +37,14 @@
   "latestRun": {
     "runId": 38147819890,
     "commit": "576a641ca16a0e11391c61bdd4d77921b80e9fc2",
-    "status": "DEVICE_PASS_BUILD_PENDING",
+    "status": "ALL_PASS",
     "deviceJobId": 114494766622,
     "deviceTests": 20,
     "failures": 0,
     "errors": 0,
     "skipped": 0,
-    "bun": "PASS"
+    "bun": "PASS",
+    "build": "PASS"
   },
   "size": {
     "status": "MEASURED",
@@ -106,5 +107,15 @@
       "runId": 38147641649,
       "cause": "nullable delayed-close receiver compile error; not a device pass"
     }
-  ]
+  ],
+  "earlierSuccessfulDeviceRun": {
+    "runId": 38147354368,
+    "jobId": 114493413370,
+    "commit": "4c5bca4dc00c86f8116c83e9ee88aff7eaffe4f5",
+    "platform": "API36 x86_64 emulator, real GeckoView",
+    "tests": 20,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  }
 }

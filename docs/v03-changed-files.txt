@@ -38,6 +38,7 @@ docs/benchmarks/compat-release-artifact.json
 docs/benchmarks/compat-size.json
 docs/benchmarks/release-artifact.json
 docs/benchmarks/size.json
+docs/benchmarks/v03-device-results.json
 docs/benchmarks/v03-validation.json
 docs/device-tests.md
 docs/known-limitations.md

@@ -1,0 +1,32 @@
+{
+  "sourceCommit": "576a641ca16a0e11391c61bdd4d77921b80e9fc2",
+  "runId": 38147819890,
+  "jobId": 114494766622,
+  "platform": "API36 x86_64 emulator / real GeckoView",
+  "tests": 20,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "cases": [
+    "PASS dev.velocity.browser.BlockIntegrationTest privateRulesAndExceptionsAreNotPersistent",
+    "PASS dev.velocity.browser.BlockIntegrationTest liteLoopbackBlockingCssAndDraftPreservation",
+    "PASS dev.velocity.browser.BrowserIntegrationTest repositoryFiltersPrivateTabs",
+    "PASS dev.velocity.browser.BrowserIntegrationTest formTabSurvivesTwentyItemsAndDiscardCandidateTick",
+    "PASS dev.velocity.browser.BrowserIntegrationTest externalIntentCreatesHttpTabAndRotationRetainsCoordinator",
+    "PASS dev.velocity.browser.BrowserIntegrationTest unknownExternalSchemeCannotBecomeBrowserTab",
+    "PASS dev.velocity.browser.BrowserUiIntegrationTest privateCloseWarningAndNativePaletteHaveSafeContrast",
+    "PASS dev.velocity.browser.BrowserUiIntegrationTest appearancePersistsAndUpdatesWebSchemeWithoutReloadOrDraftLoss",
+    "PASS dev.velocity.browser.BrowserUiIntegrationTest hundredLogicalTabsSearchPinCloseUndoWithoutPreloading",
+    "PASS dev.velocity.browser.BrowserUiIntegrationTest closeCancelRetainsSheetDraftAndAccessible48dpTarget",
+    "PASS dev.velocity.browser.BrowserUiIntegrationTest protectedThirdSeventhAndTwentiethTabsKeepDraftAfterRotation",
+    "PASS dev.velocity.browser.CompatibilityIntegrationTest webauthnAbortAndInvalidRpAreRealGeckoErrorsInNormalAndPrivateTabs",
+    "PASS dev.velocity.browser.CompatibilityIntegrationTest httpAuthenticationCancelThenRetryUsesExplicitCredentials",
+    "PASS dev.velocity.browser.CompatibilityIntegrationTest singleAndMultipleSafAttachmentsActuallyUploadAndRemainProtected",
+    "PASS dev.velocity.browser.CompatibilityIntegrationTest downloadSavesRealResponseToSafAndCancellationNeverReportsSuccess",
+    "PASS dev.velocity.browser.CompatibilityIntegrationTest runtimeActivityBridgeReturnsCancellationAndRetryAcrossRotationWithoutCredentials",
+    "PASS dev.velocity.browser.CompatibilityIntegrationTest repositoryLatestSnapshotWinsAndPreservesOrderWithoutPrivateRecords",
+    "PASS dev.velocity.browser.CosmeticLayoutIntegrationTest dedicated250pxGapCollapsesAndRestoresWithoutTouchingDraft",
+    "PASS dev.velocity.browser.ReadingIntegrationTest privateReadingRequestDoesNotCreateNormalMetadata",
+    "PASS dev.velocity.browser.ReadingIntegrationTest twentyRealReadingPagesReplayWithinSoftTargetWithoutRefetch"
+  ]
+}
