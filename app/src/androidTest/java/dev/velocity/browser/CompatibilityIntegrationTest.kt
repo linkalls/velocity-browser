@@ -55,6 +55,8 @@ class CompatibilityIntegrationTest {
         val authAccepted=java.util.concurrent.atomic.AtomicInteger()
         val uploadRequests=java.util.concurrent.atomic.AtomicInteger()
         val uploadBytes=java.util.concurrent.atomic.AtomicInteger()
+        val uploadParts=java.util.concurrent.atomic.AtomicInteger()
+        val uploadAlpha=java.util.concurrent.atomic.AtomicBoolean()
         init { io.execute { while(!server.isClosed) try { server.accept().use { socket ->
             socket.soTimeout=5000;val input=socket.getInputStream().buffered();val header=StringBuilder()
             while(!header.endsWith("\r\n\r\n")) { val n=input.read();if(n<0)return@use;header.append(n.toChar());if(header.length>16384)return@use }
@@ -69,9 +71,9 @@ class CompatibilityIntegrationTest {
             var status="200 OK";var extra="";var type="text/html; charset=utf-8"
             val payload=when(path) {
                 "/auth" -> { authRequests.incrementAndGet();val encoded=Regex("(?im)^Authorization:\\s*Basic\\s+([^\\s]+)").find(headers)?.groupValues?.get(1);if(encoded!="Zml4dHVyZTpmaXh0dXJl") { status="401 Unauthorized";extra="WWW-Authenticate: Basic realm=\"fixture\"\r\n";"AUTH_REQUIRED" } else {authAccepted.incrementAndGet();"<p>AUTH_OK</p>"} }
-                "/upload" -> {uploadRequests.incrementAndGet();uploadBytes.set(body.size);val text=body.toString(Charsets.UTF_8);val fields=Regex("Content-Disposition: form-data",RegexOption.IGNORE_CASE).findAll(text).count();if(text.contains("fixture-alpha") && (fields==1 || fields==2 && text.contains("fixture-beta")))"UPLOAD_OK" else "UPLOAD_BAD"}
+                "/upload" -> {uploadRequests.incrementAndGet();uploadBytes.set(body.size);val text=body.toString(Charsets.UTF_8);val fields=Regex("Content-Disposition:\\s*form-data",RegexOption.IGNORE_CASE).findAll(text).count();uploadParts.set(fields);uploadAlpha.set(text.contains("fixture-alpha"));if(uploadAlpha.get() && (fields==1 || fields==2 && text.contains("fixture-beta")))"UPLOAD_OK" else "UPLOAD_BAD"}
                 "/download" -> { type="text/plain";extra="Content-Disposition: attachment; filename=\"velocity-download.txt\"\r\n";"download-real-gecko-stream" }
-                else -> """<!doctype html><meta charset=utf-8><title>COMPAT_FIXTURE</title><label>DRAFT<input aria-label=DRAFT></label><input id=one type=file accept=.txt><input id=many type=file accept=text/plain multiple><button onclick="one.click()">PICK_SINGLE</button><button onclick="many.click()">PICK_MULTIPLE</button><a href=/download download>DOWNLOAD_FIXTURE</a><p id=result>READY</p><script>for(const id of ['one','many']) document.getElementById(id).onchange=async function(){const fd=new FormData();for(const f of this.files)fd.append('file',f);document.getElementById('result').textContent=await(await fetch('/upload',{method:'POST',body:fd})).text()+'_'+this.files.length};async function credentialTest(){const publicKey={challenge:new Uint8Array(32),rpId:location.hostname,allowCredentials:[{id:new Uint8Array(16),type:'public-key'}],timeout:5000};const controller=new AbortController();controller.abort();try{await navigator.credentials.get({publicKey,signal:controller.signal});result.textContent='UNEXPECTED_CREDENTIAL'}catch(e){result.textContent='CANCELED_'+e.name}}async function invalidRp(){try{await navigator.credentials.get({publicKey:{challenge:new Uint8Array(32),rpId:'unrelated.invalid',allowCredentials:[],timeout:5000}});result.textContent='UNEXPECTED_CREDENTIAL'}catch(e){result.textContent='RP_REJECTED_'+e.name}}</script><button onclick=credentialTest()>PASSKEY_CANCEL</button><button onclick=invalidRp()>PASSKEY_INVALID_RP</button>"""
+                else -> """<!doctype html><meta charset=utf-8><title>COMPAT_FIXTURE</title><label>DRAFT<input id=draft aria-label=DRAFT></label><input id=one type=file accept=.txt><input id=many type=file accept=text/plain multiple><button onclick="one.click()">PICK_SINGLE</button><button onclick="many.click()">PICK_MULTIPLE</button><a href=/download download>DOWNLOAD_FIXTURE</a><p id=result>READY</p><script>for(const id of ['one','many']) document.getElementById(id).onchange=async function(){const fd=new FormData();for(const f of this.files)fd.append('file',f);const status=await(await fetch('/upload',{method:'POST',body:fd})).text()+'_'+this.files.length;document.getElementById('result').textContent=status;document.title=status+'_'+(document.getElementById('draft').value==='KEEP_SELECTED_FILES'?'DRAFT_OK':'DRAFT_LOST')};async function credentialTest(){const publicKey={challenge:new Uint8Array(32),rpId:location.hostname,allowCredentials:[{id:new Uint8Array(16),type:'public-key'}],timeout:5000};const controller=new AbortController();controller.abort();try{await navigator.credentials.get({publicKey,signal:controller.signal});result.textContent='UNEXPECTED_CREDENTIAL'}catch(e){result.textContent='CANCELED_'+e.name}}async function invalidRp(){try{await navigator.credentials.get({publicKey:{challenge:new Uint8Array(32),rpId:'unrelated.invalid',allowCredentials:[],timeout:5000}});result.textContent='UNEXPECTED_CREDENTIAL'}catch(e){result.textContent='RP_REJECTED_'+e.name}}</script><button onclick=credentialTest()>PASSKEY_CANCEL</button><button onclick=invalidRp()>PASSKEY_INVALID_RP</button>"""
             }.toByteArray()
             socket.getOutputStream().apply { write("HTTP/1.1 $status\r\nContent-Type: $type\r\n${extra}Content-Length: ${payload.size}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n".toByteArray());write(payload);flush() }
         } } catch(_:java.io.IOException) { } } }
@@ -84,28 +86,31 @@ class CompatibilityIntegrationTest {
     }
     private fun root() {
         assertTrue("system SAF picker",device.wait(Until.hasObject(documents()),15000))
-        if(device.hasObject(By.text("alpha.txt")))return
+        if(device.hasObject(By.text("alpha.txt")) && device.hasObject(By.text("Velocity fixtures")))return
         if(!device.hasObject(By.text("Velocity fixtures"))) {
             val roots=device.findObject(By.desc("Show roots")) ?: device.findObject(By.desc("Open navigation drawer"))
             assertNotNull("system SAF roots button",roots);roots!!.click()
         };click("Velocity fixtures")
     }
     private fun draft()=device.findObjects(By.clazz("android.widget.EditText")).firstOrNull { it.resourceName!="dev.velocity.browser:id/address" }
+    private fun uploaded(id:String,count:Int,f:Fixture) {
+        val expected="UPLOAD_OK_${count}_DRAFT_OK"
+        try { await("real upload title and retained draft") { app.coordinator.scheduler.tab(id)?.title==expected } }
+        catch(_:AssertionError) { var title="";main {title=app.coordinator.scheduler.tab(id)?.title.orEmpty()};fail("expected=$expected title=$title requests=${f.uploadRequests.get()} bytes=${f.uploadBytes.get()} parts=${f.uploadParts.get()} alpha=${f.uploadAlpha.get()}") }
+        assertEquals(count,f.uploadParts.get());assertTrue(f.uploadAlpha.get())
+    }
     @Test fun singleAndMultipleSafAttachmentsActuallyUploadAndRemainProtected() {
         launch();Fixture().use { f -> try {
             val id=page(f);assertNotNull(draft());draft()!!.text="KEEP_SELECTED_FILES";click("PICK_SINGLE");root();click("alpha.txt")
-            screen("UPLOAD_OK_1") { "real upload: requests=${f.uploadRequests.get()} bytes=${f.uploadBytes.get()}, stagedFiles="+java.io.File(inst.targetContext.cacheDir,"selected-files").walkTopDown().count { it.isFile } }
-            assertEquals("KEEP_SELECTED_FILES",draft()!!.text)
+            uploaded(id,1,f)
             main { assertTrue(Protection.UPLOAD in app.coordinator.scheduler.tab(id)!!.protections);assertTrue(app.coordinator.scheduler.liveCount<=2) }
             click("PICK_MULTIPLE");root()
             device.findObject(By.text("alpha.txt")).longClick();click("beta.txt")
             val select=device.findObject(By.res("com.android.documentsui","action_menu_select")) ?: device.findObject(By.res("com.google.android.documentsui","action_menu_select")) ?: device.findObject(By.text(java.util.regex.Pattern.compile("(?i)select"))) ?: device.findObject(By.desc(java.util.regex.Pattern.compile("(?i)select")))
             assertNotNull("multiple file selection action",select);select!!.click()
-            assertTrue(device.wait(Until.hasObject(By.text("UPLOAD_OK_2")),15000))
-            assertEquals("KEEP_SELECTED_FILES",draft()!!.text)
+            uploaded(id,2,f)
             click("PICK_SINGLE");root();device.pressBack()
-            assertTrue(device.wait(Until.hasObject(By.text("UPLOAD_OK_2")),15000))
-            assertEquals("KEEP_SELECTED_FILES",draft()!!.text)
+            uploaded(id,2,f)
             main { assertTrue(Protection.UPLOAD in app.coordinator.scheduler.tab(id)!!.protections) }
             main { app.coordinator.close(id,true) }
             val end=SystemClock.elapsedRealtime()+15000
