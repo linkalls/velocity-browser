@@ -138,7 +138,11 @@ class MainActivity : Activity(), BrowserHost {
         val builder = dialog().setTitle("『${tab.displayTitle()}』を閉じる")
             .setMessage("${tab.displayLocation()}\n" + getString(R.string.close_warning))
             .setPositiveButton("このタブを閉じる") { _, _ ->
-                if (coordinator.host === this && coordinator.scheduler.tab(id)?.identity == identity) coordinator.close(id, true)
+                if (coordinator.host === this) {
+                    val current=coordinator.scheduler.tab(id)
+                    if(current?.identity==identity&&current.epoch==tab.epoch&&current.revision==tab.revision)coordinator.close(id,true)
+                    else Toast.makeText(this,"ページの状態が変わりました。内容を確認してから閉じてください。",Toast.LENGTH_LONG).show()
+                }
             }.setNegativeButton(R.string.cancel) { _, _ -> cancelRequest() }
             .setOnCancelListener { cancelRequest() }
         appearance.show(builder,true)
