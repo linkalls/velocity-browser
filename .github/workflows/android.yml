@@ -20,17 +20,18 @@ jobs:
       - run: sdkmanager 'platforms;android-37.1' 'build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew :core:test :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease :app:bundleRelease :minimal-geckoview:assembleRelease :benchmark:assembleBenchmark :app:assembleBenchmark
-      - uses: actions/upload-artifact@v4
-        if: always()
+      - name: Prepare installable APK
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/benchmark/app-benchmark.apk dist/Velocity-Browser-arm64.apk
+          test -s dist/Velocity-Browser-arm64.apk
+      - name: Upload APK only
+        uses: actions/upload-artifact@v4
         with:
-          name: apk-and-test-reports
-          path: |
-            app/build/outputs/apk/
-            app/build/outputs/bundle/
-            benchmark/build/outputs/apk/
-            minimal-geckoview/build/outputs/apk/
-            core/build/reports/tests/
-            app/build/reports/
+          name: Velocity-Browser-APK
+          path: dist/Velocity-Browser-arm64.apk
+          if-no-files-found: error
+          compression-level: 0
   bun:
     runs-on: ubuntu-latest
     defaults:
@@ -68,8 +69,3 @@ jobs:
           api-level: 36
           arch: x86_64
           script: ./gradlew :app:connectedDebugAndroidTest
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: instrumentation-reports
-          path: app/build/reports/androidTests/
