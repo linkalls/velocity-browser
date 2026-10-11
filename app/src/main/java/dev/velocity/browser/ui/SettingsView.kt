@@ -12,7 +12,7 @@ import android.widget.*
 
 /** Searchable native settings. Values and explanations have separate visual hierarchy. */
 class SettingsView(context: Context, private val appearance: ThemeController, title: String,
-    rows: List<Row>, private val onDismiss: () -> Unit = {}) {
+    rows: List<Row>, private val searchable:Boolean=true, private val compact:Boolean=false, private val onDismiss: () -> Unit = {}) {
     data class Row(val category: String, val label: String, val detail: String = "", val action: () -> Unit) {
         var liveText: (() -> String)? = null
         var checked: (() -> Boolean)? = null
@@ -42,7 +42,7 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
         panel.setPadding(context.dp(16), context.dp(12), context.dp(16), context.dp(12))
         panel.isFocusableInTouchMode = true
         panel.setOnApplyWindowInsetsListener {_,insets->
-            if(android.os.Build.VERSION.SDK_INT>=30){val bars=insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout() or WindowInsets.Type.ime());panel.setPadding(context.dp(16)+bars.left,context.dp(12)+bars.top,context.dp(16)+bars.right,context.dp(12)+bars.bottom)}
+            if(android.os.Build.VERSION.SDK_INT>=30){val bars=insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout());panel.setPadding(context.dp(16)+bars.left,context.dp(12)+bars.top,context.dp(16)+bars.right,context.dp(12)+bars.bottom)}
             insets
         }
         panel.addView(LinearLayout(context).apply {
@@ -50,6 +50,7 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
             addView(heading, LinearLayout.LayoutParams(0, -2, 1f))
             addView(close)
         })
+        if(!searchable)search.visibility=View.GONE
         panel.addView(search, LinearLayout.LayoutParams(-1, -2).apply { topMargin = context.dp(12); bottomMargin = context.dp(8) })
         val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         // A category appears once, in the order supplied by the caller.
@@ -62,8 +63,8 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
             headings[category] = header; content.addView(header)
             items.forEach { row ->
                 val root = LinearLayout(context).apply {
-                    gravity = Gravity.CENTER_VERTICAL; minimumHeight = context.dp(64)
-                    setPadding(context.dp(16), context.dp(14), context.dp(12), context.dp(14))
+                    gravity = Gravity.CENTER_VERTICAL; minimumHeight = context.dp(if(compact)48 else 64)
+                    setPadding(context.dp(16), context.dp(if(compact)8 else 14), context.dp(12), context.dp(if(compact)8 else 14))
                     isClickable = true; isFocusable = true
                 }
                 val label = TextView(context).apply { text = row.label; textSize = 16f }
@@ -115,7 +116,7 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
             val next = if (matches) View.VISIBLE else View.GONE
             if (b.root.visibility != next) b.root.visibility = next
         }
-        headings.forEach { (category, header) -> header.visibility = if (bindings.any { it.row.category == category && it.root.visibility == View.VISIBLE }) View.VISIBLE else View.GONE }
+        headings.forEach { (category, header) -> header.visibility = if (!compact && bindings.any { it.row.category == category && it.root.visibility == View.VISIBLE }) View.VISIBLE else View.GONE }
         empty.visibility = if (bindings.none { it.root.visibility == View.VISIBLE }) View.VISIBLE else View.GONE
     }
     fun show() {

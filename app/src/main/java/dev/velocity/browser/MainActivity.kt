@@ -76,7 +76,7 @@ class MainActivity : Activity(), BrowserHost {
     }
     private fun showSettings(kind:String,title:String,rows:List<SettingsView.Row>) {
         appearance.dismissFor(this);settingsScreen=kind
-        settingsView=SettingsView(this,appearance,title,rows) {if(settingsScreen==kind){settingsScreen=null;settingsView=null}}.also {it.show()}
+        settingsView=SettingsView(this,appearance,title,rows,searchable=kind!="menu",compact=kind=="menu") {if(settingsScreen==kind){settingsScreen=null;settingsView=null}}.also {it.show()}
     }
     @Deprecated("Legacy Activity result bridge for GeckoRuntime and the system SAF picker")
     override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
@@ -177,9 +177,11 @@ class MainActivity : Activity(), BrowserHost {
         if(chrome.address.hasFocus())chrome.cancelAddressEdit() else if (chrome.back.isEnabled) coordinator.back() else super.onBackPressed()
     }
     private fun browserMenu() {
+        (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(chrome.geckoView.windowToken,0)
         val current=coordinator.scheduler.selectedId?.let(coordinator.scheduler::tab)
         fun row(label:String,action:()->Unit)=SettingsView.Row("ブラウザ",label,action={appearance.dismissFor(this);action()}).apply {navigation=label in listOf("設定","広告ブロック設定","ダウンロード","リーダー表示")}
         showSettings("menu","メニュー",listOf(
+            row("設定",::settings),
             row("新しいタブ") {coordinator.createTab()},
             row("新しいプライベートタブ") {coordinator.createTab(privateMode=true)},
             row("進む") {coordinator.forward()}.apply {available={chrome.forward.isEnabled}},
@@ -188,8 +190,7 @@ class MainActivity : Activity(), BrowserHost {
             row("ホーム") {chrome.onHome()},
             row("ダウンロード") {coordinator.downloads.show()},
             row("リーダー表示",::readingDialog),
-            row("広告ブロック設定",::blockSettings),
-            row("設定",::settings)
+            row("広告ブロック設定",::blockSettings)
         ))
     }
     private fun shortcutSettings() {

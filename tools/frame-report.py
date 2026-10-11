@@ -1,10 +1,10 @@
 """Report actual Android FrameTimeline rows; no conversion to Gecko FPS."""
 import csv, io, json, math, subprocess, sys, tempfile
 from pathlib import Path
-query = "SELECT layer_name, dur, jank_type FROM actual_frame_timeline_slice WHERE layer_name LIKE '%dev.velocity.browser%';"
+query = "SELECT layer_name, dur, jank_type FROM actual_frame_timeline_slice WHERE layer_name LIKE '%dev.velocity.browser%' OR upid IN (SELECT upid FROM process WHERE name GLOB 'dev.velocity.browser*' OR cmdline GLOB 'dev.velocity.browser*');"
 with tempfile.NamedTemporaryFile(mode='w',suffix='.sql') as f:
     f.write(query);f.flush()
-    r=subprocess.run([sys.argv[2],'--csv','-q',f.name,sys.argv[1]],capture_output=True,text=True)
+    r=subprocess.run([sys.argv[2],'query','-f',f.name,sys.argv[1]],capture_output=True,text=True)
     if r.returncode: raise SystemExit('FrameTimeline query failed: '+r.stderr[-2000:])
 rows=list(csv.DictReader(io.StringIO(r.stdout)))
 groups={}

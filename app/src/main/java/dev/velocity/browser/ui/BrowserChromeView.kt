@@ -134,7 +134,7 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
     }
     fun showStart(show:Boolean){if(starting==show)return;starting=show;homeSurface.visibility=if(show)View.VISIBLE else View.GONE;syncDynamic()}
     fun updateState(tabCount:Int,privateMode:Boolean,mode:String,lite:Boolean,busy:Boolean,decisions:Int,status:String,selectedId:String?=null){
-        if(homeContext!=selectedId){homeContext=selectedId;homeSearch.setText(selectedId?.let(homeInputs::get).orEmpty())}
+        if(homeContext!=selectedId){showToolbar(true,false);homeContext=selectedId;homeSearch.setText(selectedId?.let(homeInputs::get).orEmpty())}
         privateTag.visibility=if(privateMode)View.VISIBLE else View.GONE
         tabsButton.count=tabCount
         val description="タブ $tabCount 件"+(if(privateMode)" · 非公開" else "")

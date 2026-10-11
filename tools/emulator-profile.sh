@@ -3,6 +3,8 @@ set -euo pipefail
 # Clearing application data is restricted to this disposable emulator workflow.
 qemu=$(adb shell getprop ro.kernel.qemu | tr -d '\r')
 if [ "$qemu" != 1 ]; then echo 'Refusing profile isolation on a physical device' >&2; exit 2; fi
+adb root
+adb wait-for-device
 mkdir -p dist/profile
 curl -fsSL https://get.perfetto.dev/trace_processor -o /tmp/velocity-trace-processor
 chmod +x /tmp/velocity-trace-processor

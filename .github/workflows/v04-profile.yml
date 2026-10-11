@@ -47,6 +47,7 @@ jobs:
         with:
           api-level: 36
           arch: x86_64
+          disable-animations: false
           script: bash tools/emulator-profile.sh
       - name: Upload actual traces and measurement records
         if: always()

@@ -16,7 +16,22 @@ class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boole
     var loading = false; private set
     private fun emit(e: Event) { if (owner.isCurrent(id, identity)) owner.dispatch(e) }
     fun risk(p: Protection, on: Boolean) = emit(Event.RiskChanged(id, identity, p, on))
+    private var scrollY=Float.NaN
+    private var scrollIntent=0f
     init {
+        session.compositorScrollDelegate=object:GeckoSession.CompositorScrollDelegate {
+            override fun onScrollChanged(s:GeckoSession,update:GeckoSession.ScrollPositionUpdate) {
+                val y=update.scrollY*update.zoom
+                val previous=scrollY;scrollY=y
+                if(previous.isNaN()||update.source!=GeckoSession.ScrollPositionUpdate.SOURCE_USER_INTERACTION){scrollIntent=0f;return}
+                if(!owner.isCurrent(id,identity)||owner.scheduler.selectedId!=id)return
+                val delta=y-previous
+                if(delta*scrollIntent<0)scrollIntent=0f
+                scrollIntent+=delta
+                if(kotlin.math.abs(scrollIntent)>=24*(owner.host?.activity?.resources?.displayMetrics?.density?:1f)){owner.host?.toolbarVisibility(scrollIntent<0);scrollIntent=0f}
+            }
+        }
+
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
             override fun onLoadRequest(s: GeckoSession, request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny> {
                 if (readOnly) return GeckoResult.fromValue(if (request.uri == expectedDataUri) AllowOrDeny.ALLOW else AllowOrDeny.DENY)
@@ -99,7 +114,7 @@ class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boole
     }
     fun load(url: String) { if (url != "about:blank") pristineBlank = false; session.loadUri(url) }
     fun close() {
-        session.navigationDelegate = null; session.progressDelegate = null; session.contentDelegate = null
+        session.compositorScrollDelegate=null;session.navigationDelegate = null; session.progressDelegate = null; session.contentDelegate = null
         session.mediaSessionDelegate = null; session.mediaDelegate = null; session.permissionDelegate = null; session.promptDelegate = null
         if (session.isOpen) session.close()
     }
