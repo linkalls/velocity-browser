@@ -47,13 +47,26 @@ class BrowserChromeView(context: Context) : LinearLayout(context) {
     var onSettings: () -> Unit = {}
     var onBlock: () -> Unit = {}
     var onReading: () -> Unit = {}
+    var onCreateTab: (Boolean) -> Unit = {}
+    var onHome: () -> Unit = {}
+    var onSwitchTab: (Int) -> Unit = {}
+    private val preferences=context.getSharedPreferences("settings",Context.MODE_PRIVATE)
+    var bottomAddress=preferences.getBoolean("address_bottom",false);private set
+    var swipeEnabled:Boolean
+        get()=preferences.getBoolean("address_swipe",true)
+        set(value){preferences.edit().putBoolean("address_swipe",value).apply()}
+    fun setAddressBottom(bottom:Boolean) {
+        bottomAddress=bottom;preferences.edit().putBoolean("address_bottom",bottom).apply()
+        removeView(addressRow);addView(addressRow,if(bottom)childCount-1 else 0)
+    }
     init {
         orientation = VERTICAL; setBackgroundColor(surface)
         addressRow = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL; background = rounded(palette.surface,18); setPadding(dp(4),dp(2),dp(2),dp(2)) }
         addressRow.addView(shield, LayoutParams(dp(48),dp(48)))
         shield.setOnClickListener { onBlock() }
         addressRow.addView(address, LayoutParams(0, dp(48), 1f))
-        addressRow.addView(ChromeButton(context, 5).apply { setText(R.string.go); setOnClickListener { submit() } }, LayoutParams(dp(48), dp(48)))
+        reload = ChromeButton(context,2).apply {setText(R.string.reload)}
+        addressRow.addView(reload,LayoutParams(dp(48),dp(48)))
         addView(addressRow, LayoutParams(-1, dp(52)).apply { setMargins(dp(8), dp(6), dp(8), dp(6)) })
         val content = FrameLayout(context)
         content.addView(geckoView, FrameLayout.LayoutParams(-1, -1)); content.addView(start, FrameLayout.LayoutParams(-1, -1))
@@ -65,19 +78,42 @@ class BrowserChromeView(context: Context) : LinearLayout(context) {
         }
         shortcut("Wikipedia  ↗") { onNavigate("https://ja.wikipedia.org/") }
         shortcut("DuckDuckGo  ↗") { onNavigate("https://duckduckgo.com/") }
-        shortcut("閲覧専用タブ  ↗") { onReading() }
+
         start.addView(TextView(context).apply { text = "次のページへ、すばやく。"; textSize = 12f; setTextColor(muted); gravity = Gravity.CENTER; setPadding(0, dp(18), 0, 0) })
         divider = View(context).apply { setBackgroundColor(palette.border) }; addView(divider, LayoutParams(-1, dp(1)))
         val actions = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(10), dp(4), dp(10), dp(4)) }
         fun button(kind: Int, label: Int) = ChromeButton(context, kind).apply { setText(label); actions.addView(this, LayoutParams(0, dp(52), 1f)) }
-        back = button(0, R.string.back); forward = button(1, R.string.forward); reload = button(2, R.string.reload)
+        back = button(0, R.string.back); forward = button(1, R.string.forward)
+        button(7,R.string.app_name).apply {contentDescription="ホーム";setOnClickListener {onHome()}}
         tabsButton = button(3, R.string.tabs).apply { setOnClickListener { onTabs() } }
+        button(8,R.string.go).apply {contentDescription="新しいタブ";setOnClickListener {onCreateTab(false)};setOnLongClickListener {onCreateTab(true);true}}
         button(4, R.string.settings).setOnClickListener { onSettings() }
+        addView(LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL;setPadding(dp(12),0,dp(12),0);addView(title,LayoutParams(0,-2,1f));addView(privacy,LayoutParams(-2,-2))},LayoutParams(-1,-2))
         addView(actions, LayoutParams(-1, dp(60)))
+        if(bottomAddress)setAddressBottom(true)
+        var touchX=0f;var touchY=0f;var wasEditing=false
+        address.setOnTouchListener {_,event->
+            when(event.actionMasked){
+                android.view.MotionEvent.ACTION_DOWN->{touchX=event.x;touchY=event.y;wasEditing=address.hasFocus();false}
+                android.view.MotionEvent.ACTION_UP->{
+                    if(swipeEnabled && !wasEditing && kotlin.math.abs(event.x-touchX)>dp(100) && kotlin.math.abs(event.y-touchY)<dp(40)) {onSwitchTab(if(event.x>touchX)-1 else 1);true}else false
+                }
+                else->false
+            }
+        }
+        address.setOnLongClickListener {
+            if(address.hasFocus())return@setOnLongClickListener false
+            android.widget.PopupMenu(context,address).apply {
+                menu.add("URLをコピー").setOnMenuItemClickListener {(context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("URL",address.text.toString()));true}
+                menu.add("URLを共有").setOnMenuItemClickListener {context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply {type="text/plain";putExtra(android.content.Intent.EXTRA_TEXT,address.text.toString())},"URLを共有"));true}
+                menu.add("このサイトの設定").setOnMenuItemClickListener {onBlock();true}
+            }.show();true
+        }
+        isFocusableInTouchMode=true;requestFocus()
         address.setOnEditorActionListener { _, action, _ -> if (action == EditorInfo.IME_ACTION_GO) { submit(); true } else false }
         setOnApplyWindowInsetsListener { _, insets ->
             if (android.os.Build.VERSION.SDK_INT >= 30) {
-                val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+                val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout() or android.view.WindowInsets.Type.ime())
                 setPadding(bars.left, bars.top, bars.right, bars.bottom)
             } else { @Suppress("DEPRECATION") setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop, insets.systemWindowInsetRight, insets.systemWindowInsetBottom) }
             insets
@@ -125,6 +161,8 @@ class BrowserChromeView(context: Context) : LinearLayout(context) {
                 2 -> if (text.toString() == context.getString(R.string.stop)) canvas.drawRoundRect(-6f,-6f,6f,6f,1f,1f,pen) else { canvas.drawArc(-8f,-8f,8f,8f,40f,285f,false,pen); path(8f,-8f,8f,-2f,2f,-2f) }
                 3 -> { canvas.drawRoundRect(-9f,-9f,9f,9f,4f,4f,pen); pen.style = Paint.Style.FILL; pen.textSize = 10f; pen.textAlign = Paint.Align.CENTER; canvas.drawText(if (count > 99) "99+" else count.toString(),0f,3.5f,pen) }
                 4 -> { pen.style = Paint.Style.FILL; for (x in listOf(-6f,0f,6f)) canvas.drawCircle(x,0f,1.7f,pen) }
+                7 -> {path(-9f,0f,0f,-8f,9f,0f);path(-6f,-2f,-6f,8f,6f,8f,6f,-2f)}
+                8 -> {canvas.drawLine(-8f,0f,8f,0f,pen);canvas.drawLine(0f,-8f,0f,8f,pen)}
                 6 -> path(0f,-10f,8f,-6f,7f,3f,0f,10f,-7f,3f,-8f,-6f,0f,-10f)
                 5 -> { canvas.drawLine(-7f,0f,7f,0f,pen); path(1f,-6f,7f,0f,1f,6f) }
             }

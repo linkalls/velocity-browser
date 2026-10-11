@@ -24,8 +24,8 @@ main `310ab2d` の次段階として、日常の基本操作を改善した。Ge
 
 - Java17 / SDK37.1で全ビルド成功（3分51秒、単一ワーカー/in-process compiler）。core:test、app:testDebugUnitTest、lintDebug、debug/AndroidTest、Release APK/AAB、minimal GeckoView、benchmarkモジュール、app benchmarkを含む。最終の添付試験修正後にAndroidTest APKを8秒で追加生成した。
 - JVM48件: failure/error/skipすべて0。app:testDebugUnitTestはNO-SOURCEで成功件数に含めない。Bun18件とTypeScript型検査成功。lintDebugはエラー0、警告27。
-- 未署名Release arm64: 191,353,994 bytes（182.489MiB）。同条件minimal GeckoView: 191,118,123 bytes。差分235,871 bytes（230.343KiB）。Bun size CLIとファイル長の計測一致。Gecko native shared object13個は同一hash。[サイズJSON](benchmarks/size.json)。インストール容量・AAB配信量は未測定。
-- テスト署名Release: 191,369,849 bytes。v2/v3署名、16KiB zipalign、ZIP整合性、arm64のみ、version0.2.3/code4を検証。署名certは従来と同じ `fde17539cd18040be42f73e708ee3491088c65177802d5e25bca2d00d1c8198e`。Releaseはnon-debuggable/profileableなし、fixture Activity/Providerはdebugだけに存在する。[署名・SHA-256](benchmarks/release-artifact.json)。正式鍵ではなく物理端末インストールは未検証。
+- 未署名Release arm64: 191,353,994 bytes（182.489MiB）。同条件minimal GeckoView: 191,118,123 bytes。差分235,871 bytes（230.343KiB）。Bun size CLIとファイル長の計測一致。Gecko native shared object13個は同一hash。[サイズJSON](benchmarks/compat-size.json)。インストール容量・AAB配信量は未測定。
+- テスト署名Release: 191,369,849 bytes。v2/v3署名、16KiB zipalign、ZIP整合性、arm64のみ、version0.2.3/code4を検証。署名certは従来と同じ `fde17539cd18040be42f73e708ee3491088c65177802d5e25bca2d00d1c8198e`。Releaseはnon-debuggable/profileableなし、fixture Activity/Providerはdebugだけに存在する。[署名・SHA-256](benchmarks/compat-release-artifact.json)。正式鍵ではなく物理端末インストールは未検証。
 - Androidスモークは従来12件に実転送・認証・復元キューの6件を追加して18件。最終 [Actions 38142027301](https://github.com/linkalls/velocity-browser/actions/runs/38142027301)、code `45121ab`: build/Bun/device-smokeの3ジョブ成功。API36 x86_64の実Geckoで18件、failure/error/skipすべて0。[端末結果JSON](benchmarks/compatibility-device-results.json)。外部fixture3件と物理端末は未検証。スキップが1件でもあれば集計ジョブを失敗にし、未検証を成功扱いしない。公開artifactはVelocity-Browser-APKだけで、ソース/テストレポート/画像archiveは含めない。[端末試験](device-tests.md)。
 
 [変更ファイル一覧](compatibility-changed-files.txt)、[機械可読結果](benchmarks/compatibility-validation.json)。

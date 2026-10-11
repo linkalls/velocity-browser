@@ -1,0 +1,17 @@
+#advert	#advert
+.promoted > .ad-unit	.promoted > .ad-unit
+.promoted>.ad-unit	.promoted > .ad-unit
+[data-ad-slot="top"]	[data-ad-slot="top"]
+[id="advert"]	[id="advert"]
+[data-velocity-ad]	[data-velocity-ad]
+body	INVALID
+main	INVALID
+.banner,body	INVALID
+.ad:hover	INVALID
+.ad{color:red}	INVALID
+[data-ad-slot="x y"]	INVALID
+.ad > > .child	INVALID
+.ad >	INVALID
+.a .b .c .d .e	INVALID
+\\.evil	INVALID
+[data-password]	INVALID

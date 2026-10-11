@@ -20,4 +20,14 @@ class LiteRulesTest {
         assertEquals("202610110606", LiteRules.remoteVersion("! Version: 202610110606\n||ads.example^"))
         assertThrows(IllegalStateException::class.java) { LiteRules.remoteVersion("<html>error</html>") }
     }
+    @Test fun sharedSelectorCorpusNormalizesOnlyBoundedSubset() {
+        javaClass.getResourceAsStream("/cosmetic-selectors.tsv")!!.bufferedReader().readLines().forEach { line->
+            val parts=line.split('\t');assertEquals(parts[0],parts[1].takeUnless {it=="INVALID"},LiteRules.selector(parts[0]))
+        }
+        assertNull(LiteRules.selector("."+"a".repeat(257)))
+    }
+    @Test fun cosmeticExceptionsNormalizeDeduplicateSeparatelyFromNetworkAllow() {
+        val parsed=LiteRules.parse("site.example##.ad>.unit\nsite.example##.ad > .unit\nsite.example#@#.ad > .unit\n@@||site.example^")
+        assertEquals(3,parsed.accepted);assertEquals(0,parsed.skipped);assertTrue(parsed.text.contains("site.example#@#.ad > .unit"))
+    }
 }

@@ -1,23 +1,15 @@
-# 既知の制約・未検証
+# v0.3 既知制限
 
-- Webの最新入力、アップロード、決済等は公式APIで完全追跡できずUNKNOWN保護。2つの動的Webセッションが保護中だと3つ目は表示保留。未操作blankと、独立に保持した閲覧専用本文コピーのみ自動回収。20タブ閲覧の一般的なメモリ削減/高速化はまだ実証されていない。
-- flushSessionState通知は要求IDなし。Webの通知を最新保存/安全破棄と認定しない。状態通知待ちは安全側に継続し、タイムアウトを成功扱いしない。
-- 完全フォーム/JS heap/メディア/履歴の再起動復元なし。通常URL/title/listのみ。保存I/O完了前の即時kill/電源断には最新metadataを保証できない。CookieなどGeckoの通常profile保存はGecko標準に従う。
-- ダウンロード、アップロード用ファイルピッカー、HTTP認証、screen captureは未対応案内・拒否。window.openはopenerを持たない独立URLタブに変換。支払い/Passkey/WebAuthn/DRM等の完全互換性は未検証。
-- permissionsのPERMISSION保護は許可後も保守的に残る。位置情報はAndroid fine/coarse両方の成功を必要とし、概略位置だけの選択は拒否される場合がある。サイト権限管理/revoke UIは未実装。
-- 証明書失敗は明示停止。Gecko標準証明書例外画面の全操作は提供せず、安全性迂回なし。
-- プライベートmodeのWebデータ隔離はGecko標準private sessionを使用。アプリ履歴保存なし。privateタブが存在する間はFLAG_SECUREを適用。最近のアプリ表示を含む実機挙動は未検証。
-- speculativeConnectはvoidで完了通知なし。単一発行ガード+30秒cooldownはあるがTCP接続の本数/完了を保証できない。root限定と明示許可により予測効果は小さい可能性がある。ユーザーは金融/認証rootを許可しないこと。
-- Macrobenchmarkは起動とFrameTimingを提供。スクロール/タブ往復/Cold restore/電力は固定fixtureと実機の手順で測る。内部Metricsは絶対elapsed時刻であり、単体でTTFFや速度優位を算出しない。
-- instrumentationコードはIntent/回転共有、repository private除外、危険Intent拒否、loopbackフォーム入力保持と20タブ項目/120秒候補イベントの自動テスト。実時間2分の待機、音声、permission確認、TLS、OSプロセスkillはリリース前実機手順を参照。未実行を合格扱いしない。
-- Release署名、Gecko内包第三者NOTICEの配布確認、ストア規約審査は未完了。Safe Browsing/profile仕様はGeckoデフォルト、通常初期設定ではETP/Safe Browsing ON。比較用ALL_OFFはETP/antiTrackingのみ停止可能で、Safe BrowsingとTLSは維持。
-
-優先順: 実機安全性ゲート → 保存最新性の公式API調査と安全な対象拡大 → サイト権限管理/重要互換機能 → 実機比較測定 → 測定に基づく最適化。
-
-- M6の公式WebExtensions APIはコンパイル確認済み。network blocking、private区別、CSS、port、フィルター更新の端末動作は未検証。Lite初期OFF、網羅率は未測定。
-- 本家AdGuardのXPIは静的manifest検査のみ。インストール・署名検証・遮断・フィルター更新は未検証。拡張Popupは未対応。AdGuard自身の設定ページは2ライブ枠内で開くが、実機互換性は未検証。4条件性能はNOT_MEASURED。
-- フィルターのHTTPS取得・AtomicFile置換は実装済みだが、端末での回線断・容量不足・CA/redirect/巻き戻しのfault injectionは未検証。
-
-- Lite ON/OFF後はページを手動再読み込みして適用を確認する。既に遮断したrequestは再取得されず、拡張disableだけで挿入済みCSSが即座に消える保証はない。未保存フォーム保全のため無断の自動reloadは行わない。
-
-閲覧専用・新版UI・拡張設定経路の詳細と残る制限は[次段階](next-stage.md)。追加デバイステストも、実行できたもの以外は未検証。
+- ライブ目標はハード上限ではなく、UNKNOWN・フォーム・認証等のページが多いとRAMが増える。OSによるプロセス終了やnative OOMの完全な回復は保証しない。
+- flushSessionStateは保存完了の証拠ではない。自動休眠は安全な空ページ・独立保持した閲覧専用コピーに限定。任意のJS heap・フォーム・認証・メディアを完全復元できない。
+- メタデータ保存前の強制終了／電源断では最新変更が失われる可能性がある。Undoは短期メモリ内の通常URL再読み込み。閉じたセッションの完全復活ではない。
+- 非公開ファイル添付、camera/folder入力、転送再開、proxy認証、サイト権限取り消し一覧、拡張Popupは未対応。私的ダウンロードは明示exportで保存したファイルが残る。
+- PasskeyはGeckoの標準OS経路を接続しているが、物理端末の作成・ログイン・provider互換性は未検証。権限／署名allowlist等の条件を満たすことは保証しない。
+- Liteは限定構文のみ。1ページ128selector、observerの候補／保持要素100、150ms集約、32ms処理予算。高負荷時は余白監視を停止する。統計は全タブの限定観測数であり、広告総数や網羅率ではない。
+- CSSと広告専用wrapperの判定を区別。一般の空白、本文を含む親、未識別の広告枠は削除しない。AdGuard ExtendedCSS・scriptlet・HTML filtering・全サイトの広告排除は未対応。
+- CSS解除の応答がないとモード切替／AdGuard導入を停止する。エンジン切替失敗では設定を戻しても実際の拡張状態がUNKNOWNになる場合がある。診断を確認する。
+- 既に遮断したリクエストは設定変更で復活しない。必要なら手動reload。入力保護のため無断reloadしない。
+- 要素選択は一意のID／クラス／data-adに限定。匿名要素や広範囲を保存しない。選択中もサイト独自の複雑なpointer動作を完全制御する保証はない。
+- 背景音声・通話・camera・microphone・支払い・実機TalkBack・文字200%・OEMの戻るアニメーション・長時間メモリ・実機50タブjankは未検証。
+- AdGuard公式XPIの物理端末導入・遮断・更新・設定、外部TLS/DNS fixtureは未検証。正式署名／ストア配布／自動更新は未実装。
+- PSS・CPU・起動p50/p95・Speedometer・Chrome/Firefox比較はNOT_MEASURED。APKサイズだけをRAMや速度の証明にしない。

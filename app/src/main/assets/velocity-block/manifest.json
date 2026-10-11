@@ -1,11 +1,41 @@
 {
   "manifest_version": 2,
   "name": "Velocity Block Lite",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Bounded domain blocking and scoped cosmetic CSS; no scriptlets",
-  "browser_specific_settings": {"gecko": {"id": "velocity-block@velocity.browser"}},
-  "permissions": ["<all_urls>", "webRequest", "webRequestBlocking", "tabs", "nativeMessaging", "geckoViewAddons"],
-  "background": {"scripts": ["engine.js", "background.js"]},
-  "content_scripts": [{"matches": ["http://*/*", "https://*/*"], "js": ["cosmetic.js"], "run_at": "document_start", "all_frames": false}],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "velocity-block@velocity.browser"
+    }
+  },
+  "permissions": [
+    "<all_urls>",
+    "webRequest",
+    "webRequestBlocking",
+    "tabs",
+    "nativeMessaging",
+    "geckoViewAddons"
+  ],
+  "background": {
+    "scripts": [
+      "engine.js",
+      "background.js"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "engine.js",
+        "cosmetic.js",
+        "picker.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
   "content_security_policy": "script-src 'self'; object-src 'none'"
 }

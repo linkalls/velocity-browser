@@ -15,7 +15,7 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ReadingIntegrationTest {
-    @Test fun twentyRealReadingPagesReplayWithoutThirdLiveSessionOrRefetch() {
+    @Test fun twentyRealReadingPagesReplayWithinSoftTargetWithoutRefetch() {
         val inst = InstrumentationRegistry.getInstrumentation()
         val app = inst.targetContext.applicationContext as VelocityApp
         val device = UiDevice.getInstance(inst)
@@ -59,7 +59,7 @@ class ReadingIntegrationTest {
                 waitFor { app.coordinator.scheduler.tabs.any { it.url == url && it.safelySaved && it.id == app.coordinator.scheduler.selectedId } }
                 assertTrue(device.wait(Until.hasObject(By.textContains("READING_BODY_/$n")), 15000))
                 inst.runOnMainSync {
-                    assertTrue(app.coordinator.scheduler.liveCount <= 2)
+                    assertTrue(app.coordinator.scheduler.liveCount <= app.coordinator.scheduler.config.liveTarget)
                     if (n == 0) { firstId = app.coordinator.scheduler.selectedId!!; firstIdentity = app.coordinator.scheduler.tab(firstId)!!.identity }
                 }
             }
@@ -74,7 +74,7 @@ class ReadingIntegrationTest {
             assertFalse(device.hasObject(By.textContains("SCRIPT_RAN")))
             inst.runOnMainSync {
                 assertNotEquals(firstIdentity, app.coordinator.scheduler.tab(firstId)!!.identity)
-                assertTrue(app.coordinator.scheduler.liveCount <= 2)
+                assertTrue(app.coordinator.scheduler.liveCount <= app.coordinator.scheduler.config.liveTarget)
             }
             assertEquals("replay must use retained document", count, requests.get())
         } finally {

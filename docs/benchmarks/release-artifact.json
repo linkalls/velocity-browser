@@ -1,11 +1,13 @@
 {
-  "file": "velocity-browser-0.2.3-release-test-signed.apk",
-  "version": "0.2.3",
+  "file": "velocity-browser-0.3.0-release-test-signed.apk",
+  "version": "0.3.0",
+  "versionCode": 5,
+  "sourceCommit": "576a641ca16a0e11391c61bdd4d77921b80e9fc2",
   "buildType": "release",
   "abi": "arm64-v8a",
-  "bytes": 191369849,
-  "sha256": "d39730ca37aefadd9aeda8e1a2179de1dd3c10363540693156881dac8fa2b088",
-  "signing": "TEST_ONLY: same Android Debug key as local 0.2.1 APK, not a production key",
+  "bytes": 191394502,
+  "sha256": "b5b09ba471c2a5da7b7cff1f4c85049b0dfa033560fe6bd2a26c4e6acd73d134",
+  "signing": "TEST_ONLY: same local Android Debug key as 0.2.x, not a production key",
   "signatureVerification": "PASS: apksigner v2/v3; zipalign 16KiB",
   "physicalDeviceInstall": "UNVERIFIED"
 }

@@ -1,3 +1,5 @@
+> 以下には0.2系の設計・結果を含みます。v0.3の変更と最新の実行結果は [v03-validation](v03-validation.md) を参照してください。
+
 # Velocity Block Lite — v0.2判断と未検証
 
 更新版spec.md第16章を実装基準として読み、M0〜M4の後にM6を追加。独自実装はMIT。AdGuard本体や外部フィルターをAPKへコピーしていない。

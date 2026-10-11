@@ -24,7 +24,7 @@
 <string-array name="block_modes"><item>ALL OFF（計測用・Safe Browsing維持）</item><item>ETPのみ（初期設定）</item><item>ETP + Lite</item><item>ETP + AdGuard（導入済みの場合）</item></string-array>
 <string name="adguard_install">AdGuard Firefox版を追加（実験）</string>
 <string name="adguard_remove">AdGuardを削除</string>
-<string name="adguard_experiment">Mozillaの公式配信元から署名済みAdGuard 5.5.2.3 XPIを導入します。GPLコードはAPKに同梱しません。GeckoViewでの遮断・更新・設定画面は未検証です。Popupは未対応です。設定タブは2ライブ枠内で開き、枠が保護されている場合は保留します。必要権限を次の画面で確認します。Liteは停止します。</string>
+<string name="adguard_experiment">Mozillaの公式配信元から署名済みAdGuard 5.5.2.3 XPIを導入します。GPLコードはAPKに同梱しません。GeckoViewでの遮断・更新・設定画面は未検証です。Popupは未対応です。設定タブも通常タブと同じソフト目標で開き、保護中のページを強制終了しません。必要権限を次の画面で確認します。Liteは停止します。</string>
 <string name="adguard_permissions">AdGuardの権限確認</string>
 <string name="adguard_permission_explanation">以下の権限を許可しますか？サイト通信の監視・遮断を含みます。プライベートモードと技術データ収集は許可しません。</string>
 <string name="reading_new">閲覧専用タブでURLを開く</string>
