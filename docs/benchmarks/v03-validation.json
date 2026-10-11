@@ -37,7 +37,13 @@
   "latestRun": {
     "runId": 38147819890,
     "commit": "576a641ca16a0e11391c61bdd4d77921b80e9fc2",
-    "status": "PENDING"
+    "status": "DEVICE_PASS_BUILD_PENDING",
+    "deviceJobId": 114494766622,
+    "deviceTests": 20,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "bun": "PASS"
   },
   "size": {
     "status": "MEASURED",
