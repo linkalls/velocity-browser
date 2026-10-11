@@ -6,6 +6,7 @@ import dev.velocity.browser.util.Clock
 sealed interface Event {
     data class CreateTab(val id: String, val url: String, val privateMode: Boolean = false, val readOnly: Boolean = false, val extensionBase: String? = null) : Event
     data class SelectTab(val id: String) : Event
+    data class CancelPending(val id: String? = null) : Event
     data class HideTab(val id: String) : Event
     data class CloseTab(val id: String, val confirmed: Boolean = false) : Event
     data class Ready(val id: String, val identity: Long) : Event
@@ -58,19 +59,28 @@ class AdaptiveTabScheduler(val config: AdaptiveConfig, private val clock: Clock)
                 persist(records.getValue(event.id))
             }
             is Event.SelectTab -> select(event.id, out)
+            is Event.CancelPending -> if (event.id == null || pendingId == event.id) pendingId = null
             is Event.HideTab -> records[event.id]?.takeIf { it.id == selectedId }?.let {
                 pendingId = null; hide(it, out); selectedId = null
             }
             is Event.CloseTab -> records[event.id]?.let { t ->
-                if (pendingId == t.id) pendingId = null
                 if (t.live && !t.safelySaved && !event.confirmed) out += Command.ConfirmClose(t.id)
                 else {
+                    if (pendingId == t.id) pendingId = null
                     val wasSelected = selectedId == t.id
-                    if (wasSelected) { out += Command.DetachSessionFromView(t.id); selectedId = null }
+                    if (wasSelected) { out += Command.DetachSessionFromView(t.id); out += Command.SetSessionActive(t.id, false); selectedId = null }
                     t.identity?.let { out += Command.CloseSession(t.id, it) }
                     records.remove(t.id); persist(t)
                     if (pendingId != null && liveCount < config.maxLiveTabs) resumePending(out)
-                    else if (wasSelected) records.values.firstOrNull { it.live }?.let { select(it.id, out) }
+                    else if (records.isEmpty()) {
+                        // Explicit close creates a genuinely empty replacement, never a fake restore.
+                        val id = java.util.UUID.randomUUID().toString()
+                        records[id] = TabRecord(id, "about:blank", privateMode = t.privateMode)
+                        select(id, out)
+                    } else if (wasSelected) {
+                        // MRU; equal clock values prefer the most recently inserted record.
+                        records.values.toList().asReversed().maxByOrNull { it.lastUsed }?.let { select(it.id, out) }
+                    }
                 }
             }
             is Event.Ready -> matching(event.id, event.identity)?.let {

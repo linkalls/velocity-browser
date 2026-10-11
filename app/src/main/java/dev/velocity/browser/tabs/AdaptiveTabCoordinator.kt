@@ -18,6 +18,7 @@ interface BrowserHost {
     val activity: Activity
     fun render(tabs: List<TabRecord>, selectedId: String?, canBack: Boolean, canForward: Boolean, loading: Boolean)
     fun notice(message: Int)
+    fun capacityBlocked(id: String, adguard: Boolean)
     fun confirmClose(id: String)
     fun requestAndroidPermissions(permissions: Array<String>, done: (Boolean) -> Unit)
 }
@@ -33,6 +34,11 @@ class AdaptiveTabCoordinator(private val context: Context) {
     private val snapshots = mutableMapOf<String, GeckoSession.SessionState>()
     private val reading = dev.velocity.browser.reading.ReadingLoader()
     private val documents = mutableMapOf<String, dev.velocity.browser.reading.ReadingDocument>()
+    private var optionsTabId: String? = null
+    private var optionsRequestId: String? = null
+    val delegatedRequestInProgress get() = deferredExtensionLoadId != null
+    fun isOptionsPending(id: String) = optionsRequestId == id && scheduler.pendingId == id
+    fun cancelPending(id: String) { dispatch(Event.CancelPending(id)); if (optionsRequestId == id) optionsRequestId = null }
     private var deferredExtensionLoadId: String? = null
     private var untrustedExtensionSeen = false
     private val queue = ArrayDeque<Event>()
@@ -146,7 +152,7 @@ class AdaptiveTabCoordinator(private val context: Context) {
                 if (scheduler.tab(c.id)?.state != TabState.COLD) snapshots.remove(c.id)
             }
             Command.PersistTabMetadata -> repository.save(scheduler.tabs, scheduler.selectedId)
-            is Command.ShowEvictionBlockedNotice -> { metrics.record("BLOCKED"); notice(R.string.blocked) }
+            is Command.ShowEvictionBlockedNotice -> { metrics.record("BLOCKED"); if (!delegatedRequestInProgress) host?.capacityBlocked(c.id, isOptionsPending(c.id)) }
             is Command.ConfirmClose -> host?.confirmClose(c.id)
             is Command.FallbackReload -> adapters[c.id]?.load(c.url)
         }
@@ -166,15 +172,27 @@ class AdaptiveTabCoordinator(private val context: Context) {
     }
     fun createExtensionTab(url: String, base: String, delegatedLoad: Boolean): GeckoSession? {
         if (!(context.applicationContext as dev.velocity.browser.VelocityApp).blocker.extensionPageAllowed(url, base)) return null
-        if (!delegatedLoad) scheduler.tabs.firstOrNull { it.extensionBase == base && it.url == url }?.let { existing ->
-            select(existing.id); return adapters[existing.id]?.session
+        if (!delegatedLoad) {
+            val existing = optionsTabId?.let(scheduler::tab)?.takeIf { it.extensionBase == base }
+                ?: scheduler.tabs.firstOrNull { it.extensionBase == base && it.url == url }
+            if (existing != null) {
+                optionsTabId = existing.id; optionsRequestId = existing.id
+                select(existing.id)
+                return adapters[existing.id]?.session?.takeIf { it.isOpen }
+            }
         }
         val id = UUID.randomUUID().toString()
         if (delegatedLoad) deferredExtensionLoadId = id
+        else { optionsTabId = id; optionsRequestId = id }
         try {
             dispatch(Event.CreateTab(id, url, extensionBase = base)); select(id)
-        } finally { deferredExtensionLoadId = null }
-        return adapters[id]?.session
+            val session = adapters[id]?.session?.takeIf { it.isOpen }
+            if (delegatedLoad && session == null) {
+                // Gecko owns the delegated load. A null result must not leave a queued phantom tab.
+                cancelPending(id); close(id, true)
+            }
+            return session
+        } finally { deferredExtensionLoadId = null; render() }
     }
     fun untrustedExtensionInstalled() {
         untrustedExtensionSeen = true

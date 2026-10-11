@@ -68,7 +68,7 @@ class AdaptiveTabSchedulerTest {
     }
     @Test fun protectedCloseRequiresExplicitConfirmation() {
         create("a"); assertTrue(s.dispatch(Event.CloseTab("a")).any { it is Command.ConfirmClose })
-        assertEquals(1, s.liveCount); assertTrue(s.dispatch(Event.CloseTab("a", true)).any { it is Command.CloseSession }); assertEquals(0, s.liveCount)
+        assertEquals(1, s.liveCount); assertTrue(s.dispatch(Event.CloseTab("a", true)).any { it is Command.CloseSession }); assertEquals(1, s.liveCount); assertEquals("about:blank", s.tab(s.selectedId!!)!!.url)
     }
     @Test fun memoryPressureReclaimsOnlySafeHidden() {
         create("a"); create("b"); certify("a")
@@ -120,7 +120,7 @@ class AdaptiveTabSchedulerTest {
         assertEquals(100, s.tabs.map { it.id }.toSet().size)
         s.tabs.filterNot { it.live }.forEach { assertNull(it.identity) }
         for (n in 0 until 100) s.dispatch(Event.CloseTab("t$n", true))
-        assertEquals(0, s.liveCount); assertTrue(s.tabs.isEmpty())
+        assertEquals(1, s.liveCount); assertEquals(1, s.tabs.size); assertEquals("about:blank", s.tabs.single().url)
     }
     @Test fun failedRestoreFallsBackToUrlAndCrashIsRetryable() {
         create("a"); val t = s.tab("a")!!
@@ -218,4 +218,39 @@ class AdaptiveTabSchedulerTest {
         create("c"); s.dispatch(Event.CloseTab("b", true))
         assertEquals("c", s.selectedId); assertEquals(identity, s.tab("a")!!.identity); assertEquals(2, s.liveCount)
     }
+    @Test fun closingSelectedRestoresMostRecentColdAfterSessionClose() {
+        create("a"); clock.now = 10; create("b"); certify("a"); certify("b")
+        clock.now = 20; create("c"); certify("b")
+        s.dispatch(Event.MemoryPressure())
+        assertEquals(TabState.COLD, s.tab("a")!!.state); assertEquals(TabState.COLD, s.tab("b")!!.state)
+        val commands = s.dispatch(Event.CloseTab("c", true))
+        assertEquals("b", s.selectedId)
+        val close = commands.indexOfFirst { it is Command.CloseSession && it.id == "c" }
+        val restore = commands.indexOfFirst { it is Command.CreateSession && it.id == "b" }
+        assertTrue(close >= 0 && restore > close); assertEquals(1, s.liveCount)
+    }
+    @Test fun nonSelectedColdCloseDoesNotCreateOrChangeSession() {
+        create("a"); create("b"); create("c")
+        s.dispatch(Event.CancelPending("c"))
+        val identity = s.tab("b")!!.identity
+        val commands = s.dispatch(Event.CloseTab("c"))
+        assertEquals("b", s.selectedId); assertEquals(identity, s.tab("b")!!.identity)
+        assertFalse(commands.any { it is Command.CreateSession || it is Command.CloseSession })
+    }
+    @Test fun explicitPendingCancelCannotCancelNewerRequestOrResumeAfterClose() {
+        create("a"); create("b"); create("c"); create("d")
+        s.dispatch(Event.CancelPending("c")); assertEquals("d", s.pendingId)
+        s.dispatch(Event.CancelPending("d")); assertNull(s.pendingId)
+        s.dispatch(Event.CloseTab("a", true)); assertEquals("b", s.selectedId)
+        assertEquals(TabState.COLD, s.tab("d")!!.state)
+    }
+    @Test fun closeCancellationKeepsProtectedTabAndStaleCallbacksCannotRecreateClosedId() {
+        create("a"); val identity = s.tab("a")!!.identity!!
+        s.dispatch(Event.CloseTab("a")); assertEquals(identity, s.tab("a")!!.identity)
+        s.dispatch(Event.CloseTab("a", true))
+        val replacement = s.selectedId
+        s.dispatch(Event.TitleChanged("a", identity, "late")); s.dispatch(Event.Ready("a", identity))
+        assertNull(s.tab("a")); assertEquals(replacement, s.selectedId); assertEquals(1, s.liveCount)
+    }
+
 }

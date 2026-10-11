@@ -51,9 +51,43 @@ class AdguardIntegrationTest {
             assertEquals("5.5.2.3", extension!!.metaData.version)
             assertTrue(extension!!.metaData.enabled)
             assertFalse(extension!!.metaData.allowedInPrivateBrowsing)
+            // Signed-XPI options: two protected tabs, cancel, retry, explicit close and reuse.
+            var target = ""; var other = ""; var otherIdentity: Long? = null
             inst.runOnMainSync {
                 assertFalse(app.blocker.enabled(false)); assertFalse(app.blocker.enabled(true))
-                assertTrue(app.coordinator.scheduler.liveCount <= 2)
+                app.coordinator.scheduler.tabs.forEach { app.coordinator.close(it.id,true) }
+                other = app.coordinator.scheduler.selectedId!!
+                otherIdentity = app.coordinator.scheduler.tab(other)!!.identity
+                app.coordinator.createTab()
+                app.blocker.openAdguardOptions()
+                target = app.coordinator.scheduler.pendingId!!
+                assertTrue(app.coordinator.isOptionsPending(target))
+                assertEquals(2,app.coordinator.scheduler.liveCount)
+                app.coordinator.cancelPending(target)
+                assertNull(app.coordinator.scheduler.pendingId)
+                app.blocker.openAdguardOptions()
+                assertEquals(target,app.coordinator.scheduler.pendingId)
+                val before = app.coordinator.scheduler.tabs.map { it.id }
+                val base = extension!!.metaData.baseUrl
+                assertNull(app.coordinator.createExtensionTab(base + "options.html",base,true))
+                assertEquals("failed delegated load leaves no phantom tab",before,app.coordinator.scheduler.tabs.map { it.id })
+                app.blocker.openAdguardOptions()
+            }
+            assertTrue(device.wait(Until.hasObject(By.text("AdGuardの詳細設定を開く")),10000))
+            inst.runOnMainSync { app.coordinator.close(app.coordinator.scheduler.tabs.first { it.live && it.id != other }.id) }
+            assertTrue(device.wait(Until.hasObject(By.text("このタブを閉じる")),10000))
+            device.findObject(By.text("このタブを閉じる")).click()
+            waitFor { app.coordinator.scheduler.selectedId == target && app.coordinator.scheduler.tab(target)?.live == true }
+            inst.runOnMainSync {
+                val options = app.coordinator.scheduler.tab(target)!!
+                assertTrue(app.blocker.extensionPageAllowed(options.url,extension!!.metaData.baseUrl))
+                val count = app.coordinator.scheduler.tabs.size
+                app.coordinator.dispatch(dev.velocity.browser.tabs.Event.LocationChanged(target,options.identity!!,options.url + "#settings"))
+                app.blocker.openAdguardOptions()
+                assertEquals(target,app.coordinator.scheduler.selectedId)
+                assertEquals(count,app.coordinator.scheduler.tabs.size)
+                assertEquals(otherIdentity,app.coordinator.scheduler.tab(other)!!.identity)
+                assertEquals(2,app.coordinator.scheduler.liveCount)
                 app.blocker.setMode(BlockController.Mode.ETP_ONLY)
             }
             waitFor { !app.blocker.busy && app.blocker.status.startsWith("DISABLED") }

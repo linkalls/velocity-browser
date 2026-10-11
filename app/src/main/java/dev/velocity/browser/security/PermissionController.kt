@@ -27,11 +27,11 @@ class PermissionController(private val owner: AdaptiveTabCoordinator) {
         cancel = { finish(false) }
         pending.getOrPut(a) { mutableListOf() }.add(cancel)
         a.risk(Protection.PERMISSION, true)
-        dialog = AlertDialog.Builder(host.activity).setMessage(message)
+        dialog = (host.activity.application as dev.velocity.browser.VelocityApp).appearance.builder(host.activity).setMessage(message)
             .setPositiveButton(R.string.yes) { _, _ -> finish(true) }
             .setNegativeButton(R.string.no) { _, _ -> finish(false) }
             .setOnCancelListener { finish(false) }.create()
-        dialog.show()
+        dialog.show(); (host.activity.application as dev.velocity.browser.VelocityApp).appearance.track(dialog)
         // UNKNOWNを残すので、許可直後やキャンセル後も安全性を過大評価しない。
     }
     fun delegate(a: GeckoSessionAdapter) = object : GeckoSession.PermissionDelegate {

@@ -1,5 +1,8 @@
 <resources>
-<style name="AppThemeBase" parent="android:style/Theme.Material.Light.NoActionBar">
-<item name="android:fontFamily">sans-serif</item><item name="android:windowLightStatusBar">true</item><item name="android:statusBarColor">#F7F9FA</item><item name="android:navigationBarColor">#19222B</item><item name="android:windowBackground">#F7F9FA</item><item name="android:colorAccent">#007A66</item>
-</style><style name="AppTheme" parent="AppThemeBase"/>
+<style name="AppThemeLight" parent="android:style/Theme.Material.Light.NoActionBar">
+<item name="android:fontFamily">sans-serif</item><item name="android:textCursorDrawable">@drawable/browser_cursor</item><item name="android:windowLightStatusBar">true</item><item name="android:statusBarColor">@color/browser_light_background</item><item name="android:navigationBarColor">@color/browser_light_background</item><item name="android:windowBackground">@color/browser_light_background</item><item name="android:colorAccent">@color/browser_light_accent</item><item name="android:editTextColor">@color/browser_light_text</item><item name="android:textColorPrimary">@color/browser_light_text</item><item name="android:textColorSecondary">@color/browser_light_muted</item>
+</style>
+<style name="AppThemeDark" parent="android:style/Theme.Material.NoActionBar">
+<item name="android:fontFamily">sans-serif</item><item name="android:textCursorDrawable">@drawable/browser_cursor</item><item name="android:windowLightStatusBar">false</item><item name="android:statusBarColor">@color/browser_dark_background</item><item name="android:navigationBarColor">@color/browser_dark_background</item><item name="android:windowBackground">@color/browser_dark_background</item><item name="android:colorAccent">@color/browser_dark_accent</item><item name="android:editTextColor">@color/browser_dark_text</item><item name="android:textColorPrimary">@color/browser_dark_text</item><item name="android:textColorSecondary">@color/browser_dark_muted</item>
+</style><style name="AppTheme" parent="AppThemeLight"/>
 </resources>

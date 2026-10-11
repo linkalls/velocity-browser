@@ -35,4 +35,5 @@
 <string name="adguard_options">AdGuardの設定・フィルターを開く</string>
 <string name="block_busy">拡張の準備中です。状態が更新されてから操作してください。</string>
 <string name="block_reload_hint">準備完了後、ページを更新して適用を確認してください。未保存の入力がある場合は更新を待ってください。入力保全のため自動では更新しません。</string>
+<string name="appearance">外観</string><string name="adguard_missing">AdGuardはインストールされていません。</string><string name="adguard_disabled">AdGuardが無効になっています。モード設定を確認してください。</string><string name="adguard_missing_options">この拡張には設定ページがありません。</string>
 </resources>

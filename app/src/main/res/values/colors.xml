@@ -1,0 +1,10 @@
+<resources>
+    <color name="browser_light_background">#F7F9FA</color><color name="browser_light_surface">#FFFFFF</color><color name="browser_light_card">#FFFFFF</color>
+    <color name="browser_light_text">#19222B</color><color name="browser_light_muted">#5D6973</color><color name="browser_light_accent">#007A66</color>
+    <color name="browser_light_border">#E6ECED</color><color name="browser_light_pressed">#E6F4EF</color><color name="browser_light_danger">#B3261E</color>
+    <color name="browser_dark_background">#101418</color><color name="browser_dark_surface">#1B232A</color><color name="browser_dark_card">#202A32</color>
+    <color name="browser_dark_text">#EDF3F5</color><color name="browser_dark_muted">#ADBBC5</color><color name="browser_dark_accent">#6BDEC5</color>
+    <color name="browser_dark_border">#35434D</color><color name="browser_dark_pressed">#25453F</color><color name="browser_dark_danger">#FF8E87</color>
+    <!-- Visible on both surfaces for the public pre-29 cursor API fallback. -->
+    <color name="browser_cursor">#008F7A</color>
+</resources>

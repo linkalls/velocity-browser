@@ -29,15 +29,15 @@ class PromptController(private val owner: AdaptiveTabCoordinator) {
             if (pending[a].isNullOrEmpty()) a.risk(Protection.PROMPT, false)
         }
         cancel = { finish(false) }; pending.getOrPut(a) { mutableListOf() }.add(cancel)
-        val input = if (text != null) EditText(host.activity).also { it.setText(text) } else null
-        val builder = AlertDialog.Builder(host.activity).setTitle(prompt.title ?: host.activity.getString(R.string.error_title))
+        val input = if (text != null) EditText((host.activity.application as dev.velocity.browser.VelocityApp).appearance.dialogContext(host.activity)).also { it.setText(text) } else null
+        val builder = (host.activity.application as dev.velocity.browser.VelocityApp).appearance.builder(host.activity).setTitle(prompt.title ?: host.activity.getString(R.string.error_title))
             .setMessage(message).setPositiveButton(android.R.string.ok) { _, _ -> finish(true, input?.text?.toString().orEmpty()) }
             .setNegativeButton(R.string.cancel) { _, _ -> finish(false) }.setOnCancelListener { finish(false) }
         if (input != null) builder.setView(input)
         prompt.setDelegate(object : GeckoSession.PromptDelegate.PromptInstanceDelegate {
             override fun onPromptDismiss(prompt: GeckoSession.PromptDelegate.BasePrompt) { finish(false) }
         })
-        dialog = builder.create(); dialog.show(); return result
+        dialog = builder.create(); dialog.show(); (host.activity.application as dev.velocity.browser.VelocityApp).appearance.track(dialog); return result
     }
     private fun unsupported(a: GeckoSessionAdapter, p: GeckoSession.PromptDelegate.BasePrompt): GeckoResult<GeckoSession.PromptDelegate.PromptResponse> {
         owner.notice(R.string.unsupported); return GeckoResult.fromValue(p.dismiss())

@@ -26,6 +26,7 @@ class BlockController(private val context: Context) {
         const val XPI = "https://addons.mozilla.org/firefox/downloads/file/4986231/adguard_adblocker-5.5.2.3.xpi"
         const val SOURCE = "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=1&mimetype=plaintext"
     }
+    var onOptionsUnavailable: ((Int) -> Unit)? = null
     var openExtensionPage: ((String, String, Boolean) -> GeckoSession?)? = null
     var onChanged: (() -> Unit)? = null
     var normalDecisions = 0; private set
@@ -85,11 +86,12 @@ class BlockController(private val context: Context) {
                 if (extension.id != ADGUARD_ID || activity == null || activity.isFinishing || activity.isDestroyed)
                     return GeckoResult.fromValue(WebExtension.PermissionPromptResponse(false, false, false))
                 val result = GeckoResult<WebExtension.PermissionPromptResponse>(); consent = result
-                consentDialog = AlertDialog.Builder(activity).setTitle(R.string.adguard_permissions)
+                consentDialog = (activity.application as dev.velocity.browser.VelocityApp).appearance.builder(activity).setTitle(R.string.adguard_permissions)
                     .setMessage(activity.getString(R.string.adguard_permission_explanation) + "\n" + (permissions + origins).joinToString("\n"))
                     .setPositiveButton(R.string.yes) { _, _ -> finishConsent(true) }
                     .setNegativeButton(R.string.cancel) { _, _ -> finishConsent(false) }
-                    .setOnCancelListener { finishConsent(false) }.show()
+                    .setOnCancelListener { finishConsent(false) }.create()
+                consentDialog?.let { it.show(); (activity.application as dev.velocity.browser.VelocityApp).appearance.track(it) }
                 return result
             }
         }) // 追加権限/データ収集/私的モード/自動更新の既定は拒否。
@@ -258,10 +260,14 @@ class BlockController(private val context: Context) {
     }
     fun extensionPageAllowed(url: String, base: String) = adguard?.metaData?.baseUrl == base && dev.velocity.browser.security.UrlPolicy.extensionPage(url, base)
     fun openAdguardOptions() {
-        val a = adguard ?: return
-        val page = a.metaData.optionsPageUrl ?: return
-        val url = runCatching { URI(a.metaData.baseUrl).resolve(page).toString() }.getOrNull() ?: return
-        if (extensionPageAllowed(url, a.metaData.baseUrl)) openExtensionPage?.invoke(url, a.metaData.baseUrl, false)
+        fun fail(message: Int) { onOptionsUnavailable?.invoke(message) }
+        if (busy) return fail(R.string.block_busy)
+        val a = adguard ?: return fail(R.string.adguard_missing)
+        if (!a.metaData.enabled) return fail(R.string.adguard_disabled)
+        val page = a.metaData.optionsPageUrl ?: return fail(R.string.adguard_missing_options)
+        val url = runCatching { URI(a.metaData.baseUrl).resolve(page).toString() }.getOrNull() ?: return fail(R.string.invalid_url)
+        if (!extensionPageAllowed(url, a.metaData.baseUrl)) return fail(R.string.invalid_url)
+        openExtensionPage?.invoke(url, a.metaData.baseUrl, false)
     }
     fun hasAdguard() = adguard != null
     fun removeAdguard() {

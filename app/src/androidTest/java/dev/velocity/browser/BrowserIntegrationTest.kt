@@ -78,7 +78,7 @@ class BrowserIntegrationTest {
                 owner.createTab("http://127.0.0.1:${server.localPort}/")
                 formId = owner.scheduler.selectedId!!; identity = owner.scheduler.tab(formId)!!.identity
             }
-            assertTrue(device.wait(Until.hasObject(By.text("フォーム試験")), 15000))
+            assertTrue(device.wait(Until.hasObject(By.text("未保存入力")), 15000))
             fun formField() = device.findObjects(By.clazz("android.widget.EditText")).firstOrNull { it.resourceName != "dev.velocity.browser:id/address" }
             val deadline = android.os.SystemClock.elapsedRealtime() + 10000
             while (formField() == null && android.os.SystemClock.elapsedRealtime() < deadline) android.os.SystemClock.sleep(50)

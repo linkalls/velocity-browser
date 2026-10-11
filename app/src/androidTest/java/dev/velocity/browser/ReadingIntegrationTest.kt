@@ -92,10 +92,11 @@ class ReadingIntegrationTest {
             app.coordinator.scheduler.tabs.forEach { app.coordinator.close(it.id, true) }
             app.coordinator.createTab(privateMode = true)
             val id = app.coordinator.scheduler.selectedId
+            val before = app.coordinator.scheduler.tabs.map { it.id }
             app.coordinator.createReadingTab("https://never-fetch.example/private-reading")
             assertEquals(id, app.coordinator.scheduler.selectedId)
-            assertEquals(1, app.coordinator.scheduler.tabs.size)
-            assertTrue(app.coordinator.scheduler.tabs.single().privateMode)
+            assertEquals(before, app.coordinator.scheduler.tabs.map { it.id })
+            assertTrue(app.coordinator.scheduler.tab(id!!)!!.privateMode)
             assertFalse(app.coordinator.scheduler.tabs.any { it.readOnly })
             app.coordinator.close(id!!, true)
         }

@@ -70,7 +70,6 @@ jobs:
           arch: x86_64
           script: |
             ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notAnnotation=dev.velocity.browser.RequiresExternalFixture
-            adb exec-out screencap -p > app/build/reports/androidTests/device-ui.png
       - name: Report device test outcomes
         if: always()
         run: |
@@ -93,15 +92,8 @@ jobs:
                   for failure in list(case.findall('failure')) + list(case.findall('error')):
                       print((failure.get('message', '') + '\n' + (failure.text or ''))[:12000])
           print('DEVICE_TOTALS', totals)
-          if totals['tests'] != 8:
-              raise SystemExit('Expected all 8 smoke cases; partial execution is not a pass')
+          if totals['tests'] != 12:
+              raise SystemExit('Expected all 12 smoke cases; partial execution is not a pass')
           if totals['failures'] or totals['errors']:
               raise SystemExit(1)
           PYTHON
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: instrumentation-reports
-          path: |
-            app/build/reports/androidTests/
-            app/build/outputs/androidTest-results/
