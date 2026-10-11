@@ -33,6 +33,9 @@ function emptyDedicated(e){
 function enqueue(root){
  if(!(root instanceof Element)||!policy||stopped)return;
  if(queue.size>=100){stopped=true;stop();report();return;}
+ // A mutation inside an already-collapsed wrapper must revalidate its safety,
+ // even when a previous recheck slice has finished but candidates remain.
+ if(collapsed.has(root)&&collapsedRecheck!==null&&!collapsedRecheck.includes(root))collapsedRecheck.push(root);
  queue.add(root);if(!timer)timer=setTimeout(batch,150);
 }
 function batch(){
