@@ -202,6 +202,20 @@ class MainActivity : Activity(), BrowserHost {
             .setPositiveButton(R.string.go) { _, _ -> UrlPolicy.input(input.text.toString(), coordinator.searchEngine)?.let(coordinator::createReadingTab) }
             .setNegativeButton(R.string.cancel, null).showThemed()
     }
+    private fun siteRules() {
+        val t=coordinator.scheduler.selectedId?.let(coordinator.scheduler::tab)?:return
+        val origin=dev.velocity.browser.block.LiteRules.origin(t.url)?:return
+        val rows=blocker.siteRules(origin,t.privateMode).map {rule->SettingsView.Row("このサイトの規則",rule,"タップでこの規則を削除") {blocker.removeUserRule(rule,t.privateMode)}}
+        SettingsView(this,appearance,"サイト別ルール",rows+SettingsView.Row("取り消し","直前の要素選択を元に戻す","ページを再読み込みせず解除します") {blocker.undoPickerRule(t.privateMode)}).show()
+    }
+    private fun pickElement() {
+        val t=coordinator.scheduler.selectedId?.let(coordinator.scheduler::tab)?:return
+        val origin=dev.velocity.browser.block.LiteRules.origin(t.url)?:return
+        val identity=t.identity?:return
+        if(blocker.startPicker(origin,t.privateMode) {val current=coordinator.scheduler.tab(t.id);coordinator.scheduler.selectedId==t.id&&current?.identity==identity&&current.epoch==t.epoch}) {
+            appearance.dismissFor(this)
+        } else Toast.makeText(this,"このページではLiteを有効にしてから選択してください",Toast.LENGTH_LONG).show()
+    }
     private fun blockSettings() {
         val tab = coordinator.scheduler.tabs.find { it.id == coordinator.scheduler.selectedId }
         val privateMode = tab?.privateMode == true
@@ -237,6 +251,8 @@ class MainActivity : Activity(), BrowserHost {
             }
         }) }
         val cosmeticRows=listOf(
+            SettingsView.Row("要素非表示","このサイトの非表示ルールを管理","削除・直前の選択ルールを取り消し",::siteRules),
+            SettingsView.Row("要素非表示","ページ内の要素を選択して非表示","Lite有効時のみ。適用前にプレビューできます",::pickElement),
             SettingsView.Row("要素非表示","広告要素を非表示 · ${blocker.cosmeticEnabled}","Liteのみ。フォーム・本文領域を保護します") {blocker.setCosmetic(!blocker.cosmeticEnabled)},
             SettingsView.Row("要素非表示","広告の空白を折りたたむ · ${blocker.collapseEnabled}","広告専用の空枠のみ。高負荷時は監視を停止") {blocker.setCollapse(!blocker.collapseEnabled)},
             SettingsView.Row("要素非表示","このサイトの折りたたみ",if(origin!=null&&blocker.collapseExcluded(origin,privateMode))"OFF" else "ON") {if(origin!=null)blocker.toggleCollapseException(origin,privateMode)}

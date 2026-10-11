@@ -73,7 +73,7 @@ async function refresh(){
   const result=await browser.runtime.sendMessage({type:'cosmetic'});
   if(request!==generation)return;
   restore();policy=null;stopped=false;
-  if(!result||typeof result.css!=='string'||result.css.length>=65536||!result.css)return;
+  if(!result||typeof result.css!=='string'||result.css.length>=65536||!result.css){if(typeof pickerExit==='function')pickerExit();return;}
   if(!Array.isArray(result.selectors)||result.selectors.length>128||result.selectors.some(s=>!VelocityRules.selector(s)))return;
   policy=result;sheet=document.createElement('style');sheet.textContent=result.css;(document.head||document.documentElement).appendChild(sheet);
   markerSheet=document.createElement('style');markerSheet.textContent='['+marker+']{display:none!important;margin:0!important;padding:0!important;min-height:0!important;}';(document.head||document.documentElement).appendChild(markerSheet);
