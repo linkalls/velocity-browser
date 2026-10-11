@@ -20,15 +20,23 @@ import javax.net.ssl.HttpsURLConnection
 class BlockController(private val context: Context) {
     enum class Mode { ALL_OFF, ETP_ONLY, LITE, ADGUARD }
     companion object {
+        const val BUNDLED_VERSION = "202610101515"
         const val ID = "velocity-block@velocity.browser"
         const val ADGUARD_ID = "adguardadblocker@adguard.com"
         const val XPI = "https://addons.mozilla.org/firefox/downloads/file/4986231/adguard_adblocker-5.5.2.3.xpi"
         const val SOURCE = "https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=1&mimetype=plaintext"
     }
+    var openExtensionPage: ((String, String, Boolean) -> GeckoSession?)? = null
+    var onChanged: (() -> Unit)? = null
+    var normalDecisions = 0; private set
+    var privateDecisions = 0; private set
+    var onUntrustedExtension: (() -> Unit)? = null
     private val main = Handler(Looper.getMainLooper())
     private val io = Executors.newSingleThreadExecutor()
     private val prefs = context.getSharedPreferences("block_settings", Context.MODE_PRIVATE)
     private val cache = AtomicFile(File(context.filesDir, "lite-rules.json"))
+    private var extensionInventoryKnown = false
+    fun readingAllowed() = extensionInventoryKnown && adguard == null
     private var runtime: GeckoRuntime? = null
     private var lite: WebExtension? = null
     private var adguard: WebExtension? = null
@@ -36,8 +44,8 @@ class BlockController(private val context: Context) {
     private var generation = 0
     private var dataReady = false
     var busy = false; private set
-    var status = "NOT_INITIALIZED"; private set
-    var filterVersion = "bundled-0.1.0"; private set
+    var status = "NOT_INITIALIZED"; private set(value) { field = value; onChanged?.invoke() }
+    var filterVersion = BUNDLED_VERSION; private set
     var updatedAt = 0L; private set
     var accepted = 0; private set
     var skipped = 0; private set
@@ -54,13 +62,14 @@ class BlockController(private val context: Context) {
     init {
         io.execute {
             val original = context.assets.open("velocity-block/rules.txt").bufferedReader().use { it.readText() }
-            var rules = original; var version = "bundled-0.1.0"; var stamp = 0L; var ignored = 0
+            var rules = original + "\n" + context.assets.open("velocity-block/pgl.txt").bufferedReader().use { it.readText() }; var version = BUNDLED_VERSION; var stamp = 0L; var ignored = 0
             runCatching {
                 val obj = cache.openRead().use { JSONObject(it.bufferedReader().readText()) }
                 val parsed = LiteRules.parse(obj.getString("rules"))
                 require(parsed.skipped == 0 && parsed.accepted > 0)
                 require(obj.getString("source") == SOURCE && obj.getString("version").matches(Regex("\\d{12}")))
-                rules += "\n" + parsed.text; version = obj.getString("version"); stamp = obj.getLong("updatedAt"); ignored = obj.getInt("skipped")
+                require(obj.getString("version") >= BUNDLED_VERSION)
+                rules = original + "\n" + parsed.text; version = obj.getString("version"); stamp = obj.getLong("updatedAt"); ignored = obj.getInt("skipped")
             }
             val parsed = LiteRules.parse(rules)
             main.post { base = parsed.text; accepted = parsed.accepted; skipped = ignored; filterVersion = version; updatedAt = stamp; dataReady = true; push() }
@@ -94,7 +103,10 @@ class BlockController(private val context: Context) {
                     p.setDelegate(object : WebExtension.PortDelegate {
                         override fun onPortMessage(message: Any, p: WebExtension.Port) {
                             if (port !== p || message !is JSONObject || message.length() > 4) return
-                            if (message.optString("type") == "ready" && message.optInt("generation", -1) == generation && message.optInt("accepted", -1) in 0..LiteRules.MAX_RULES && message.optInt("skipped", -1) in 0..200_000) status = "READY_CONFIG_ACK (blocking UNVERIFIED)"
+                            if (message.optString("type") == "stats" && message.optInt("generation", -1) == generation) {
+                                val n = message.optInt("blocked", -1); val pCount = message.optInt("privateBlocked", -1)
+                                if (n in 0..1_000_000 && pCount in 0..1_000_000) { normalDecisions = n; privateDecisions = pCount; onChanged?.invoke() }
+                            } else if (message.optString("type") == "ready" && message.optInt("generation", -1) == generation && message.optInt("accepted", -1) in 0..LiteRules.MAX_RULES && message.optInt("skipped", -1) in 0..200_000) status = "READY_CONFIG_ACK (blocking UNVERIFIED)"
                             else if (message.optString("type") == "error" && message.optString("code") == "CONFIG_INVALID") status = "CONFIG_INVALID"
                         }
                         override fun onDisconnect(p: WebExtension.Port) { if (port === p) { port = null; status = "DISCONNECTED" } }
@@ -103,9 +115,11 @@ class BlockController(private val context: Context) {
             }, "velocity_block_lite")
             controller.setAllowedInPrivateBrowsing(extension, true).accept({ updated ->
                 lite = updated ?: extension
-                prefs.edit().putString("builtInVersion", "0.1.0").apply()
+                prefs.edit().putString("builtInVersion", "0.2.0").apply()
                 controller.list().accept({ list ->
-                    adguard = list?.find { it.id == ADGUARD_ID }; adguard?.let { guardTabs(it) }
+                    extensionInventoryKnown = list != null
+                    if (list?.any { it.id != ID } == true) onUntrustedExtension?.invoke()
+                    adguard = list?.find { it.id == ADGUARD_ID }; adguard?.let { onUntrustedExtension?.invoke(); guardTabs(it) }
                     if (mode == Mode.ADGUARD && adguard == null) mode = Mode.ETP_ONLY
                     applyMode()
                 }, { status = "LIST_FAILED"; mode = Mode.ETP_ONLY; applyMode() })
@@ -152,6 +166,7 @@ class BlockController(private val context: Context) {
     }
     private fun failedMode() { busy = false; status = "MODE_FAILED (actual extension state UNKNOWN)"; mode = Mode.ETP_ONLY; updateEtp(); prefs.edit().putString("mode", mode.name).apply() }
     private fun push() {
+        normalDecisions = 0; privateDecisions = 0
         if (!dataReady) return
         if (port != null) status = "WAITING_CONFIG_ACK"
         port?.postMessage(JSONObject().put("type", "config").put("generation", ++generation)
@@ -213,6 +228,7 @@ class BlockController(private val context: Context) {
     fun installAdguard(activity: Activity) {
         if (busy || runtime == null || lite == null) return
         if (adguard != null) { setMode(Mode.ADGUARD); return }
+        onUntrustedExtension?.invoke() // installがcontentへ触れる前に再表示証拠を永久失効。
         busy = true; installActivity = activity; status = "ADGUARD_INSTALLING"
         mode = Mode.ETP_ONLY; privateEnabled = false; updateEtp(); push()
         prefs.edit().putString("mode", mode.name).apply()
@@ -230,10 +246,22 @@ class BlockController(private val context: Context) {
     }
     private fun guardTabs(extension: WebExtension) {
         extension.setTabDelegate(object : WebExtension.TabDelegate {
-            override fun onNewTab(source: WebExtension, createDetails: WebExtension.CreateTabDetails): GeckoResult<GeckoSession>? { status = "EXTENSION_NEW_TAB_UNSUPPORTED"; return null }
-            override fun onOpenOptionsPage(source: WebExtension) { status = "EXTENSION_OPTIONS_UNSUPPORTED" }
+            override fun onNewTab(source: WebExtension, createDetails: WebExtension.CreateTabDetails): GeckoResult<GeckoSession>? {
+                val url = createDetails.url ?: return null
+                if (source.id != ADGUARD_ID || createDetails.cookieStoreId != null || !extensionPageAllowed(url, source.metaData.baseUrl)) return null
+                val session = openExtensionPage?.invoke(url, source.metaData.baseUrl, true) ?: return null
+                return GeckoResult.fromValue(session)
+            }
+            override fun onOpenOptionsPage(source: WebExtension) { if (source.id == ADGUARD_ID) openAdguardOptions() }
         })
         // SessionTabDelegate未設定: stable API既定でtabs.update/removeを拒否。
+    }
+    fun extensionPageAllowed(url: String, base: String) = adguard?.metaData?.baseUrl == base && dev.velocity.browser.security.UrlPolicy.extensionPage(url, base)
+    fun openAdguardOptions() {
+        val a = adguard ?: return
+        val page = a.metaData.optionsPageUrl ?: return
+        val url = runCatching { URI(a.metaData.baseUrl).resolve(page).toString() }.getOrNull() ?: return
+        if (extensionPageAllowed(url, a.metaData.baseUrl)) openExtensionPage?.invoke(url, a.metaData.baseUrl, false)
     }
     fun hasAdguard() = adguard != null
     fun removeAdguard() {

@@ -4,6 +4,14 @@ import java.net.URLEncoder
 
 enum class SearchEngine(val prefix: String) { DUCKDUCKGO("https://duckduckgo.com/?q="), GOOGLE("https://www.google.com/search?q=") }
 object UrlPolicy {
+    /** Geckoの署名済み拡張metadata由来baseに限定。外部Intentからは呼ばない。 */
+    fun extensionPage(raw: String, base: String): Boolean = runCatching {
+        val url = java.net.URI(raw); val root = java.net.URI(base)
+        root.scheme == "moz-extension" && !root.host.isNullOrBlank() && root.rawPath == "/" &&
+            url.scheme == root.scheme && url.host == root.host && url.port == -1 && url.rawUserInfo == null &&
+            url.rawPath.startsWith("/") && !url.rawPath.contains("..")
+    }.getOrDefault(false)
+
     fun httpUrl(raw: String): String? = runCatching {
         if (raw.any { it.isISOControl() || it.isWhitespace() } || raw.contains('\\')) return null
         val u = URI(raw)

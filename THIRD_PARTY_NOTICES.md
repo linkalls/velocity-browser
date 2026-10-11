@@ -11,4 +11,4 @@ Velocity独自コードはMIT。Mozilla GeckoView Stable 157.0.20261005135250は
 
 このファイルはGecko内包の全ライセンス一覧の代替ではありません。配布前にGeckoパッケージ内のlicense資料・NOTICE・ソース提供義務を確認し、配布物へ必要な表示を同梱してください。リリースゲートに含めています。
 
-Velocity Block Lite独自コード・同梱最小規則はMIT。Peter Loweのドメインリストはユーザーの明示操作時だけHTTPS取得し、APK/ソースZIPへ同梱しません。提供者は統合・Web掲載を公開許可しています。SPDXライセンスを推定せず、公開許諾とcredit（Peter Lowe / pgl@yoyo.org）を記録しています。AdGuard本体は公式AMOから任意導入し、再配布・APK同梱しません。source LICENSE GPL-3.0とAMO metadata LGPL-3.0-onlyの不一致を記録しています。[詳細](docs/adblock-decisions.md)。
+Velocity Block Lite独自コード・独自規則はMIT。Jsoup 1.21.2はMITで[全文](licenses/JSOUP.txt)をassetsにも同梱します。Peter Loweのドメインリストは2026-10-10版を同梱し、更新時のみユーザーの明示操作でHTTPS取得します。[公開許諾・credit](licenses/PETER_LOWES_LIST.txt)をassetsにも保持します。提供者は統合・Web掲載を公開許可しています。SPDXライセンスを推定せず、公開許諾とcredit（Peter Lowe / pgl@yoyo.org）を記録しています。AdGuard本体は公式AMOから任意導入し、再配布・APK同梱しません。source LICENSE GPL-3.0とAMO metadata LGPL-3.0-onlyの不一致を記録しています。[詳細](docs/adblock-decisions.md)。

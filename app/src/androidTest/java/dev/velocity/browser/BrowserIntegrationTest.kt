@@ -30,7 +30,7 @@ class BrowserIntegrationTest {
     @Test fun repositoryFiltersPrivateTabs() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val repository = TabRepository(context, "repository_test")
-        repository.save(listOf(TabRecord("normal", "https://example.com/"), TabRecord("private", "https://secret.example/", true)), "private")
+        repository.save(listOf(TabRecord("normal", "https://example.com/"), TabRecord("private", "https://secret.example/", true), TabRecord("addon", "moz-extension://test/options", extensionBase = "moz-extension://test/")), "private")
         val latch = java.util.concurrent.CountDownLatch(1)
         var restored: StoredTabs? = null
         repository.load { restored = it; latch.countDown() }

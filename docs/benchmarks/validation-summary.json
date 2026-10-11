@@ -99,5 +99,8 @@
       "sha256": "dd59a66e9aa17dc669029d5e9a5682de6e36b54cb35e65e5fc101de075a12116"
     }
   },
-  "cpuAndPssCli": "Exit 1 ADB unavailable; no measurements emitted"
+  "cpuAndPssCli": "Exit 1 ADB unavailable; no measurements emitted",
+  "implementationVersion": "0.2.0",
+  "historical": true,
+  "supersededBy": "next-validation.json"
 }

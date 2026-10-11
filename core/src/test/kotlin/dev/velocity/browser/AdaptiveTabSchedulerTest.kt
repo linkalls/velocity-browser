@@ -136,4 +136,86 @@ class AdaptiveTabSchedulerTest {
     @Test fun adaptiveOffStillEnforcesHardSafetyLimit() {
         s.adaptiveEnabled = false; create("a"); create("b"); assertTrue(create("c").any { it is Command.ShowEvictionBlockedNotice }); assertEquals(2, s.liveCount)
     }
+
+    @Test fun pendingSelectionResumesOnlyAfterIndependentCertificate() {
+        create("a"); create("b"); create("c")
+        assertEquals("c", s.pendingId)
+        certify("a")
+        assertEquals("c", s.selectedId); assertNull(s.pendingId)
+        assertEquals(TabState.COLD, s.tab("a")!!.state); assertEquals(2, s.liveCount)
+    }
+    @Test fun userSelectingAnotherTabCancelsPendingSelection() {
+        create("a"); create("b"); create("c")
+        s.dispatch(Event.SelectTab("a")); assertNull(s.pendingId)
+        certify("b"); assertEquals("a", s.selectedId)
+    }
+    @Test fun saveTimeoutAllowsRetryAndRejectsLateGeneration() {
+        create("a"); create("b"); val a = s.tab("a")!!
+        s.dispatch(Event.SaveTimedOut("a", a.identity!!, a.saveGeneration))
+        assertEquals(TabState.WARM, s.tab("a")!!.state)
+        s.dispatch(Event.RiskChanged("a", a.identity!!, Protection.UNKNOWN, false))
+        val newer = s.tab("a")!!
+        s.dispatch(Event.SafeCheckpoint("a", a.identity!!, newer.epoch, newer.revision, a.saveGeneration))
+        assertFalse(s.tab("a")!!.safelySaved)
+        create("c"); assertEquals(TabState.SAVING, s.tab("a")!!.state)
+        assertTrue(s.tab("a")!!.saveGeneration > a.saveGeneration)
+    }
+    @Test fun readingCertificateRequiresMatchingIdentityEpochAndNoOtherRisk() {
+        s.dispatch(Event.CreateTab("r", "https://example.com", readOnly = true)); s.dispatch(Event.SelectTab("r"))
+        val t = s.tab("r")!!
+        s.dispatch(Event.ReplayReady("r", t.identity!! + 1, t.epoch, "r")); assertFalse(s.tab("r")!!.safelySaved)
+        s.dispatch(Event.ReplayReady("r", t.identity!!, t.epoch + 1, "r")); assertFalse(s.tab("r")!!.safelySaved)
+        s.dispatch(Event.RiskChanged("r", t.identity!!, Protection.PINNED, true))
+        s.dispatch(Event.ReplayReady("r", t.identity!!, t.epoch, "r")); assertFalse(s.tab("r")!!.safelySaved)
+        s.dispatch(Event.RiskChanged("r", t.identity!!, Protection.PINNED, false))
+        s.dispatch(Event.ReplayReady("r", t.identity!!, t.epoch, "r")); assertTrue(s.tab("r")!!.safelySaved)
+    }
+    @Test fun ordinaryPageCannotUseReadingCertificate() {
+        create("a"); val t = s.tab("a")!!
+        s.dispatch(Event.ReplayReady("a", t.identity!!, t.epoch, "a")); assertFalse(s.tab("a")!!.safelySaved)
+    }
+    @Test fun twentyReadingTabsCanEvictAndReplayWithTwoLiveSessions() {
+        repeat(20) { n ->
+            val id = "r$n"
+            s.dispatch(Event.CreateTab(id, "https://example.com/$n", readOnly = true)); s.dispatch(Event.SelectTab(id))
+            val t = s.tab(id)!!
+            s.dispatch(Event.Ready(id, t.identity!!)); s.dispatch(Event.ReplayReady(id, t.identity!!, t.epoch, id))
+            assertTrue(s.liveCount <= 2)
+        }
+        val restore = s.dispatch(Event.SelectTab("r0")).filterIsInstance<Command.CreateSession>().single()
+        assertTrue(restore.readOnly); assertNull(restore.snapshot); assertEquals(2, s.liveCount)
+        assertEquals(20, s.tabs.size)
+    }
+
+    @Test fun protectedHiddenTabCanCoexistWithSwitchingReadingTabs() {
+        create("form")
+        s.dispatch(Event.CreateTab("reader", "https://example.com", readOnly = true)); s.dispatch(Event.SelectTab("reader"))
+        val reader = s.tab("reader")!!
+        s.dispatch(Event.ReplayReady("reader", reader.identity!!, reader.epoch, "reader"))
+        val commands = create("third")
+        assertEquals("third", s.selectedId); assertNotNull(s.tab("form")!!.identity)
+        assertEquals(TabState.COLD, s.tab("reader")!!.state)
+        val detach = commands.indexOfFirst { it is Command.DetachSessionFromView && it.id == "reader" }
+        val close = commands.indexOfFirst { it is Command.CloseSession && it.id == "reader" }
+        assertTrue(detach >= 0 && close > detach); assertEquals(2, s.liveCount)
+    }
+
+    @Test fun readingReplayNeverOverridesFormMediaAuthOrOtherProtections() {
+        for (risk in Protection.entries.filter { it != Protection.UNKNOWN }) {
+            val test = AdaptiveTabScheduler(AdaptiveConfig(), clock)
+            test.dispatch(Event.CreateTab("r", "https://example.com", readOnly = true)); test.dispatch(Event.SelectTab("r"))
+            val r = test.tab("r")!!
+            test.dispatch(Event.RiskChanged("r", r.identity!!, risk, true))
+            test.dispatch(Event.ReplayReady("r", r.identity!!, r.epoch, "r"))
+            test.dispatch(Event.HideTab("r"))
+            assertFalse("$risk", test.dispatch(Event.MemoryPressure()).any { it is Command.CloseSession })
+            assertFalse("$risk", test.tab("r")!!.safelySaved)
+        }
+    }
+
+    @Test fun confirmedCloseResumesPendingWithoutClosingOtherProtectedTab() {
+        create("a"); create("b"); val identity = s.tab("a")!!.identity
+        create("c"); s.dispatch(Event.CloseTab("b", true))
+        assertEquals("c", s.selectedId); assertEquals(identity, s.tab("a")!!.identity); assertEquals(2, s.liveCount)
+    }
 }

@@ -67,7 +67,9 @@ jobs:
         with:
           api-level: 36
           arch: x86_64
-          script: ./gradlew :app:connectedDebugAndroidTest
+          script: |
+            ./gradlew :app:connectedDebugAndroidTest
+            adb exec-out screencap -p > app/build/reports/androidTests/device-ui.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:

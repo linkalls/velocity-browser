@@ -7,8 +7,9 @@ import org.mozilla.geckoview.*
 
 /** Delegateのイベントはcoordinatorへ集約。GeckoSessionはUIへ公開しない。 */
 class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boolean,
-    private val owner: AdaptiveTabCoordinator) {
-    val session = GeckoSession(GeckoSessionSettings.Builder().usePrivateMode(privateMode).useTrackingProtection(true).build())
+    private val owner: AdaptiveTabCoordinator, private val readOnly: Boolean = false) {
+    val session = GeckoSession(GeckoSessionSettings.Builder().usePrivateMode(privateMode).useTrackingProtection(true).allowJavascript(!readOnly).build())
+    private var expectedDataUri: String? = null
     var pristineBlank = true; private set
     var canGoBack = false; private set
     var canGoForward = false; private set
@@ -18,7 +19,8 @@ class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boole
     init {
         session.navigationDelegate = object : GeckoSession.NavigationDelegate {
             override fun onLoadRequest(s: GeckoSession, request: GeckoSession.NavigationDelegate.LoadRequest): GeckoResult<AllowOrDeny> {
-                val allowed = UrlPolicy.httpUrl(request.uri) != null || (pristineBlank && request.uri == "about:blank")
+                if (readOnly) return GeckoResult.fromValue(if (request.uri == expectedDataUri) AllowOrDeny.ALLOW else AllowOrDeny.DENY)
+                val allowed = UrlPolicy.httpUrl(request.uri) != null || owner.extensionPageAllowed(id, request.uri) || (pristineBlank && request.uri == "about:blank")
                 if (!allowed) owner.notice(dev.velocity.browser.R.string.invalid_url)
                 else if (request.uri != "about:blank") {
                     pristineBlank = false
@@ -27,7 +29,7 @@ class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boole
                 return GeckoResult.fromValue(if (allowed) AllowOrDeny.ALLOW else AllowOrDeny.DENY)
             }
             override fun onLocationChange(s: GeckoSession, url: String?, perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>, hasUserGesture: Boolean) {
-                if (url != null && (url == "about:blank" || UrlPolicy.httpUrl(url) != null)) emit(Event.LocationChanged(id, identity, url))
+                if (!readOnly && url != null && (url == "about:blank" || UrlPolicy.httpUrl(url) != null || owner.extensionPageAllowed(id, url))) emit(Event.LocationChanged(id, identity, url))
             }
             override fun onCanGoBack(s: GeckoSession, value: Boolean) { canGoBack = value; owner.render() }
             override fun onCanGoForward(s: GeckoSession, value: Boolean) { canGoForward = value; owner.render() }
@@ -44,11 +46,13 @@ class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boole
         }
         session.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(s: GeckoSession, url: String) {
+                if (readOnly) { loading = true; owner.render(); return }
                 if (url != "about:blank") pristineBlank = false
                 loading = true; emit(Event.NavigationStarted(id, identity, url)); owner.render()
             }
             override fun onPageStop(s: GeckoSession, success: Boolean) {
                 loading = false; owner.render()
+                if (readOnly) { if (success) owner.readingLoaded(id, identity); return }
                 val epoch = owner.scheduler.tab(id)?.epoch ?: return
                 session.containsFormData().accept({ hasForm ->
                     if (owner.isCurrent(id, identity) && owner.scheduler.tab(id)?.epoch == epoch) risk(Protection.FORM, hasForm == true)
@@ -56,7 +60,7 @@ class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boole
             }
             override fun onSessionStateChange(s: GeckoSession, state: GeckoSession.SessionState) {
                 // このAPIにはnavigation epochもflush要求IDもない。Webの状態を最新と偽認定しない。
-                if (pristineBlank) owner.acceptBlankSnapshot(id, identity, state)
+                if (!readOnly && pristineBlank) owner.acceptBlankSnapshot(id, identity, state)
             }
         }
         session.contentDelegate = object : GeckoSession.ContentDelegate {
@@ -82,6 +86,15 @@ class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boole
         }
         session.permissionDelegate = owner.permissions.delegate(this)
         session.promptDelegate = owner.prompts.delegate(this)
+    }
+    fun loadReading(doc: dev.velocity.browser.reading.ReadingDocument) {
+        check(readOnly)
+        pristineBlank = false
+        val html = doc.html.toByteArray(Charsets.UTF_8)
+        expectedDataUri = "data:text/html;base64," + android.util.Base64.encodeToString(html, android.util.Base64.NO_WRAP)
+        val url = owner.scheduler.tab(id)?.url ?: return
+        emit(Event.NavigationStarted(id, identity, url))
+        session.load(GeckoSession.Loader().data(html, "text/html"))
     }
     fun load(url: String) { if (url != "about:blank") pristineBlank = false; session.loadUri(url) }
     fun close() {

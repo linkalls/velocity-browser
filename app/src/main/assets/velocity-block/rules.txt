@@ -1,6 +1,12 @@
-! Velocity original minimal list, MIT, version 0.1.0. No AdGuard code/filter copied.
+! Velocity original minimal list, MIT, version 0.2.0. No AdGuard code/filter copied.
 ||doubleclick.net^
 ||googlesyndication.com^
 ||googleadservices.com^
 ||scorecardresearch.com^
 velocity.test##[data-velocity-ad]
+
+! Additional advertising-service domains.
+||insight.ad.zetacx.net^
+||js.ssp.bance.jp^
+||img.ad-nex.com^
+||www.zeala.link^

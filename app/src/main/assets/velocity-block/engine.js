@@ -1,7 +1,7 @@
 /* Velocity original code, MIT. No dynamic code, regex rules, DOM traversal or remote scriptlets. */
 (function (root) {
   'use strict';
-  const safeSelectors = new Set(['.ad-slot', '.ad-banner', '.advertisement', '.velocity-ad', '[data-velocity-ad]']);
+  const safeSelectors = new Set(['.ad-slot', '.ad-banner', '.advertisement', '.velocity-ad', '[data-velocity-ad]', '[id^="bnc_ad_"]']);
   function domain(s) { return s.length <= 253 && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/.test(s); }
   function compile(text) {
     if (typeof text !== 'string' || new TextEncoder().encode(text).length > 2097152 || text.includes('\0')) throw Error('invalid rules');

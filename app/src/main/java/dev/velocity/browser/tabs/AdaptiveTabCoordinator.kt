@@ -31,6 +31,10 @@ class AdaptiveTabCoordinator(private val context: Context) {
     private val repository = TabRepository(context)
     private val adapters = mutableMapOf<String, GeckoSessionAdapter>()
     private val snapshots = mutableMapOf<String, GeckoSession.SessionState>()
+    private val reading = dev.velocity.browser.reading.ReadingLoader()
+    private val documents = mutableMapOf<String, dev.velocity.browser.reading.ReadingDocument>()
+    private var deferredExtensionLoadId: String? = null
+    private var untrustedExtensionSeen = false
     private val queue = ArrayDeque<Event>()
     private var draining = false
     private var view: GeckoView? = null
@@ -62,7 +66,7 @@ class AdaptiveTabCoordinator(private val context: Context) {
         if (!started) {
             started = true
             repository.load { stored -> handler.post {
-                stored.tabs.forEach { t -> if (scheduler.tab(t.id) == null) dispatch(Event.CreateTab(t.id, t.url)) }
+                stored.tabs.forEach { t -> if (scheduler.tab(t.id) == null) dispatch(Event.CreateTab(t.id, t.url, readOnly = t.readOnly)) }
                 if (scheduler.tabs.isEmpty()) createTab("about:blank")
                 else if (scheduler.selectedId == null) dispatch(Event.SelectTab(stored.selectedId ?: scheduler.tabs.first().id))
                 render()
@@ -91,6 +95,7 @@ class AdaptiveTabCoordinator(private val context: Context) {
             }
         } finally { draining = false }
         // COLDタブの手動closeにはCloseSession commandが出ない。残るstate参照も解放。
+        documents.keys.removeAll { scheduler.tab(it) == null }
         if (snapshots.isNotEmpty()) snapshots.keys.removeAll { scheduler.tab(it) == null }
         if (hadPrivate && scheduler.tabs.none { it.privateMode }) (context.applicationContext as dev.velocity.browser.VelocityApp).blocker.resetPrivate()
         metrics.record("LIVE_COUNT", scheduler.liveCount.toLong()); render()
@@ -99,13 +104,23 @@ class AdaptiveTabCoordinator(private val context: Context) {
         when (c) {
             is Command.CreateSession -> {
                 try {
-                    val adapter = GeckoSessionAdapter(c.id, c.identity, c.privateMode, this)
+                    val adapter = GeckoSessionAdapter(c.id, c.identity, c.privateMode, this, c.readOnly)
                     adapters[c.id] = adapter
                     android.os.Trace.beginSection("VelocityRuntime")
                     try { adapter.session.open(GeckoRuntimeHolder.get(context)) } finally { android.os.Trace.endSection() }
                     if (!runtimeRecorded) { runtimeRecorded = true; metrics.record("RUNTIME_CREATED") }
                     val state = c.snapshot?.let { snapshots[it] }
-                    if (state == null) adapter.load(c.url) else try { adapter.session.restoreState(state) } catch (_: Exception) { dispatch(Event.RestoreFailed(c.id, c.identity)) }
+                    if (c.id == deferredExtensionLoadId) { /* GeckoがTabDelegate返却後にロードする */ }
+                    else if (c.readOnly) {
+                        val document = documents[c.id]
+                        if (document != null) adapter.loadReading(document)
+                        else reading.fetch(GeckoRuntimeHolder.get(context), c.url) { loaded ->
+                            if (isCurrent(c.id, c.identity)) {
+                                if (loaded != null && storeDocument(c.id, loaded)) adapter.loadReading(loaded)
+                                else notice(R.string.reading_failed)
+                            }
+                        }
+                    } else if (state == null) adapter.load(c.url) else try { adapter.session.restoreState(state) } catch (_: Exception) { dispatch(Event.RestoreFailed(c.id, c.identity)) }
                     dispatch(Event.Ready(c.id, c.identity))
                 } catch (_: Exception) { dispatch(Event.Crashed(c.id, c.identity)); notice(R.string.crash) }
             }
@@ -113,6 +128,7 @@ class AdaptiveTabCoordinator(private val context: Context) {
             is Command.DetachSessionFromView -> view?.let { v -> if (v.session == adapters[c.id]?.session) v.releaseSession() }
             is Command.SetSessionActive -> adapters[c.id]?.session?.takeIf { it.isOpen }?.let { it.setFocused(c.active && host != null); it.setActive(c.active); GeckoRuntimeHolder.get(context).webExtensionController.setTabActive(it, c.active) }
             is Command.RequestSessionStateFlush -> adapters[c.id]?.takeIf { it.identity == c.identity }?.let { adapter ->
+                handler.postDelayed({ dispatch(Event.SaveTimedOut(c.id, c.identity, c.generation)) }, 5000)
                 adapter.session.flushSessionState() // void、非同期。直後の保存完了判定は禁止。
                 if (adapter.pristineBlank && scheduler.tab(c.id)?.url == "about:blank") {
                     dispatch(Event.RiskChanged(c.id, c.identity, Protection.UNKNOWN, false))
@@ -144,6 +160,46 @@ class AdaptiveTabCoordinator(private val context: Context) {
         snapshots[id] = state
         dispatch(Event.SessionStateChanged(id, identity, t.epoch, id))
     }
+    fun extensionPageAllowed(id: String, url: String): Boolean {
+        val base = scheduler.tab(id)?.extensionBase ?: return false
+        return (context.applicationContext as dev.velocity.browser.VelocityApp).blocker.extensionPageAllowed(url, base)
+    }
+    fun createExtensionTab(url: String, base: String, delegatedLoad: Boolean): GeckoSession? {
+        if (!(context.applicationContext as dev.velocity.browser.VelocityApp).blocker.extensionPageAllowed(url, base)) return null
+        if (!delegatedLoad) scheduler.tabs.firstOrNull { it.extensionBase == base && it.url == url }?.let { existing ->
+            select(existing.id); return adapters[existing.id]?.session
+        }
+        val id = UUID.randomUUID().toString()
+        if (delegatedLoad) deferredExtensionLoadId = id
+        try {
+            dispatch(Event.CreateTab(id, url, extensionBase = base)); select(id)
+        } finally { deferredExtensionLoadId = null }
+        return adapters[id]?.session
+    }
+    fun untrustedExtensionInstalled() {
+        untrustedExtensionSeen = true
+        scheduler.tabs.filter { it.live && it.readOnly }.forEach { t ->
+            dispatch(Event.RiskChanged(t.id, t.identity!!, Protection.PINNED, true))
+        }
+    }
+    fun readingLoaded(id: String, identity: Long) {
+        val t = scheduler.tab(id) ?: return
+        if (isCurrent(id, identity) && documents.containsKey(id) && !untrustedExtensionSeen)
+            dispatch(Event.ReplayReady(id, identity, t.epoch, id))
+    }
+    private fun storeDocument(id: String, doc: dev.velocity.browser.reading.ReadingDocument): Boolean {
+        if (untrustedExtensionSeen || (context.applicationContext as dev.velocity.browser.VelocityApp).blocker.readingAllowed().not()) return false
+        if (documents.values.sumOf { it.bytes } + doc.bytes > dev.velocity.browser.reading.ReadingDocument.MAX_CACHE_BYTES) return false
+        documents[id] = doc; return true
+    }
+    fun createReadingTab(url: String) {
+        if (UrlPolicy.httpUrl(url) == null || untrustedExtensionSeen || scheduler.selectedId?.let { scheduler.tab(it)?.privateMode } == true) { notice(R.string.reading_failed); return }
+        reading.fetch(GeckoRuntimeHolder.get(context), url) { doc ->
+            val id = UUID.randomUUID().toString()
+            if (doc == null || !storeDocument(id, doc)) { notice(R.string.reading_failed); return@fetch }
+            dispatch(Event.CreateTab(id, url, readOnly = true)); select(id)
+        }
+    }
     fun createTab(url: String = "about:blank", privateMode: Boolean = false) {
         if (url != "about:blank" && UrlPolicy.httpUrl(url) == null) { notice(R.string.invalid_url); return }
         val id = UUID.randomUUID().toString()
@@ -154,6 +210,7 @@ class AdaptiveTabCoordinator(private val context: Context) {
     fun navigate(input: String) {
         val url = UrlPolicy.input(input, searchEngine) ?: return notice(R.string.invalid_url)
         val id = scheduler.selectedId ?: return createTab(url)
+        if (scheduler.tab(id)?.readOnly == true) { createReadingTab(url); return }
         val adapter = adapters[id] ?: return
         val current = scheduler.tab(id) ?: return
         maybePreconnect(current, url)
@@ -163,7 +220,21 @@ class AdaptiveTabCoordinator(private val context: Context) {
     }
     fun back() { selectedAdapter()?.session?.goBack() }
     fun forward() { selectedAdapter()?.session?.goForward() }
-    fun reload() { selectedAdapter()?.let { if (it.loading) it.session.stop() else it.session.reload() } }
+    fun reload() {
+        selectedAdapter()?.let { adapter ->
+            val tab = scheduler.tab(adapter.id) ?: return
+            if (tab.readOnly) {
+                val doc = documents[tab.id]
+                if (doc != null) adapter.loadReading(doc)
+                else reading.fetch(GeckoRuntimeHolder.get(context), tab.url) { loaded ->
+                    if (isCurrent(tab.id, adapter.identity)) {
+                        if (loaded != null && storeDocument(tab.id, loaded)) adapter.loadReading(loaded)
+                        else notice(R.string.reading_failed)
+                    }
+                }
+            } else if (adapter.loading) adapter.session.stop() else adapter.session.reload()
+        }
+    }
     private fun selectedAdapter() = scheduler.selectedId?.let { adapters[it] }
     fun pin(id: String) {
         val t = scheduler.tab(id) ?: return

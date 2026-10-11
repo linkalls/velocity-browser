@@ -6,7 +6,7 @@ object LiteRules {
     const val MAX_RULES = 20_000
     private val domain = Regex("(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+")
     private val network = Regex("(@@)?\\|\\|([^\\^]+)\\^")
-    private val selectors = setOf(".ad-slot", ".ad-banner", ".advertisement", ".velocity-ad", "[data-velocity-ad]")
+    private val selectors = setOf(".ad-slot", ".ad-banner", ".advertisement", ".velocity-ad", "[data-velocity-ad]", "[id^=\"bnc_ad_\"]")
     data class Parsed(val text: String, val accepted: Int, val skipped: Int)
     fun parse(text: String): Parsed {
         require(text.toByteArray(Charsets.UTF_8).size <= MAX_BYTES) { "リスト上限2MiB" }

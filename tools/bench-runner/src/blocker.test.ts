@@ -26,15 +26,15 @@ test('bounded rules cannot inject CSS or execute code', () => {
   expect(r.count).toBe(0); expect(r.skipped).toBe(3);
 });
 function background() {
-  const handlers: any = {}; const posted: any[] = [];
+  const handlers: any = {}; const posted: any[] = []; const timers: (()=>void)[] = [];
   const port = {onMessage:{addListener:(f:any)=>handlers.config=f},onDisconnect:{addListener:(f:any)=>handlers.disconnect=f},postMessage:(m:any)=>posted.push(m)};
-  const c: any = {URL, TextEncoder, setTimeout:()=>{}, browser:{
+  const c: any = {URL, TextEncoder, setTimeout:(f:()=>void)=>timers.push(f), browser:{
     runtime:{connectNative:()=>port,onMessage:{addListener:(f:any)=>handlers.cosmetic=f}},
     webRequest:{onBeforeRequest:{addListener:(f:any)=>handlers.request=f}},
     tabs:{query:()=>Promise.resolve([]),sendMessage:()=>Promise.resolve(),onRemoved:{addListener:(f:any)=>handlers.remove=f}}
   }};
   runInNewContext(source,c); runInNewContext(readFileSync(resolve(assets,'background.js'),'utf8'),c);
-  return {handlers,posted};
+  return {handlers,posted,timers};
 }
 const config = {type:'config',generation:1,enabled:true,privateEnabled:true,rules:'||ads.example^\nsite.example##.ad-slot',privateRules:'||ads.example^',exceptions:['https://allowed.example'],privateExceptions:[]};
 test('site exceptions, private separation, atomic failure and disconnect', async () => {
@@ -52,4 +52,26 @@ test('site exceptions, private separation, atomic failure and disconnect', async
   const css = await h.cosmetic({type:'cosmetic'},{tab:{id:2,incognito:false},url:'https://site.example/'});
   expect(css.css).toContain('.ad-slot');
   h.disconnect(); expect(h.request(ad)).toEqual({});
+});
+
+test('additional ad-service domains preserve document and content origins', () => {
+  const rules = engine.compile(readFileSync(resolve(assets,'rules.txt'),'utf8'));
+  for (const url of ['https://insight.ad.zetacx.net/static/za.banner-suggest.js','https://js.ssp.bance.jp/bnctag.js','https://img.ad-nex.com/file/universal_tag/test.js','https://www.zeala.link/taggenerate/ad.js']) expect(engine.blocked(rules,url,'script')).toBe(true);
+  expect(engine.blocked(rules,'https://news.example/','main_frame')).toBe(false);
+  expect(engine.blocked(rules,'https://cdn.news.example/page.jpg','image')).toBe(false);
+  expect(engine.styles(engine.compile('site.example##[id^="bnc_ad_"]'),'https://site.example/')).toContain('[id^="bnc_ad_"]');
+});
+
+test('bundled Peter Lowe domain list fits supported bounded rule subset', () => {
+  const rules = engine.compile(readFileSync(resolve(assets,'rules.txt'),'utf8')+'\n'+readFileSync(resolve(assets,'pgl.txt'),'utf8'));
+  expect(rules.count).toBeGreaterThan(3500); expect(rules.count).toBeLessThan(20000); expect(rules.skipped).toBe(0);
+});
+
+test('decision counters are coalesced, private-separated and contain no URLs', () => {
+  const {handlers:h,posted,timers} = background(); h.config(config);
+  for(let n=0;n<10;n++) h.request({tabId:1,type:'script',url:'https://ads.example/a',incognito:false});
+  h.request({tabId:2,type:'image',url:'https://ads.example/b',incognito:true});
+  expect(timers.length).toBe(1); timers[0]!();
+  expect(JSON.stringify(posted.at(-1))).toBe(JSON.stringify({type:'stats',generation:1,blocked:10,privateBlocked:1}));
+  expect(JSON.stringify(posted.at(-1))).not.toContain('https:');
 });

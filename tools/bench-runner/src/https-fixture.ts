@@ -6,7 +6,7 @@ let adRequests = 0, controlRequests = 0, transferredBytes = 0;
 const body = `<!doctype html><meta charset="utf-8"><title>Velocity blocking fixture</title>
 <h1>HTTPS blocker fixture</h1><p id="result">RUNNING</p>
 <form><label>保持する入力<input aria-label="保持する入力"></label></form>
-<div class="ad-slot">CSS広告枠</div><div class="ad-slot"><form><input placeholder="非表示禁止"></form></div>
+<div class="ad-slot">CSS広告枠</div><div class="ad-slot"><form><label>FORM_MUST_REMAIN<input aria-label="非表示禁止"></label></form></div>
 <script>
 (async()=>{
  let ad=false,control=false;

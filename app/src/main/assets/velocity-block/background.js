@@ -1,7 +1,11 @@
 'use strict';
 let normal = VelocityRules.compile(''), privateRules = normal;
 let enabled = false, privateEnabled = false, exceptions = new Set(), privateExceptions = new Set();
-let port = null, retries = 0, configured = false;
+let port = null, retries = 0, configured = false, generation = 0, blocked = 0, privateBlocked = 0, statsPending = false;
+function reportStats() {
+  if (statsPending) return; statsPending = true;
+  setTimeout(() => { statsPending = false; if (port && configured) port.postMessage({type:"stats",generation,blocked,privateBlocked}); }, 1000);
+}
 const topOrigins = new Map();
 function validOrigins(list) {
   if (!Array.isArray(list) || list.length > 1000) throw Error('invalid origins');
@@ -15,10 +19,10 @@ function connect() {
     port.onMessage.addListener(message => {
       try {
         if (!message || message.type !== 'config' || typeof message.enabled !== 'boolean' || typeof message.privateEnabled !== 'boolean' || !Number.isSafeInteger(message.generation)) return;
-        const nextNormal = VelocityRules.compile(message.rules), nextPrivate = VelocityRules.compile(message.privateRules);
+        const nextNormal = VelocityRules.compile(message.rules), nextPrivate = message.privateRules === message.rules ? nextNormal : VelocityRules.compile(message.privateRules);
         const nextExceptions = validOrigins(message.exceptions), nextPrivateExceptions = validOrigins(message.privateExceptions);
         normal = nextNormal; privateRules = nextPrivate; exceptions = nextExceptions; privateExceptions = nextPrivateExceptions;
-        enabled = message.enabled; privateEnabled = message.privateEnabled; configured = true; retries = 0;
+        generation = message.generation; blocked = 0; privateBlocked = 0; enabled = message.enabled; privateEnabled = message.privateEnabled; configured = true; retries = 0;
         port.postMessage({type:'ready', generation:message.generation, accepted:normal.count, skipped:normal.skipped}); notify();
       } catch { port.postMessage({type:'error', code:'CONFIG_INVALID'}); }
     });
@@ -33,7 +37,9 @@ browser.webRequest.onBeforeRequest.addListener(details => {
   }
   const incognito = details.incognito === true;
   if (!configured || !(incognito ? privateEnabled : enabled) || details.tabId < 0 || excluded(topOrigins.get(details.tabId) || origin, incognito)) return {};
-  return {cancel:VelocityRules.blocked(incognito ? privateRules : normal, details.url, details.type)};
+  const cancel = VelocityRules.blocked(incognito ? privateRules : normal, details.url, details.type);
+  if (cancel) { if (incognito) privateBlocked = Math.min(1000000, privateBlocked + 1); else blocked = Math.min(1000000, blocked + 1); reportStats(); }
+  return {cancel};
 }, {urls:['http://*/*', 'https://*/*']}, ['blocking']);
 browser.tabs.onRemoved.addListener(id => topOrigins.delete(id));
 browser.runtime.onMessage.addListener((message, sender) => {

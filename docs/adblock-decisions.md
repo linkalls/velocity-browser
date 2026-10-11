@@ -26,7 +26,7 @@ privateの有効フラグ、例外、ユーザー規則はメモリだけ。通�
 
 更新元固定: https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=1&mimetype=plaintext 。配信側 `!Last modified: RFC1123日時`（または12桁version）をUTC12桁へ正規化して検査、古い版への巻き戻しを拒否。明示許可後に単一I/O executorでHTTPS取得。redirect禁止、timeout15秒、最大2MiB、最大20000採用規則、完全取得・構文検査・版検査後AtomicFile置換。失敗は旧版継続。filter fetchを初回frame/起動必須経路に置かない。ユーザー規則最大64KiB。remote code/eval/CSS任意注入は禁止。compiled filter cacheはアプリ内部のみ。ネットワークの手動更新で配信元にIP/HTTPS要求は送るが閲覧URLは送らない。
 
-[Peter Lowe提供元](https://pgl.yoyo.org/adservers/)は「Feel free to combine this list with yours or lists from other sites and put it up on the web, though!」と統合・Web掲載を明示許可している。SPDX形式のライセンス名を推定して付けず、この公開許諾を記録する。credit: Peter Lowe / pgl@yoyo.org、source/版/SHA256/取得日時をcacheへ記録し、UIにsource/版/日時を表示。APK/ソースZIPへ原リストや派生リストを再配布せず、ユーザー選択の取得だけとする。再配布範囲を広げる際は対象版の実条件を再確認する。
+[Peter Lowe提供元](https://pgl.yoyo.org/adservers/)は「Feel free to combine this list with yours or lists from other sites and put it up on the web, though!」と統合・Web掲載を明示許可している。SPDX形式のライセンス名を推定して付けず、この公開許諾を記録する。credit: Peter Lowe / pgl@yoyo.org、source/版/SHA256/取得日時をcacheへ記録し、UIにsource/版/日時を表示。0.2.1では公開再掲載許諾を再確認し、同版リストとcreditを同梱する。更新取得はユーザー選択のみ。
 
 実リスト検査でEasyPrivacyは43,218対応規則（1,508,816 bytes）あり、2万件上限を超えた。そのため既知の小さいPeter Loweリストを選択し、上限を拡張せず保持。リスト件数・ファイル長は静的確認で、常駐RAMの実測ではない。
 
@@ -45,3 +45,7 @@ Pure engineのBunテストとKotlin規則/版/上限/正規化テストは実行
 HTTPS integration test sourceは先にETP_ONLYで広告/許可URLへのTLS到達を確認し、Liteで遮断、origin例外で再許可、2liveを確認する。信頼済みHTTPS fixture引数が必要。未指定はskip、端末なしは**未検証**。server request count/CSS実画面/フォーム/長時間/private/インストール失敗/更新失敗/音声退行は実機ゲート。
 
 ALL_OFF / ETP_ONLY / LITE / ADGUARDの起動p50/p95、PSS1/5/20、CPU、ページload、転送量、電力は **NOT_MEASURED**。フィルターデータ常駐RAMも未測定。MB削減、%削減、広告遮断率を保証しない。サイズのみ同条件Release APK vs minimalを実ファイルで測り、[size.json](benchmarks/size.json)へ保存。追加フィルターを増やす判断は実測後。
+
+## 0.2.1の変更
+
+LiteにPeter Loweの2026-10-10版を同梱した。以前の非同梱方針はこの版で変更。出典と公開再掲載許諾・creditをlicensesとassetsに保持する。規則上限を増やさず、約3,500ドメインの索引で開始する。AdGuard設定タブは署名済み導入結果のID/baseUrl一致と2ライブ枠に限定して提供する。Popupと完全互換性は未検証。URLなしの遮断判定件数は提供するが、これを実機遮断率や性能へ変換しない。

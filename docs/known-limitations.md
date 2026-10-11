@@ -1,6 +1,6 @@
 # 既知の制約・未検証
 
-- Webの最新入力、アップロード、決済等は公式APIで完全追跡できずUNKNOWN保護。2つのWebセッションが開くと3つ目は表示保留。未操作blankのみ自動回収。20タブ閲覧の一般的なメモリ削減/高速化はまだ実証されていない。
+- Webの最新入力、アップロード、決済等は公式APIで完全追跡できずUNKNOWN保護。2つの動的Webセッションが保護中だと3つ目は表示保留。未操作blankと、独立に保持した閲覧専用本文コピーのみ自動回収。20タブ閲覧の一般的なメモリ削減/高速化はまだ実証されていない。
 - flushSessionState通知は要求IDなし。Webの通知を最新保存/安全破棄と認定しない。状態通知待ちは安全側に継続し、タイムアウトを成功扱いしない。
 - 完全フォーム/JS heap/メディア/履歴の再起動復元なし。通常URL/title/listのみ。保存I/O完了前の即時kill/電源断には最新metadataを保証できない。CookieなどGeckoの通常profile保存はGecko標準に従う。
 - ダウンロード、アップロード用ファイルピッカー、HTTP認証、screen captureは未対応案内・拒否。window.openはopenerを持たない独立URLタブに変換。支払い/Passkey/WebAuthn/DRM等の完全互換性は未検証。
@@ -15,7 +15,9 @@
 優先順: 実機安全性ゲート → 保存最新性の公式API調査と安全な対象拡大 → サイト権限管理/重要互換機能 → 実機比較測定 → 測定に基づく最適化。
 
 - M6の公式WebExtensions APIはコンパイル確認済み。network blocking、private区別、CSS、port、フィルター更新の端末動作は未検証。Lite初期OFF、網羅率は未測定。
-- 本家AdGuardのXPIは静的manifest検査のみ。インストール・署名検証・遮断・フィルター更新は未検証。拡張Popup/設定タブ/追加タブは未対応。4条件性能はNOT_MEASURED。
+- 本家AdGuardのXPIは静的manifest検査のみ。インストール・署名検証・遮断・フィルター更新は未検証。拡張Popupは未対応。AdGuard自身の設定ページは2ライブ枠内で開くが、実機互換性は未検証。4条件性能はNOT_MEASURED。
 - フィルターのHTTPS取得・AtomicFile置換は実装済みだが、端末での回線断・容量不足・CA/redirect/巻き戻しのfault injectionは未検証。
 
 - Lite ON/OFF後はページを手動再読み込みして適用を確認する。既に遮断したrequestは再取得されず、拡張disableだけで挿入済みCSSが即座に消える保証はない。未保存フォーム保全のため無断の自動reloadは行わない。
+
+閲覧専用・新版UI・拡張設定経路の詳細と残る制限は[次段階](next-stage.md)。追加デバイステストも、実行できたもの以外は未検証。

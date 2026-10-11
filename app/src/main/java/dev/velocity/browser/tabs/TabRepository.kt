@@ -19,16 +19,16 @@ class TabRepository(context: Context, preferencesName: String = "normal_tabs") {
                 val item = array.optJSONObject(n) ?: return@mapNotNull null
                 val id = item.optString("id"); val raw = item.optString("url")
                 val url = if (raw == "about:blank") raw else UrlPolicy.httpUrl(raw) ?: return@mapNotNull null
-                if (id.isBlank() || id.length > 80 || !ids.add(id)) null else TabRecord(id, url, title = item.optString("title").take(1024))
+                if (id.isBlank() || id.length > 80 || !ids.add(id)) null else TabRecord(id, url, readOnly = item.optBoolean("readOnly", false), title = item.optString("title").take(1024))
             }
             StoredTabs(tabs, root.optString("selected").takeIf { it in ids })
         }.getOrElse { StoredTabs(emptyList(), null) }
         callback(result)
     }
     fun save(tabs: List<TabRecord>, selectedId: String?) {
-        val normal = tabs.filterNot { it.privateMode }
+        val normal = tabs.filterNot { it.privateMode || it.extensionBase != null }
         val items = JSONArray()
-        normal.forEach { items.put(JSONObject().put("id", it.id).put("url", it.url).put("title", it.title)) }
+        normal.forEach { items.put(JSONObject().put("id", it.id).put("url", it.url).put("title", it.title).put("readOnly", it.readOnly)) }
         val json = JSONObject().put("schema", 1).put("tabs", items)
             .put("selected", selectedId?.takeIf { id -> normal.any { it.id == id } } ?: JSONObject.NULL).toString()
         io.execute { preferences.edit().putString("metadata", json).commit() }

@@ -29,8 +29,9 @@ class MainActivity : Activity(), BrowserHost {
         chrome.reload.setOnClickListener { coordinator.reload() }
         chrome.onTabs = {
             TabSwitcherView.show(this, coordinator.scheduler.tabs, coordinator.scheduler.selectedId,
-                coordinator::select, { coordinator.createTab(privateMode = it) }, { coordinator.close(it) })
+                coordinator::select, { coordinator.createTab(privateMode = it) }, { coordinator.close(it) }, ::readingDialog)
         }
+        chrome.onReading = ::readingDialog
         chrome.onSettings = { settings() }
         chrome.onBlock = { blockSettings() }
         coordinator.bind(this, chrome.geckoView)
@@ -57,10 +58,12 @@ class MainActivity : Activity(), BrowserHost {
     }
     override fun render(tabs: List<TabRecord>, selectedId: String?, canBack: Boolean, canForward: Boolean, loading: Boolean) {
         val t = tabs.find { it.id == selectedId }
+        chrome.showStart(t == null || t.url == "about:blank")
         if (tabs.any { it.privateMode }) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
         else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
-        chrome.title.text = (if (t?.privateMode == true) getString(R.string.private_label) else "") + (t?.title ?: getString(R.string.app_name))
+        chrome.title.text = (if (t?.readOnly == true) getString(R.string.reading_label) else "") + (if (t?.privateMode == true) getString(R.string.private_label) else "") + (t?.title ?: getString(R.string.app_name))
         if (!chrome.address.hasFocus()) chrome.address.setText(t?.url?.takeUnless { it == "about:blank" }.orEmpty())
+        chrome.updateState(tabs.size, t?.privateMode == true, blocker.mode.name, blocker.enabled(t?.privateMode == true), blocker.busy, if (t?.privateMode == true) blocker.privateDecisions else blocker.normalDecisions, blocker.status)
         chrome.back.isEnabled = canBack; chrome.forward.isEnabled = canForward
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             if (canBack && !backRegistered) { onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, modernBack); backRegistered = true }
@@ -94,7 +97,7 @@ class MainActivity : Activity(), BrowserHost {
     }
     private fun settings() {
         val labels = arrayOf(getString(R.string.search_engine), getString(R.string.preconnect) + " [${coordinator.preconnectEnabled()}]",
-            getString(R.string.allow_origin), getString(R.string.pin), getString(R.string.adaptive) + " [${coordinator.scheduler.adaptiveEnabled}]", getString(R.string.export_metrics))
+            getString(R.string.allow_origin), getString(R.string.pin), getString(R.string.adaptive) + " [${coordinator.scheduler.adaptiveEnabled}]", getString(R.string.export_metrics), getString(R.string.reading_new), getString(R.string.reading_original), "ライセンス")
         AlertDialog.Builder(this).setTitle(R.string.settings).setItems(labels) { _, which ->
             when (which) {
                 0 -> AlertDialog.Builder(this).setTitle(R.string.search_engine).setSingleChoiceItems(SearchEngine.entries.map { it.name }.toTypedArray(), coordinator.searchEngine.ordinal) { dialog, n -> coordinator.searchEngine = SearchEngine.entries[n]; dialog.dismiss() }.show()
@@ -103,8 +106,17 @@ class MainActivity : Activity(), BrowserHost {
                 3 -> coordinator.scheduler.selectedId?.let { coordinator.pin(it) }
                 4 -> coordinator.setAdaptive(!coordinator.scheduler.adaptiveEnabled)
                 5 -> coordinator.exportMetrics()
+                6 -> readingDialog()
+                7 -> coordinator.scheduler.selectedId?.let { coordinator.scheduler.tab(it) }?.takeIf { it.readOnly }?.let { coordinator.createTab(it.url) }
+                8 -> AlertDialog.Builder(this).setTitle("ライセンス").setMessage(assets.open("licenses/PETER_LOWES_LIST.txt").bufferedReader().use { it.readText() } + "\n" + assets.open("licenses/JSOUP.txt").bufferedReader().use { it.readText() }).setPositiveButton(R.string.close_confirm, null).show()
             }
         }.show()
+    }
+    private fun readingDialog() {
+        val input = android.widget.EditText(this).apply { isSaveEnabled = false; hint = "https://example.com/" }
+        AlertDialog.Builder(this).setTitle(R.string.reading_new).setMessage(R.string.reading_consent).setView(input)
+            .setPositiveButton(R.string.go) { _, _ -> UrlPolicy.input(input.text.toString(), coordinator.searchEngine)?.let(coordinator::createReadingTab) }
+            .setNegativeButton(R.string.cancel, null).show()
     }
     private fun blockSettings() {
         val tab = coordinator.scheduler.tabs.find { it.id == coordinator.scheduler.selectedId }
@@ -113,10 +125,11 @@ class MainActivity : Activity(), BrowserHost {
         val items = arrayOf(getString(R.string.block_toggle) + " [${blocker.enabled(privateMode)}]",
             getString(R.string.block_exception) + " [${origin?.let { blocker.isException(it, privateMode) } ?: false}]",
             getString(R.string.block_update), getString(R.string.block_user_rules), getString(R.string.block_diagnostics),
-            getString(R.string.block_modes), getString(R.string.adguard_install), getString(R.string.adguard_remove))
+            getString(R.string.block_modes), getString(R.string.adguard_install), getString(R.string.adguard_remove), getString(R.string.adguard_options))
         AlertDialog.Builder(this).setTitle(R.string.block_settings).setItems(items) { _, index ->
+            if (blocker.busy && index != 4) { notice(R.string.block_busy); return@setItems }
             when (index) {
-                0 -> blocker.setLite(!blocker.enabled(privateMode), privateMode)
+                0 -> { blocker.setLite(!blocker.enabled(privateMode), privateMode); notice(R.string.block_reload_hint) }
                 1 -> if (origin != null) AlertDialog.Builder(this).setMessage(getString(R.string.block_exception_scope, origin))
                     .setPositiveButton(R.string.yes) { _, _ -> runCatching { blocker.toggleException(origin, privateMode) }.onFailure { notice(R.string.block_failed) } }.setNegativeButton(R.string.cancel, null).show()
                 2 -> if (!privateMode) AlertDialog.Builder(this).setMessage(R.string.block_update_consent)
@@ -126,16 +139,17 @@ class MainActivity : Activity(), BrowserHost {
                     AlertDialog.Builder(this).setTitle(R.string.block_user_rules).setMessage(R.string.block_rules_help).setView(input)
                         .setPositiveButton(R.string.go) { _, _ -> runCatching { blocker.setUserRules(input.text.toString(), privateMode) }.onSuccess { result -> android.widget.Toast.makeText(this, getString(R.string.block_rules_result, result.accepted, result.skipped), android.widget.Toast.LENGTH_LONG).show() }.onFailure { notice(R.string.block_failed) } }.setNegativeButton(R.string.cancel, null).show()
                 }
-                4 -> AlertDialog.Builder(this).setTitle(R.string.block_diagnostics).setMessage(getString(R.string.block_diagnostic_text, blocker.status, blocker.filterVersion, blocker.accepted, blocker.skipped,
+                4 -> AlertDialog.Builder(this).setTitle(R.string.block_diagnostics).setMessage(getString(R.string.block_diagnostic_text, blocker.status + " / 遮断判定: " + (if (privateMode) blocker.privateDecisions else blocker.normalDecisions), blocker.filterVersion, blocker.accepted, blocker.skipped,
                     if (blocker.updatedAt == 0L) getString(R.string.block_never_updated) else java.text.DateFormat.getDateTimeInstance().format(java.util.Date(blocker.updatedAt))) + "\n" + dev.velocity.browser.block.BlockController.SOURCE).setPositiveButton(R.string.close_confirm, null).show()
                 5 -> if (!privateMode) AlertDialog.Builder(this).setTitle(R.string.block_modes).setMessage(R.string.block_mode_scope)
                     .setItems(resources.getStringArray(R.array.block_modes)) { _, selected ->
                         val mode = dev.velocity.browser.block.BlockController.Mode.entries[selected]
-                        if (mode == dev.velocity.browser.block.BlockController.Mode.ADGUARD && !blocker.hasAdguard()) notice(R.string.unsupported) else blocker.setMode(mode)
+                        if (mode == dev.velocity.browser.block.BlockController.Mode.ADGUARD && !blocker.hasAdguard()) notice(R.string.unsupported) else { blocker.setMode(mode); notice(R.string.block_reload_hint) }
                     }.show()
                 6 -> if (!privateMode) AlertDialog.Builder(this).setTitle(R.string.adguard_install).setMessage(R.string.adguard_experiment)
                     .setPositiveButton(R.string.yes) { _, _ -> blocker.installAdguard(this) }.setNegativeButton(R.string.cancel, null).show()
                 7 -> if (!privateMode) blocker.removeAdguard()
+                8 -> if (!privateMode && blocker.hasAdguard()) blocker.openAdguardOptions()
             }
         }.show()
     }

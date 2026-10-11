@@ -1,0 +1,9 @@
+{
+  "provider": "Peter Lowe",
+  "url": "https://pgl.yoyo.org/adservers/",
+  "version": "202610101515",
+  "bytes": 70234,
+  "sha256": "a501960f28974e56bcb370f8bb41ed3db1b0b2bd284b74ca7a7ec4e677ee3c99",
+  "declaredEntries": 3548,
+  "onDeviceBlocking": "UNVERIFIED"
+}
