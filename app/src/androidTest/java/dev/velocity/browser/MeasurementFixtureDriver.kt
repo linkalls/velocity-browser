@@ -6,8 +6,8 @@ import org.junit.Assert.*
 import org.junit.Test
 
 /** Optional profiler driver. UiAutomation stays alive during capture so Gecko's tree is available. */
-@RequiresExternalFixture
 class MeasurementFixtureDriver {
+    @RequiresExternalFixture
     @Test fun holdRenderedFixture() {
         val inst=InstrumentationRegistry.getInstrumentation()
         val scene=InstrumentationRegistry.getArguments().getString("scene")

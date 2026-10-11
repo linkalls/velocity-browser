@@ -42,7 +42,7 @@ class V04UiIntegrationTest {
             assertNotNull(input());input()!!.text="V04_UNSAVED"
             var identity:Long?=null;var epoch=0L;var session:org.mozilla.geckoview.GeckoSession?=null
             main {val c=chrome();identity=app.coordinator.scheduler.tab(id)!!.identity;epoch=app.coordinator.scheduler.tab(id)!!.epoch;session=c.geckoView.session;assertNull(c.title.parent);assertNull(c.forward.parent);assertTrue(c.back.height>=inst.targetContext.dp(48))}
-            clickDescription("メニュー");assertTrue(device.hasObject(By.desc("新しいタブ")));assertTrue(device.hasObject(By.desc("新しいプライベートタブ")));closeSettings()
+            clickDescription("メニュー");assertTrue("new tab menu route",device.wait(Until.hasObject(By.desc("新しいタブ")),10000));assertTrue("private tab menu route",device.wait(Until.hasObject(By.desc("新しいプライベートタブ")),10000));closeSettings()
             for(bottom in listOf(false,true)){main {chrome().setAddressBottom(bottom)};device.waitForIdle();main {assertSame(session,chrome().geckoView.session);assertEquals(identity,app.coordinator.scheduler.tab(id)!!.identity);assertEquals(epoch,app.coordinator.scheduler.tab(id)!!.epoch)};assertEquals("V04_UNSAVED",input()!!.text)}
             main {chrome().setAddressBottom(before)}
         }finally {cleanup()}}

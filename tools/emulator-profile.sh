@@ -42,10 +42,10 @@ for round in 1 2 3 4 5; do
         sleep 0.5
       done
       wait "$recorder"
-      wait "$driver"
-      if ! rg -q 'OK \(1 test\)' "$prefix-driver.txt"; then cat "$prefix-driver.txt";exit 1;fi
       wait "$cpu" || echo 'CPU sampling failed; retain its unavailable status'
       (cd tools/bench-runner && bun src/cli.ts memory dev.velocity.browser "../../$prefix-memory.json") || echo 'PSS sampling unavailable'
+      wait "$driver"
+      if ! rg -q 'OK \(1 test\)' "$prefix-driver.txt"; then cat "$prefix-driver.txt";exit 1;fi
       python3 tools/frame-report.py "$prefix.perfetto-trace" /tmp/velocity-trace-processor "$prefix-frames.json"
     done
   done

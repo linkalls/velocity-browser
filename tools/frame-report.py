@@ -21,4 +21,4 @@ for layer,g in groups.items():
     values=sorted(g.pop('durations'));n=len(values)
     def q(p):return values[max(0,math.ceil(p*n)-1)] if n else None
     report.append(dict(layer=layer,frames=n,durationMs=dict(p50=q(.5),p95=q(.95),p99=q(.99)),**g))
-Path(sys.argv[3]).write_text(json.dumps(dict(status='MEASURED' if report else 'NOT_MEASURED',metric='Android FrameTimeline actual duration, not Gecko FPS',layers=report),indent=2)+'\n')
+Path(sys.argv[3]).write_text(json.dumps(dict(status='MEASURED' if any(g['frames'] for g in report) else 'NOT_MEASURED',metric='Android FrameTimeline actual duration, not Gecko FPS',layers=report),indent=2)+'\n')
