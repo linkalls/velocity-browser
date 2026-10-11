@@ -53,13 +53,15 @@ Adaptiveは最大2オープンGeckoSession、非表示120秒で候補判定、�
 ./gradlew :core:test :app:testDebugUnitTest :app:lintDebug
 ./gradlew :app:assembleDebugAndroidTest
 # 実機/エミュレーターが必要
-./gradlew :app:connectedDebugAndroidTest
+./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notAnnotation=dev.velocity.browser.RequiresExternalFixture
 cd tools/bench-runner
 bun install --frozen-lockfile
 bun test
 bun run typecheck
 bun src/cli.ts aggregate fixtures/synthetic.json ../../docs/benchmarks/synthetic-example
 ```
+
+通常の端末スモークは8件。外部HTTPS・AdGuardの3件は除外し、未検証として別管理します。実行方法は[端末テスト](docs/device-tests.md)。引数なしの全件実行では、現在のAGPがJUnitのAssumptionを失敗として記録する場合があります。
 
 SchedulerをAndroid非依存の`:core`へ分離しています。上限、LRU、120秒境界、保護、保存未確認、世代/identity不一致、100タブ、復元失敗、先読み条件、ログ情報制限をJVMテストで検証。Syntheticファイルはテスト専用で実機結果ではありません。実機テストを実行できなかったものは「未検証」、性能は「NOT_MEASURED」と記録します。
 

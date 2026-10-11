@@ -1,6 +1,6 @@
 # 次段階: 安全な閲覧範囲とネイティブUI
 
-起点: main b487694。既存GitHub Actions run 38119712582 はbuild / Bunとも成功。GeckoView Stable 157.0.20261005135250固定。Android非依存AdaptiveTabSchedulerと実装名AdaptiveTabCoordinator（Gecko側の仲介）を精査した。
+起点: checkout時点のmain b487694。開発中にmainを再取得し、ecd714fのAPK-only artifact変更をmergeして保持した。既存GitHub Actions run 38119712582 はbuild / Bunとも成功。GeckoView Stable 157.0.20261005135250固定。Android非依存AdaptiveTabSchedulerと実装名AdaptiveTabCoordinator（Gecko側の仲介）を精査した。
 
 ## 保留条件と状態遷移
 
@@ -48,4 +48,4 @@ AdGuardの設定・初期設定タブを全面拒否していた経路を修正�
 
 実機向けLite試験: loopback 127.0.0.1/127.0.0.2で、先に同一広告endpointへの到達を証明し、その後webRequest cancel、CSS、フォーム保全、native counter、サイト例外を確認する。外部DNS/TLSなしの実Gecko試験。HTTPS fixture試験も保持する。
 
-AdGuard実機試験: 明示opt-inで公式AMO XPI導入、version/enabled/private除外、モード切替を検査する。別の専用HTTPS試験ではAdGuard設定のユーザー規則を準備し、OFF時到達→ON時遮断→設定切替で入力保持を確認する。実機で未実行なら未検証、引数未指定によるskipは成功としない。
+AdGuard実機試験: 明示opt-inで公式AMO XPI導入、version/enabled/private除外、モード切替を検査する。別の専用HTTPS試験ではAdGuard設定のユーザー規則を準備し、OFF時到達→ON時遮断→設定切替で入力保持を確認する。実機で未実行なら未検証。引数未指定のAssumptionが現在のAGPでfailureとして記録されるため、通常スモークはRequiresExternalFixture annotationの3件を除外し、8件すべての実行を必須にした。除外は成功としない。個別手順は[端末テスト](device-tests.md)。
