@@ -1,10 +1,10 @@
 <resources>
-    <color name="browser_light_background">#F7F9FA</color><color name="browser_light_surface">#FFFFFF</color><color name="browser_light_card">#FFFFFF</color>
-    <color name="browser_light_text">#19222B</color><color name="browser_light_muted">#5D6973</color><color name="browser_light_accent">#007A66</color>
-    <color name="browser_light_border">#E6ECED</color><color name="browser_light_pressed">#E6F4EF</color><color name="browser_light_danger">#B3261E</color>
-    <color name="browser_dark_background">#101418</color><color name="browser_dark_surface">#1B232A</color><color name="browser_dark_card">#202A32</color>
-    <color name="browser_dark_text">#EDF3F5</color><color name="browser_dark_muted">#ADBBC5</color><color name="browser_dark_accent">#6BDEC5</color>
-    <color name="browser_dark_border">#35434D</color><color name="browser_dark_pressed">#25453F</color><color name="browser_dark_danger">#FF8E87</color>
+    <color name="browser_light_background">#F7F8FA</color><color name="browser_light_surface">#FFFFFF</color><color name="browser_light_card">#FFFFFF</color>
+    <color name="browser_light_text">#16191E</color><color name="browser_light_muted">#666D78</color><color name="browser_light_accent">#2962D6</color>
+    <color name="browser_light_border">#E0E4E9</color><color name="browser_light_pressed">#E9EFFB</color><color name="browser_light_danger">#B3261E</color>
+    <color name="browser_dark_background">#111317</color><color name="browser_dark_surface">#1A1D22</color><color name="browser_dark_card">#1A1D22</color>
+    <color name="browser_dark_text">#F0F2F4</color><color name="browser_dark_muted">#A7ADB7</color><color name="browser_dark_accent">#8AAEFF</color>
+    <color name="browser_dark_border">#343940</color><color name="browser_dark_pressed">#24324C</color><color name="browser_dark_danger">#FF8E87</color>
     <!-- Visible on both surfaces for the public pre-29 cursor API fallback. -->
-    <color name="browser_cursor">#008F7A</color>
+    <color name="browser_cursor">#2962D6</color>
 </resources>
