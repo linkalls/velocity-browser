@@ -13,3 +13,20 @@
 - 背景音声・通話・camera・microphone・支払い・実機TalkBack・文字200%・OEMの戻るアニメーション・長時間メモリ・実機50タブjankは未検証。
 - AdGuard公式XPIの物理端末導入・遮断・更新・設定、外部TLS/DNS fixtureは未検証。正式署名／ストア配布／自動更新は未実装。
 - PSS・CPU・起動p50/p95・Speedometer・Chrome/Firefox比較はNOT_MEASURED。APKサイズだけをRAMや速度の証明にしない。
+
+## 0.5 scroll / UI overhaul
+
+- Clipping and toolbar interruption regressions have source/unit/real-Gecko coverage;
+  Pixel 7 Pro visible jump/fixed-footer/caret/60Hz/120Hz/manual flick acceptance
+  remains NOT_MEASURED. No physical smoothness or Gecko FPS claim.
+- Selection pin recovery uses the next engine/layout event; there is no polling
+  timer during a selection drag. Validate prolonged selection and unpin on device.
+- Compact sheets/large font/IME use native insets. Physical TalkBack, RTL,
+  foldable resizing and OEM gesture behavior remain UNVERIFIED.
+- Existing test-key signing is preserved. Independently generated CI debug keys
+  can differ across runs; do not promise upgrade compatibility with an APK signed
+  by a different key. In-place metadata retention under the same key is tested;
+  production signing is still not configured.
+- Cosmetic batches yield at 4ms/12 elements, but querySelectorAll is synchronous
+  and cannot be preempted. Network rules/CSS continue while optional layout reads
+  wait until 180ms after scrolling.

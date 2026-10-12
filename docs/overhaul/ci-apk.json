@@ -1,0 +1,22 @@
+{
+  "source": "88578f7c46da41d1bc74c12c82b673d5017b540a",
+  "variant": "benchmark",
+  "applicationId": "dev.velocity.browser",
+  "versionName": "0.5.0",
+  "versionCode": 8,
+  "bytes": 191416987,
+  "sha256": "51fcdafff0227dd94a2ec4589abbf45bf0ca3a6c5c3c835bd7d0be48c680374f",
+  "abi": "arm64-v8a",
+  "nativeLibraries": 13,
+  "zipIntegrity": "PASS",
+  "zipAlignment16KiB": "PASS",
+  "signature": "v2 Android debug test key (v3 false), not production",
+  "debuggable": false,
+  "profileable": true,
+  "workflow": "https://github.com/linkalls/velocity-browser/actions/runs/38228147415",
+  "artifactId": 11738270520,
+  "artifactContents": [
+    "Velocity-Browser-arm64.apk"
+  ],
+  "upgradeFromOtherCIKeys": "NOT_VERIFIED"
+}

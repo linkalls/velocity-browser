@@ -54,3 +54,16 @@ this change. Transient maximum-height and layout-target faults are verified in
 source; their share of the user's observed stutter remains unconfirmed.
 
 Validation commands and final CI links are recorded in docs/overhaul/validation.md.
+
+## Actual final evidence
+
+Final [Actions 38228147415](https://github.com/linkalls/velocity-browser/actions/runs/38228147415)
+passed all 27 real-Gecko cases with 0 failures/errors/skips, including clipping
+across placement, auto-hide, Lite and Animator Scale 0/1. Native search's resolved
+hint/background contrast is tested, not just token pairs. The dark static
+fixture screenshot shows the original extra 56px beneath its fixed footer and
+no such gap in the final capture; see [PNG comparison](overhaul/screenshots.md).
+No physical pan/flick position-jump guarantee follows from a static image.
+[Actual emulator performance](overhaul/emulator-comparison.md) is mixed: dynamic
+CPU/p99 increased, and it does not establish a performance win. Final-binary
+physical performance remains NOT_MEASURED.

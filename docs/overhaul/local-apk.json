@@ -1,0 +1,17 @@
+{
+  "source": "a77c244 (production sources unchanged by 88578f7 instrumentation/CI commit)",
+  "variant": "benchmark",
+  "applicationId": "dev.velocity.browser",
+  "versionName": "0.5.0",
+  "versionCode": 8,
+  "bytes": 191416987,
+  "sha256": "c884407502b0fc77d642cfffb4570fcfbae2375c23ca8b506a996df11234a39c",
+  "abi": "arm64-v8a",
+  "nativeLibraries": 13,
+  "zipIntegrity": "PASS",
+  "zipAlignment16KiB": "PASS",
+  "signature": "v2 Android debug test key (v3 false), not production",
+  "debuggable": false,
+  "profileable": true,
+  "upgradeFromOtherCIKeys": "NOT_VERIFIED"
+}
