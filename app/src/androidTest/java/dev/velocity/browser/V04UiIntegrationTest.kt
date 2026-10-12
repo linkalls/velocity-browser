@@ -55,6 +55,8 @@ class V04UiIntegrationTest {
             assertTrue(device.hasObject(By.text("非公開")))
             assertTrue(device.hasObject(By.desc("ホームの検索・URL入力")))
             device.findObject(By.desc("ホームの検索・URL入力")).text="PRIVATE_NATIVE_DRAFT"
+            main {repeat(32){app.appearance.track(android.app.Dialog(app.coordinator.host!!.activity))}}
+            System.gc()
             device.executeShellCommand("settings put system font_scale 2.0")
             await("large-font activity"){app.coordinator.host!=null&&app.coordinator.host!!.activity.resources.configuration.fontScale>=1.9f}
             device.setOrientationLeft();device.waitForIdle()

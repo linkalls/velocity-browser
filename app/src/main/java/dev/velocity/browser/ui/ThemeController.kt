@@ -35,7 +35,7 @@ class ThemeController(private val context: Context) {
     fun observe(listener: () -> Unit) { listeners += listener }
     fun remove(listener: () -> Unit) { listeners -= listener }
     private fun notifyChange() {
-        dialogs.entries.toList().forEach { (dialog,danger) -> if (dialog.isShowing) { (dialog as? AlertDialog)?.listView?.invalidateViews(); tintDialog(dialog,danger) } }
+        dialogs.entries.asSequence().map { it.key to it.value }.toList().forEach { (dialog,danger) -> if (dialog.isShowing) { (dialog as? AlertDialog)?.listView?.invalidateViews(); tintDialog(dialog,danger) } }
         listeners.toList().forEach { it() }
     }
     fun dialogContext(activity: Activity) = ContextThemeWrapper(activity,style())
@@ -47,7 +47,7 @@ class ThemeController(private val context: Context) {
     fun track(dialog: Dialog, danger: Boolean = false) { dialogs[dialog] = danger; tintDialog(dialog,danger) }
     fun dismissFor(activity: Activity) {
         fun owner(c: Context): Context = if (c is android.content.ContextWrapper && c !== activity) owner(c.baseContext) else c
-        dialogs.keys.toList().filter { owner(it.context) === activity }.forEach { it.dismiss(); dialogs.remove(it) }
+        dialogs.keys.asSequence().toList().filter { owner(it.context) === activity }.forEach { it.dismiss(); dialogs.remove(it) }
     }
     fun tintDialog(dialog: Dialog, danger: Boolean = false) {
         val p = palette()
