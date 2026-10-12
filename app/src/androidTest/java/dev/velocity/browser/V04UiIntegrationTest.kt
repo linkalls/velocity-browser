@@ -86,11 +86,14 @@ class V04UiIntegrationTest {
     }
     @Test fun clippingMatrixAndLayoutDuringMotionRetainSession() {
         launch();val prefs=app.getSharedPreferences("settings",0)
-        val oldBottom=prefs.getBoolean("address_bottom",true);val oldScroll=prefs.getBoolean("toolbar_scroll",true)
+        val oldBottom=prefs.getBoolean("address_bottom",true);val oldScroll=prefs.getBoolean("toolbar_scroll",true);val oldMode=app.blocker.mode
         Fixture().use {f->try {
             val id=page(f);var session:org.mozilla.geckoview.GeckoSession?=null
             main {session=chrome().geckoView.session;chrome().cancelAddressEdit()}
             device.waitForIdle()
+            for(mode in listOf(dev.velocity.browser.block.BlockController.Mode.ETP_ONLY,dev.velocity.browser.block.BlockController.Mode.LITE)) {
+            main {app.blocker.setMode(mode)}
+            await("block mode $mode"){!app.blocker.busy&&app.blocker.mode==mode}
             for(bottom in listOf(true,false))for(dynamic in listOf(false,true)) {
                 main {chrome().setAddressBottom(bottom);prefs.edit().putBoolean("toolbar_scroll",dynamic).apply()}
                 device.waitForIdle()
@@ -112,7 +115,8 @@ class V04UiIntegrationTest {
                 await("shown after layout interruption"){chrome().toolbarVisibleFraction==1f}
                 main {assertSame(session,chrome().geckoView.session);assertEquals(id,app.coordinator.scheduler.selectedId)}
             }
-        }finally {main {chrome().setAddressBottom(oldBottom);prefs.edit().putBoolean("toolbar_scroll",oldScroll).apply()};cleanup()}}
+            }
+        }finally {await("block settles before restore"){!app.blocker.busy};main {app.blocker.setMode(oldMode);chrome().setAddressBottom(oldBottom);prefs.edit().putBoolean("toolbar_scroll",oldScroll).apply()};cleanup()}}
     }
 
     @Test fun homeShortcutGridOrderingAndMenuRoutesRetainIdentity() {
