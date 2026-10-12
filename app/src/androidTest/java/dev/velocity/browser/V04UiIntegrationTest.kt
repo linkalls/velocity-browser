@@ -81,4 +81,35 @@ class V04UiIntegrationTest {
             main {app.coordinator.close(id,true)}
         }} }finally {prefs.edit().putBoolean("address_bottom",oldBottom).putBoolean("toolbar_scroll",oldScroll).apply();cleanup()}
     }
+    @Test fun clippingMatrixAndLayoutDuringMotionRetainSession() {
+        launch();val prefs=app.getSharedPreferences("settings",0)
+        val oldBottom=prefs.getBoolean("address_bottom",true);val oldScroll=prefs.getBoolean("toolbar_scroll",true)
+        Fixture().use {f->try {
+            val id=page(f);var session:org.mozilla.geckoview.GeckoSession?=null
+            main {session=chrome().geckoView.session;chrome().cancelAddressEdit()}
+            device.waitForIdle()
+            for(bottom in listOf(true,false))for(dynamic in listOf(false,true)) {
+                main {chrome().setAddressBottom(bottom);prefs.edit().putBoolean("toolbar_scroll",dynamic).apply()}
+                device.waitForIdle()
+                val w=device.displayWidth;val h=device.displayHeight
+                device.swipe(w/2,h*3/4,w/2,h/3,35)
+                await("final toolbar geometry") {chrome().toolbarVisibleFraction==if(dynamic)0f else 1f}
+                main {
+                    val height=DesignTokens.toolbarHeight(inst.targetContext)
+                    assertEquals(if(dynamic)-height else height,chrome().toolbarClipping)
+                    assertSame(session,chrome().geckoView.session)
+                    chrome().onEngineToolbar(true,ToolbarMotion.Source.UI)
+                }
+                SystemClock.sleep(40)
+                main {
+                    val before=chrome().toolbarVisibleFraction
+                    chrome().requestLayout()
+                    assertEquals(before,chrome().toolbarVisibleFraction,0f)
+                }
+                await("shown after layout interruption"){chrome().toolbarVisibleFraction==1f}
+                main {assertSame(session,chrome().geckoView.session);assertEquals(id,app.coordinator.scheduler.selectedId)}
+            }
+        }finally {main {chrome().setAddressBottom(oldBottom);prefs.edit().putBoolean("toolbar_scroll",oldScroll).apply()};cleanup()}}
+    }
+
 }

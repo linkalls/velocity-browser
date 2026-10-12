@@ -46,7 +46,7 @@ jobs:
       - run: bun test
       - run: bun run typecheck
   device-smoke:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/scroll-ui-overhaul'))
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
@@ -91,8 +91,8 @@ jobs:
                   for failure in list(case.findall('failure')) + list(case.findall('error')):
                       print((failure.get('message', '') + '\n' + (failure.text or ''))[:12000])
           print('DEVICE_TOTALS', totals)
-          if totals['tests'] != 24:
-              raise SystemExit('Expected all 24 smoke cases; partial execution is not a pass')
+          if totals['tests'] != 25:
+              raise SystemExit('Expected all 25 smoke cases; partial execution is not a pass')
           if totals['failures'] or totals['errors'] or totals['skipped']:
               raise SystemExit(1)
           PYTHON

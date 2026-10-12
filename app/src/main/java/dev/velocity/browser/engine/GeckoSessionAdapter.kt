@@ -28,7 +28,7 @@ class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boole
                 val delta=y-previous
                 if(delta*scrollIntent<0)scrollIntent=0f
                 scrollIntent+=delta
-                if(kotlin.math.abs(scrollIntent)>=24*(owner.host?.activity?.resources?.displayMetrics?.density?:1f)){owner.host?.toolbarVisibility(scrollIntent<0);scrollIntent=0f}
+                if(kotlin.math.abs(scrollIntent)>=24*(owner.host?.activity?.resources?.displayMetrics?.density?:1f)){owner.host?.toolbarVisibility(scrollIntent<0,dev.velocity.browser.ui.ToolbarMotion.Source.COMPOSITOR);scrollIntent=0f}
             }
         }
 
@@ -44,6 +44,7 @@ class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boole
                 return GeckoResult.fromValue(if (allowed) AllowOrDeny.ALLOW else AllowOrDeny.DENY)
             }
             override fun onLocationChange(s: GeckoSession, url: String?, perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>, hasUserGesture: Boolean) {
+                scrollY=Float.NaN;scrollIntent=0f
                 if (!readOnly && url != null && (url == "about:blank" || UrlPolicy.httpUrl(url) != null || owner.extensionPageAllowed(id, url))) emit(Event.LocationChanged(id, identity, url))
             }
             override fun onCanGoBack(s: GeckoSession, value: Boolean) { canGoBack = value; owner.render() }
