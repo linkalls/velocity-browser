@@ -309,7 +309,7 @@ class MainActivity : Activity(), BrowserHost {
         val lab = dev.velocity.browser.diagnostics.SiteScrollBenchmark
         val rows = mutableListOf<SettingsView.Row>()
         rows.add(SettingsView.Row("状態","計測状態","リフレッシュHzは端末の報告値") {})
-            .apply {liveText={"計測状態\\n"+lab.status()};available={false};navigation=false})
+            .apply {liveText={"計測状態\n"+lab.status()};available={false};navigation=false})
         rows.add(SettingsView.Row("主要サイト","計測サイトを開く","Yahooニュース・Google検索・Wikipedia・Reddit・YouTube・Amazon") {
             val list=lab.presets
             dialog().setTitle("スクロール計測サイト").setItems(list.map{it.label}.toTypedArray()) {_,n->
@@ -369,7 +369,7 @@ class MainActivity : Activity(), BrowserHost {
         }.apply {available={lab.active||lab.canExport}})
         rows.add(SettingsView.Row("注意","計測値の意味","Gecko通知間隔とAndroid Window描画時間はWebコンテンツの実FPSではない") {
             dialog().setTitle("性能指標について").setMessage(
-                "Geckoスクロール通知間隔は実表示FPSではなく、Android Window描画時間はGecko SurfaceViewの全フレームを含まない。\\n\\n"+
+                "Geckoスクロール通知間隔は実表示FPSではなく、Android Window描画時間はGecko SurfaceViewの全フレームを含まない。\n\n"+
                 "真の表示カクつきの確定にはPerfetto FrameTimeline・Gecko Profiler・実機動画を併用してね。"+
                 "CPUとPSSはブラウザ本体プロセスのみ。画面の120Hzは実表示フレーム数の保証ではない。"
             ).setPositiveButton(R.string.close_confirm,null).showThemed()
