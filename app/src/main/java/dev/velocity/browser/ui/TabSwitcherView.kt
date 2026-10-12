@@ -24,6 +24,8 @@ class TabSwitcherView(context: Context, private val appearance: ThemeController,
     private val search=EditText(context).apply { hint="タブを検索";contentDescription="タブを検索";isSingleLine=true;isSaveEnabled=false;minimumHeight=context.dp(48) }
     private val grid=GridView(context).apply { verticalSpacing=context.dp(8);horizontalSpacing=context.dp(8);stretchMode=GridView.STRETCH_COLUMN_WIDTH }
     private val undoButton=Button(context).apply { text="閉じるを取り消す（ページを再読み込み）";isAllCaps=false;minHeight=context.dp(48);setOnClickListener { undo();filter() } }
+    private data class DisplayKey(val id:String,val title:String,val url:String,val privateMode:Boolean,val pinned:Boolean,val identity:Long?,val protected:Boolean)
+    private var displayKeys=emptyList<DisplayKey>()
     private var snapshot=emptyList<TabRecord>();private var shown=emptyList<TabRecord>();private var selected:String?=null
     private var privateMode=false
     private var columns=if(preferences.getBoolean("tabs_list",true)) 1 else 2
@@ -80,7 +82,7 @@ class TabSwitcherView(context: Context, private val appearance: ThemeController,
     }
     val isShowing get()=dialog.isShowing
     init {
-        fun button(label:String,action:()->Unit)=Button(context).apply { text=label;isAllCaps=false;minHeight=context.dp(48);setOnClickListener {action()} }
+        fun button(label:String,action:()->Unit)=Button(context).apply { text=label;isAllCaps=false;stateListAnimator=null;elevation=0f;background=android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(appearance.palette().pressed),null,context.rounded(-1,8));minHeight=context.dp(48);setOnClickListener {action()} }
         val header=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL}
         header.addView(count,LinearLayout.LayoutParams(0,-2,1f));header.addView(button("＋") {if(create(privateMode))dismiss()}.apply {contentDescription="新しいタブ"})
         header.addView(button("完了",::dismiss));panel.addView(header);panel.addView(search)
@@ -95,7 +97,7 @@ class TabSwitcherView(context: Context, private val appearance: ThemeController,
     }
     fun show() {dialog.show();dialog.window?.apply {setGravity(Gravity.BOTTOM);setLayout(-1,(panel.context.resources.displayMetrics.heightPixels*.90).toInt());setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)};applyPalette();panel.isFocusableInTouchMode=true;panel.requestFocus()}
     fun dismiss()=dialog.dismiss()
-    fun update(tabs:List<TabRecord>,selectedId:String?,waiting:String?) {snapshot=tabs;selected=selectedId;if(!isShowing)privateMode=tabs.find {it.id==selectedId}?.privateMode==true;filter()}
+    fun update(tabs:List<TabRecord>,selectedId:String?,waiting:String?) {val keys=tabs.map {DisplayKey(it.id,it.title,it.url,it.privateMode,it.pinned,it.identity,it.protections.isNotEmpty())};if(keys==displayKeys&&selected==selectedId)return;displayKeys=keys;snapshot=tabs;selected=selectedId;if(!isShowing)privateMode=tabs.find {it.id==selectedId}?.privateMode==true;filter()}
     private fun filter() {
         val query=search.text.toString().trim();val old=grid.firstVisiblePosition;val first=shown.getOrNull(old)?.id
         shown=snapshot.filter {it.privateMode==privateMode && (query.isEmpty() || it.displayTitle().contains(query,true) || it.displayLocation().contains(query,true))}

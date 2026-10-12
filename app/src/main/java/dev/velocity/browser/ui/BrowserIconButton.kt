@@ -14,6 +14,7 @@ class BrowserIconButton(context: Context, private val icon: String, label: Strin
         set(value) { if (field != value) { field = value; invalidate() } }
     private val pen = Paint(Paint.ANTI_ALIAS_FLAG)
     init {
+        stateListAnimator=null;elevation=0f
         text = label; contentDescription = label; tooltipText = label; isAllCaps = false
         minWidth = 0; minimumWidth = context.dp(48); minHeight = context.dp(48); setPadding(0,0,0,0)
         palette = palette

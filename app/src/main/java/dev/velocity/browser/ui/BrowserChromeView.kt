@@ -141,12 +141,19 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
         if(tabsButton.contentDescription!=description)tabsButton.contentDescription=description
         val hint=if(privateMode)"非公開 · URLまたは検索語" else context.getString(R.string.address)
         if(address.hint.toString()!=hint)address.hint=hint
-        val state="サイト情報・広告ブロック · "+if(busy)"準備中" else if(lite)"Lite · 遮断判定 $decisions" else mode
+        val state="サイト情報・広告ブロック · "+when {
+            busy->"準備中"
+            status.contains("FAILED")||status.contains("INVALID")||status=="DISCONNECTED"->"状態を確認してください"
+            lite&&!status.startsWith("READY_CONFIG_ACK")->"Lite · 接続確認中"
+            lite->"Lite · 遮断判定 $decisions"
+            mode=="ADGUARD"&&privateMode->"非公開 · AdGuard OFF"
+            else->mode
+        }
         if(info.contentDescription!=state)info.contentDescription=state
     }
     fun refreshShortcuts(){shortcuts.removeAllViews();val entries=runCatching {org.json.JSONArray(preferences.getString("home_shortcuts","[]"))}.getOrElse {org.json.JSONArray()}
         for(i in 0 until minOf(entries.length(),12)){val item=entries.optJSONObject(i)?:continue;val url=item.optString("url");if(dev.velocity.browser.security.UrlPolicy.httpUrl(url)==null)continue
-            shortcuts.addView(Button(context).apply {text=item.optString("title",url);isAllCaps=false;minHeight=context.dp(48);setOnClickListener {onNavigate(url)};setOnLongClickListener {onAddShortcut();true}},LinearLayout.LayoutParams(-1,-2))
+            shortcuts.addView(Button(context).apply {text=item.optString("title",url);isAllCaps=false;stateListAnimator=null;elevation=0f;background=null;minHeight=context.dp(48);setOnClickListener {onNavigate(url)};setOnLongClickListener {onAddShortcut();true}},LinearLayout.LayoutParams(-1,-2))
         };applyPalette(palette)
     }
     fun applyPalette(next:BrowserPalette){palette=next;setBackgroundColor(next.background);start.setBackgroundColor(next.background);toolbar.setBackgroundColor(next.surface);addressGroup.background=context.rounded(next.background,14);address.applyTextPalette(next);address.background=null;homeSearch.applyTextPalette(next);homeSearch.background=context.rounded(next.surface,14);wordmark.setTextColor(next.text);privateTag.setTextColor(next.muted)

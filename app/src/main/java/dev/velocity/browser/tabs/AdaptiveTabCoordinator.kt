@@ -242,6 +242,7 @@ class AdaptiveTabCoordinator(private val context: Context) {
     }
     fun select(id: String) { metrics.record("SELECT"); dispatch(Event.SelectTab(id)) }
     fun close(id: String, confirmed: Boolean = false) {
+        if(!confirmed&&(context.applicationContext as dev.velocity.browser.VelocityApp).homeInputState.get(id).isNotEmpty()){host?.confirmClose(id);return}
         val t=scheduler.tab(id)
         val index=scheduler.tabs.indexOfFirst {it.id==id}
         dispatch(Event.CloseTab(id,confirmed))

@@ -54,10 +54,12 @@ class V04UiIntegrationTest {
             assertTrue(device.wait(Until.hasObject(By.text("Velocity")),10000));assertFalse(device.hasObject(By.text("Wikipedia  ↗")))
             assertTrue(device.hasObject(By.text("非公開")))
             assertTrue(device.hasObject(By.desc("ホームの検索・URL入力")))
+            device.findObject(By.desc("ホームの検索・URL入力")).text="PRIVATE_NATIVE_DRAFT"
             device.executeShellCommand("settings put system font_scale 2.0")
             await("large-font activity"){app.coordinator.host!=null&&app.coordinator.host!!.activity.resources.configuration.fontScale>=1.9f}
             device.setOrientationLeft();device.waitForIdle()
             await("large-font compact toolbar"){chrome().back.height>=inst.targetContext.dp(48)&&chrome().address.width>=inst.targetContext.dp(48)}
+            assertTrue(device.wait(Until.hasObject(By.text("PRIVATE_NATIVE_DRAFT")),10000))
             clickDescription("メニュー");clickDescription("設定")
             assertTrue(device.wait(Until.hasObject(By.desc("設定を検索")),10000));closeSettings()
         }finally {device.executeShellCommand("settings put system font_scale $font");cleanup()}

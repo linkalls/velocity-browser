@@ -31,7 +31,7 @@ for round in 1 2 3 4 5; do
         if adb shell test -f /data/local/tmp/velocity-fixture-ready; then ready=1; break; fi
         sleep 1
       done
-      if [ "$ready" != 1 ]; then cat "$prefix-driver.txt";echo 'Fixture did not render; comparison is unverified' >&2; exit 1; fi
+      if [ "$ready" != 1 ]; then cat "$prefix-driver.txt";adb logcat -d -v brief AndroidRuntime:E DEBUG:E '*:F' | tail -160;adb shell dumpsys activity exit-info dev.velocity.browser;echo 'Fixture did not render; comparison is unverified' >&2; exit 1; fi
       adb pull /data/data/dev.velocity.browser/cache/velocity-profile-launch.txt "$prefix-launch.txt" >/dev/null
       bash tools/scroll-trace.sh "$scene" "$prefix.perfetto-trace" &
       recorder=$!

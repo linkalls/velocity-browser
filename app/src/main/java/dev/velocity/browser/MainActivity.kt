@@ -144,6 +144,7 @@ class MainActivity : Activity(), BrowserHost {
     override fun confirmClose(id: String) {
         val tab = coordinator.scheduler.tab(id) ?: return
         val identity = tab.identity
+        val homeDraft=(application as VelocityApp).homeInputState.get(id)
         val pending = capacity?.targetId
         fun cancelRequest() { if (coordinator.host === this && pending != null) coordinator.cancelPending(pending) }
         val builder = dialog().setTitle("『${tab.displayTitle()}』を閉じる")
@@ -151,7 +152,7 @@ class MainActivity : Activity(), BrowserHost {
             .setPositiveButton("このタブを閉じる") { _, _ ->
                 if (coordinator.host === this) {
                     val current=coordinator.scheduler.tab(id)
-                    if(current!=null&&current.identity==identity&&current.epoch==tab.epoch&&current.revision==tab.revision)coordinator.close(id,true)
+                    if(current!=null&&current.identity==identity&&current.epoch==tab.epoch&&current.revision==tab.revision&&(application as VelocityApp).homeInputState.get(id)==homeDraft)coordinator.close(id,true)
                     else Toast.makeText(this,"ページの状態が変わりました。内容を確認してから閉じてください。",Toast.LENGTH_LONG).show()
                 }
             }.setNegativeButton(R.string.cancel) { _, _ -> cancelRequest() }
