@@ -28,12 +28,12 @@ jobs:
           mkdir -p dist
           cp app/build/outputs/apk/benchmark/app-benchmark.apk dist/Velocity-Browser-arm64.apk
           test -s dist/Velocity-Browser-arm64.apk
-          cp app/build/outputs/apk/debug/app-debug.apk dist/Velocity-Browser-debug-diagnostics-arm64.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist/Velocity-Browser-debug-diagnostics.apk
       - name: Upload opt-in diagnostics APK
         uses: actions/upload-artifact@v7.0.2
         with:
           name: Velocity-Browser-Diagnostics-APK
-          path: dist/Velocity-Browser-debug-diagnostics-arm64.apk
+          path: dist/Velocity-Browser-debug-diagnostics.apk
           if-no-files-found: error
           compression-level: 0
       - name: Upload APK only

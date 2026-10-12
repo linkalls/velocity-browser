@@ -66,6 +66,10 @@ class ToolbarMotionTest {
     @Test fun unpinCannotPromoteOldAutomaticHideToAUiCommand() {
         val m=ToolbarMotion();m.request(false,ToolbarMotion.Source.COMPOSITOR,100,true)
         assertFalse(m.unpin(1000));assertEquals(1f,m.target,0f);assertEquals(1f,m.visible,0f)
+        m.request(false,ToolbarMotion.Source.COMPOSITOR,1100);m.frame(.5f)
+        m.pin();assertTrue(m.unpin(1200));assertEquals(0f,m.target,0f);assertEquals(.5f,m.visible,0f)
+        m.pin();m.request(true,ToolbarMotion.Source.UI,1300,true)
+        assertTrue(m.unpin(1400));assertEquals(1f,m.target,0f);assertEquals(.5f,m.visible,0f)
     }
 
     @Test fun slowPanRenewsAuthorityWithoutAnotherDistanceThreshold() {

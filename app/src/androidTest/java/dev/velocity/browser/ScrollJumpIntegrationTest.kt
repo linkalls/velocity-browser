@@ -37,6 +37,13 @@ class ScrollJumpIntegrationTest {
         device.executeShellCommand("cp ${file.absolutePath} /sdcard/Download/Velocity-scroll-jump/$label.csv")
         return csv
     }
+    private fun capture(label:String){
+        // Normal localhost fixture only. No production/user diagnostic screenshots.
+        val file=File(inst.targetContext.getExternalFilesDir(null),"$label.png")
+        val bitmap=inst.uiAutomation.takeScreenshot();assertNotNull(bitmap)
+        file.outputStream().use {bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
+        device.executeShellCommand("cp ${file.absolutePath} /sdcard/Download/Velocity-scroll-jump/$label.png")
+    }
     @Test fun diagnosticOptInCapacityAndPrivateExclusion() {
         launch();try {
             main {
@@ -47,6 +54,14 @@ class ScrollJumpIntegrationTest {
                 ScrollDiagnostics.context("private-tab-secret",42,3,true);repeat(100){ScrollDiagnostics.record(ScrollDiagnostics.Event.SAMPLE,y=987654f)}
                 assertEquals(0,ScrollDiagnostics.size);assertFalse(ScrollDiagnostics.snapshot().contains("987654"));assertFalse(ScrollDiagnostics.snapshot().contains("private-tab-secret"))
                 ScrollDiagnostics.enable(false);assertEquals("",ScrollDiagnostics.snapshot())
+            }
+            fixture().use {f->
+                var id=""
+                main {ScrollDiagnostics.enable(true);app.coordinator.createTab(f.url,privateMode=true);id=app.coordinator.scheduler.selectedId!!;app.coordinator.render()}
+                await("private fixture ready"){app.coordinator.scheduler.tab(id)?.title=="JUMP_READY"}
+                device.swipe(device.displayWidth/2,device.displayHeight*3/4,device.displayWidth/2,device.displayHeight/3,40)
+                device.waitForIdle()
+                main {assertEquals("actual private callbacks remain excluded",0,ScrollDiagnostics.size);assertFalse(ScrollDiagnostics.snapshot().contains(f.url));ScrollDiagnostics.enable(false)}
             }
         }finally {cleanup()}
     }
@@ -70,8 +85,11 @@ class ScrollJumpIntegrationTest {
                         device.swipe(w/2,h/3,w/2,h*3/4,15);device.waitForIdle()
                         export("matrix-${scenario}-before-tap")
                         // Footer's real click is the coordinate test; no JS scroll compensation.
-                        assertTrue(device.wait(Until.hasObject(By.text("FOOTER_TAP")),10000));device.findObject(By.text("FOOTER_TAP")).click()
-                        await("fixed footer accepts real tap"){app.coordinator.scheduler.tab(id)?.title=="JUMP_TAP_OK"}
+                        assertTrue(device.wait(Until.hasObject(By.text("FOOTER_TAP")),10000));val footer=device.findObject(By.text("FOOTER_TAP"))
+                        val bounds=footer.visibleBounds
+                        capture("matrix-${scenario}-before-tap")
+                        footer.click();device.waitForIdle();export("matrix-${scenario}-after-tap");capture("matrix-${scenario}-after-tap")
+                        await("fixed footer accepts real tap at $bounds scenario=$scenario bottom=$bottom dynamic=$dynamic"){app.coordinator.scheduler.tab(id)?.title=="JUMP_TAP_OK"}
                         assertTrue(device.wait(Until.hasObject(By.text("INSERT")),10000));device.findObject(By.text("INSERT")).click()
                         await("dynamic insertion"){app.coordinator.scheduler.tab(id)?.title=="JUMP_INSERTED"}
                         device.swipe(w/2,h*3/4,w/2,h/3,25);device.waitForIdle()

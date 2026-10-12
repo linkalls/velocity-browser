@@ -107,6 +107,7 @@ class MainActivity : Activity(), BrowserHost {
     override fun onWindowFocusChanged(hasFocus:Boolean) { super.onWindowFocusChanged(hasFocus);if(::chrome.isInitialized)chrome.setModalBlocked(!hasFocus) }
     override fun toolbarUserScroll(){chrome.onUserScroll()}
     override fun toolbarContextReset(){chrome.resetScrollContext()}
+    override fun toolbarViewportReady(){chrome.onEngineViewportReady()}
     override fun toolbarVisibility(show:Boolean,source:ToolbarMotion.Source) {chrome.onEngineToolbar(show,source)}
     override fun render(tabs: List<TabRecord>, selectedId: String?, canBack: Boolean, canForward: Boolean, loading: Boolean) {
         settingsView?.refresh()
@@ -118,6 +119,7 @@ class MainActivity : Activity(), BrowserHost {
             else capacity?.update(tabs)
         }
         val t = tabs.find { it.id == selectedId }
+        dev.velocity.browser.diagnostics.ScrollDiagnostics.context(selectedId,t?.identity,t?.epoch?:0,t?.privateMode==true)
         chrome.showStart(t == null || t.url == "about:blank")
         val secure=tabs.any {it.privateMode};val alreadySecure=window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_SECURE!=0
         if(secure!=alreadySecure){if(secure)window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)}

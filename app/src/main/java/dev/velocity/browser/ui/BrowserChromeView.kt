@@ -180,6 +180,11 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
             applyOffset(motion.visible*toolbarHeight)
         }
     }
+    // Gecko Display.onSurfaceChanged reapplies max-height, resetting clipping
+    // even when our max-height cache is unchanged. First composite is a public
+    // UI-thread lifecycle callback after compositor start/restart. Reapply only
+    // geometry, never reset visible/target or the page's scroll position.
+    fun onEngineViewportReady(){lastClipping=Int.MIN_VALUE;trace(TraceEvent.RESET);syncDynamic()}
     fun onUserScroll(){motion.observeUserScroll(android.os.SystemClock.uptimeMillis())}
     fun resetScrollContext(){showToolbar(true,false);trace(TraceEvent.RESET);syncDynamic()}
     fun onEngineToolbar(show:Boolean,source:ToolbarMotion.Source=ToolbarMotion.Source.CONTENT){

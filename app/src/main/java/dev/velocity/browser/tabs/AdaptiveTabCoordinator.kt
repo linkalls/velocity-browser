@@ -22,6 +22,7 @@ interface BrowserHost {
     fun toolbarVisibility(show: Boolean, source: dev.velocity.browser.ui.ToolbarMotion.Source = dev.velocity.browser.ui.ToolbarMotion.Source.CONTENT) {}
     fun toolbarUserScroll() {}
     fun toolbarContextReset() {}
+    fun toolbarViewportReady() {}
     fun confirmClose(id: String)
     fun requestAndroidPermissions(permissions: Array<String>, done: (Boolean) -> Unit)
 }
@@ -47,6 +48,7 @@ class AdaptiveTabCoordinator(private val context: Context) {
     private val queue = ArrayDeque<Event>()
     private var draining = false
     private var view: GeckoView? = null
+    internal fun isDisplayed(session: GeckoSession)=view?.session===session
     var host: BrowserHost? = null; private set
     val externalActivities = ExternalActivityBroker(this)
     val runtimeActivities = RuntimeActivityController(this)
