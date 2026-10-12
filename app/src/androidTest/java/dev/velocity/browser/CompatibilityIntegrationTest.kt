@@ -134,7 +134,9 @@ class CompatibilityIntegrationTest {
             main {previousEpoch=app.coordinator.scheduler.tab(id)!!.epoch;app.coordinator.select(id);app.coordinator.navigate(f.url+"/")}
             await("fresh page settled before second download click") {
                 val field=MainActivity::class.java.getDeclaredField("chrome").apply {isAccessible=true}
-                app.coordinator.scheduler.tab(id)!!.epoch>previousEpoch && app.coordinator.scheduler.tab(id)!!.title=="COMPAT_FIXTURE" &&
+                // navigate() first invalidates metadata; the next increment is
+                // Gecko's actual onPageStart, so the old settled page cannot pass.
+                app.coordinator.scheduler.tab(id)!!.epoch>previousEpoch+1 && app.coordinator.scheduler.tab(id)!!.title=="COMPAT_FIXTURE" &&
                     (field.get(app.coordinator.host!!.activity) as dev.velocity.browser.ui.BrowserChromeView).reload.text.toString()=="更新"
             }
             assertTrue(device.wait(Until.hasObject(By.text("DOWNLOAD_FIXTURE")),15000));click("DOWNLOAD_FIXTURE")
