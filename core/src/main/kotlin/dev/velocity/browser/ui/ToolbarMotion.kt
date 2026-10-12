@@ -23,6 +23,9 @@ data class ToolbarGeometry(val toolbarTranslation: Float, val contentTranslation
 class ToolbarMotion {
     enum class State { SHOWN, HIDING, HIDDEN, SHOWING, PINNED }
     enum class Source { COMPOSITOR, CONTENT, UI }
+    enum class Decision { ACCEPTED, LOCKED, CONTENT_PRIORITY, PINNED, DUPLICATE, HYSTERESIS }
+    var decision=Decision.DUPLICATE; private set
+    private fun reject(reason:Decision):Boolean {decision=reason;return false}
     var visible = 1f; private set
     var target = 1f; private set
     var state = State.SHOWN; private set
@@ -41,15 +44,16 @@ class ToolbarMotion {
         else state = State.SHOWN
     }
     fun request(show: Boolean, source: Source, now: Long, enginePinned: Boolean = false): Boolean {
-        if (locked) return false
+        if (locked) return reject(Decision.LOCKED)
         if (source == Source.COMPOSITOR) compositorAt = now
         // Compositor direction is authoritative during a user pan; Gecko content requests
         // remain available for navigation/scroll-to-top when no recent pan exists.
-        if (source == Source.CONTENT && compositorAt != Long.MIN_VALUE && now - compositorAt < 160) return false
-        if (enginePinned) { deferred = show; state = State.PINNED; return false }
+        if (source == Source.CONTENT && compositorAt != Long.MIN_VALUE && now - compositorAt < 160) return reject(Decision.CONTENT_PRIORITY)
+        if (enginePinned) { deferred = show; state = State.PINNED; return reject(Decision.PINNED) }
         val next = if (show) 1f else 0f
-        if (next == target) return false
-        if (source != Source.UI && changedAt != Long.MIN_VALUE && now - changedAt < 80) return false
+        if (next == target) return reject(Decision.DUPLICATE)
+        if (source != Source.UI && changedAt != Long.MIN_VALUE && now - changedAt < 80) return reject(Decision.HYSTERESIS)
+        decision=Decision.ACCEPTED
         changedAt = now; target = next; state = if (show) State.SHOWING else State.HIDING
         return true
     }

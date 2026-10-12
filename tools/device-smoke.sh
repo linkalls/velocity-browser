@@ -22,4 +22,6 @@ PY
   capture_result=$?
   if [ "$capture_result" -ne 0 ]; then result=$capture_result; fi
 fi
+mkdir -p dist/scroll-jump
+adb pull /sdcard/Download/Velocity-scroll-jump/. dist/scroll-jump/ || true
 exit "$result"

@@ -1,5 +1,6 @@
 plugins { alias(libs.plugins.android.application) }
 android {
+    buildFeatures { buildConfig = true }
     namespace = "dev.velocity.browser"
     compileSdk { version = release(37) { minorApiLevel = 1 } }
     buildToolsVersion = "36.0.0"

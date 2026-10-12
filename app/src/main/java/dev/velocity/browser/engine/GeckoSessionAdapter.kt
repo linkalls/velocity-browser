@@ -23,12 +23,18 @@ class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boole
             override fun onScrollChanged(s:GeckoSession,update:GeckoSession.ScrollPositionUpdate) {
                 val y=update.scrollY*update.zoom
                 val previous=scrollY;scrollY=y
-                if(previous.isNaN()||update.source!=GeckoSession.ScrollPositionUpdate.SOURCE_USER_INTERACTION){scrollIntent=0f;return}
                 if(!owner.isCurrent(id,identity)||owner.scheduler.selectedId!=id)return
                 val delta=y-previous
+                if(previous.isNaN()||update.source!=GeckoSession.ScrollPositionUpdate.SOURCE_USER_INTERACTION){
+                    scrollIntent=0f
+                    dev.velocity.browser.diagnostics.ScrollDiagnostics.record(dev.velocity.browser.diagnostics.ScrollDiagnostics.Event.SAMPLE,update.source,y=update.scrollY,zoom=update.zoom,delta=delta,intent=scrollIntent)
+                    return
+                }
                 if(delta*scrollIntent<0)scrollIntent=0f
                 scrollIntent+=delta
+                dev.velocity.browser.diagnostics.ScrollDiagnostics.record(dev.velocity.browser.diagnostics.ScrollDiagnostics.Event.SAMPLE,update.source,y=update.scrollY,zoom=update.zoom,delta=delta,intent=scrollIntent)
                 if(kotlin.math.abs(scrollIntent)>=24*(owner.host?.activity?.resources?.displayMetrics?.density?:1f)){owner.host?.toolbarVisibility(scrollIntent<0,dev.velocity.browser.ui.ToolbarMotion.Source.COMPOSITOR);scrollIntent=0f}
+
             }
         }
 

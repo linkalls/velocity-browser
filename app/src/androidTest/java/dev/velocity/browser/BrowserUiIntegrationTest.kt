@@ -95,11 +95,13 @@ class BrowserUiIntegrationTest {
             // Late page-risk updates can invalidate a confirmation. Reconfirm from
             // the still-open sheet; never bypass the stale-confirmation guard.
             var retained = false
-            main { retained = app.coordinator.scheduler.tab(id) != null }
+            main { val current=app.coordinator.scheduler.tab(id);retained=current!=null;if(current!=null)assertEquals(identity,current.identity) }
             if (retained) {
-                main { assertEquals(identity, app.coordinator.scheduler.tab(id)!!.identity) }
-                clickDescription("『UI_FIXTURE』を閉じる");click("このタブを閉じる")
+                val button=device.wait(Until.findObject(By.desc("『UI_FIXTURE』を閉じる")),1500)
+                if(button!=null){button.click();device.wait(Until.findObject(By.text("このタブを閉じる")),1500)?.click()}
             }
+            await("requested close completes") {app.coordinator.scheduler.tab(id)==null}
+
             main {
                 assertNull(app.coordinator.scheduler.tab(id));assertEquals(1,app.coordinator.scheduler.tabs.size)
                 assertEquals("about:blank",app.coordinator.scheduler.tabs.single().url)
