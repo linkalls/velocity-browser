@@ -31,6 +31,9 @@ class GeckoSessionAdapter(val id: String, val identity: Long, private val privat
                 val hint=scrollTracker.update(update.scrollY,update.zoom,user,active,epoch,24*(owner.host?.activity?.resources?.displayMetrics?.density?:1f))
                 if(!active)return
                 traceScope()
+                if (dev.velocity.browser.BuildConfig.DEBUG) dev.velocity.browser.diagnostics.SiteScrollBenchmark.onScroll(
+                    id, identity, epoch, user, update.scrollY, update.zoom
+                )
                 if(user)owner.host?.toolbarUserScroll()
                 dev.velocity.browser.diagnostics.ScrollDiagnostics.record(dev.velocity.browser.diagnostics.ScrollDiagnostics.Event.SAMPLE,update.source,hint.reason.ordinal,y=update.scrollY,zoom=update.zoom,delta=hint.deltaPx,intent=hint.intentPx)
                 hint.show?.let {owner.host?.toolbarVisibility(it,dev.velocity.browser.ui.ToolbarMotion.Source.COMPOSITOR)}
