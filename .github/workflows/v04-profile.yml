@@ -5,6 +5,7 @@ on:
     paths:
       - .github/workflows/v04-profile.yml
       - tools/emulator-profile.sh
+      - tools/scroll-trace.sh
       - tools/frame-report.py
       - tools/profile-summary.py
 permissions:

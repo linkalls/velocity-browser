@@ -29,10 +29,11 @@ data_sources { config { name: "linux.ftrace" ftrace_config {
   atrace_apps: "dev.velocity.browser"
 } } }
 CONFIG
-adb push "$config" /data/local/tmp/velocity-scroll.cfg >/dev/null
-adb shell perfetto --txt -c /data/local/tmp/velocity-scroll.cfg -o /data/misc/perfetto-traces/velocity-scroll.trace
+# Feed config through stdin: shell-created /data/local/tmp files have an SELinux
+# label that perfetto cannot read on API36, including rooted emulator images.
+adb shell perfetto --txt -c - -o /data/misc/perfetto-traces/velocity-scroll.trace < "$config"
 adb pull /data/misc/perfetto-traces/velocity-scroll.trace "$output" >/dev/null
-adb shell rm -f /data/local/tmp/velocity-scroll.cfg /data/misc/perfetto-traces/velocity-scroll.trace
+adb shell rm -f /data/misc/perfetto-traces/velocity-scroll.trace
 python3 - "$scenario" "$output" <<'PY'
 import json,sys,hashlib
 from pathlib import Path
