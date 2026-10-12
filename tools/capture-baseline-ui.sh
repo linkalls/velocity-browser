@@ -4,6 +4,7 @@ set -euo pipefail
 baseline=16be2395f1ea863144bd695012c56b60af1ab125
 ./gradlew --max-workers=1 :app:assembleDebugAndroidTest
 checkout=$(mktemp -d)
+git fetch --depth=1 origin "$baseline"
 git worktree add --detach "$checkout" "$baseline"
 trap 'git worktree remove --force "$checkout"' EXIT
 (cd "$checkout" && ./gradlew --max-workers=1 :app:assembleDebug)
