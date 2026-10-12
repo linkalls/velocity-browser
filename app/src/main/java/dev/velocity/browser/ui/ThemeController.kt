@@ -68,10 +68,10 @@ class ThemeController(private val context: Context) {
             navigationBarColor=p.surface
             if(android.os.Build.VERSION.SDK_INT>=30){
                 val mask=android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-                insetsController?.setSystemBarsAppearance(if(p.dark)0 else mask,mask)
+                peekDecorView()?.windowInsetsController?.setSystemBarsAppearance(if(p.dark)0 else mask,mask)
             }
         }
-        dialog.window?.decorView?.let(::visit)
+        dialog.window?.peekDecorView()?.let(::visit)
         if (context is dev.velocity.browser.VelocityApp && context.coordinator.scheduler.tabs.any { it.privateMode }) dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
     @Suppress("DEPRECATION")

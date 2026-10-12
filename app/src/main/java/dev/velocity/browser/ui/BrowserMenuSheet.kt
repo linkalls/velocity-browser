@@ -15,9 +15,11 @@ class BrowserMenuSheet(context: Context, private val appearance: ThemeController
     private val icons=mutableListOf<BrowserIconButton>()
     private val themeChanged:()->Unit={applyPalette()}
     init {
+        val settings=groups.flatMap {it.second}.firstOrNull {it.label=="設定"}
         panel.addView(LinearLayout(context).apply {
             gravity=Gravity.CENTER_VERTICAL
             addView(context.sectionHeader("メニュー").also {labels+=it},LinearLayout.LayoutParams(0,-2,1f))
+            settings?.let {a->addView(context.actionButton(a.label){sheet.dismiss();a.run()}.also {buttons+=it})}
             addView(context.actionButton("閉じる"){sheet.dismiss()}.also {buttons+=it})
         })
         val content=LinearLayout(context).apply {orientation=LinearLayout.VERTICAL}
@@ -32,8 +34,9 @@ class BrowserMenuSheet(context: Context, private val appearance: ThemeController
             }
         })
         groups.forEach {(title,actions)->
-            content.addView(context.sectionHeader(title).also {labels+=it})
-            actions.forEach {a->content.addView(context.actionButton(a.label){sheet.dismiss();a.run()}.apply {
+            val rows=actions.filter {it!==settings}
+            if(rows.isNotEmpty())content.addView(context.sectionHeader(title).also {labels+=it})
+            rows.forEach {a->content.addView(context.actionButton(a.label){sheet.dismiss();a.run()}.apply {
                 gravity=Gravity.START or Gravity.CENTER_VERTICAL;isEnabled=a.enabled;alpha=if(a.enabled)1f else .45f;buttons+=this
             },LinearLayout.LayoutParams(-1,-2))}
         }
