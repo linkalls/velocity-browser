@@ -1,5 +1,6 @@
 plugins { alias(libs.plugins.android.application) }
 android {
+    buildFeatures { buildConfig = true }
     namespace = "dev.velocity.browser"
     compileSdk { version = release(37) { minorApiLevel = 1 } }
     buildToolsVersion = "36.0.0"
@@ -7,8 +8,8 @@ android {
         applicationId = "dev.velocity.browser"
         minSdk = 26
         targetSdk = 37
-        versionCode = 8
-        versionName = "0.5.0"
+        versionCode = 9
+        versionName = "0.5.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {

@@ -1,6 +1,10 @@
 package dev.velocity.browser.ui
 
 import android.animation.ValueAnimator
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import dev.velocity.browser.diagnostics.ScrollDiagnostics
+import dev.velocity.browser.diagnostics.ScrollDiagnostics.Event as TraceEvent
 import android.content.Context
 import android.content.SharedPreferences
 import android.text.InputType
@@ -119,6 +123,7 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
         }
         address.setOnLongClickListener {if(address.hasFocus())false else {showAddressMenu();true}}
         setOnApplyWindowInsetsListener {_,insets->
+            trace(TraceEvent.INSETS)
             if(android.os.Build.VERSION.SDK_INT>=30){
                 val bars=insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout());ime=insets.isVisible(WindowInsets.Type.ime())
                 val keyboard=insets.getInsets(WindowInsets.Type.ime());setPadding(bars.left,bars.top,bars.right,maxOf(bars.bottom,keyboard.bottom))
@@ -127,7 +132,7 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
         }
         info.visibility=if(context.resources.configuration.fontScale>=1.5f)View.GONE else View.VISIBLE
         isFocusableInTouchMode=true;requestFocus();positionHome();refreshShortcuts();applyPalette(palette)
-        addOnLayoutChangeListener {_,_,_,_,_,_,_,_,_->syncDynamic()}
+        addOnLayoutChangeListener {_,_,_,_,_,_,_,_,_->trace(TraceEvent.LAYOUT);syncDynamic()}
     }
     private fun showAddressMenu(){PopupMenu(context,address).apply {
         menu.add("URLをコピー").setOnMenuItemClickListener {(context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("URL",rawAddress));true}
@@ -152,13 +157,26 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
     fun cancelAddressEdit(){address.clearFocus();requestFocus();(context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(address.windowToken,0);onEditingChanged()}
     fun setModalBlocked(blocked:Boolean){if(modal==blocked)return;modal=blocked;syncDynamic()}
     private fun locked()=starting||modal||ime||address.hasFocus()||homeSearch.hasFocus()||accessibility.isTouchExplorationEnabled||!preferences.getBoolean("toolbar_scroll",true)
+    private fun trace(event:TraceEvent,source:Int=-1,reason:Int=-1,show:Float=Float.NaN){
+        if(!ScrollDiagnostics.enabled)return
+        val flags=(if(starting)1 else 0) or (if(modal)2 else 0) or (if(ime)4 else 0) or (if(address.hasFocus())8 else 0) or (if(accessibility.isTouchExplorationEnabled)16 else 0)
+        ScrollDiagnostics.geometry(motion,toolbarHeight,dynamicMax,flags,if(event==TraceEvent.MAXIMUM)0 else lastClipping,toolbar.translationY,engineContainer.translationY)
+        ScrollDiagnostics.record(event,source,reason,show=show)
+    }
     private fun syncDynamic(){
         if(geckoView.height<=toolbarHeight)return
+        // Selection drag pins the display, including its viewport baseline.
+        // Defer a preference/density max-height change until a later unpinned event.
+        if(geckoView.shouldPinOnScreen()){motion.pin();trace(TraceEvent.PIN);animator?.cancel();return}
         // Transient UI locks must not change Gecko's ICB baseline (forms/fixed elements).
-        val maximum=if(preferences.getBoolean("toolbar_scroll",true))toolbarHeight else 0
-        if(maximum!=dynamicMax){dynamicMax=maximum;geckoView.setDynamicToolbarMaxHeight(maximum);lastClipping=Int.MIN_VALUE}
-        if(geckoView.shouldPinOnScreen()) {animator?.cancel();return}
+        // Reserve the same ICB for a toolbar locked shown (auto-hide OFF).
+        // With max=0, positive fixed-bottom offset moves rendered fixed elements
+        // but Gecko 157 accessibility bounds still point below the toolbar.
+        // Keep the baseline stable; locked() alone disables automatic motion.
+        val maximum=toolbarHeight
+        if(maximum!=dynamicMax){dynamicMax=maximum;geckoView.setDynamicToolbarMaxHeight(maximum);lastClipping=Int.MIN_VALUE;trace(TraceEvent.MAXIMUM)}
         val wasPinned=motion.state==ToolbarMotion.State.PINNED
+        trace(TraceEvent.LOCK)
         motion.lock(locked())
         if(locked()){animator?.cancel();applyOffset(toolbarHeight.toFloat())}
         else {
@@ -166,25 +184,40 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
             applyOffset(motion.visible*toolbarHeight)
         }
     }
+    // Gecko Display.onSurfaceChanged reapplies max-height, resetting clipping
+    // even when our max-height cache is unchanged. First composite is a public
+    // UI-thread lifecycle callback after compositor start/restart. Reapply only
+    // geometry, never reset visible/target or the page's scroll position.
+    fun onEngineViewportReady(){lastClipping=Int.MIN_VALUE;trace(TraceEvent.RESET);syncDynamic()}
+    fun onUserScroll(){motion.observeUserScroll(android.os.SystemClock.uptimeMillis())}
+    fun resetScrollContext(){showToolbar(true,false);trace(TraceEvent.RESET);syncDynamic()}
     fun onEngineToolbar(show:Boolean,source:ToolbarMotion.Source=ToolbarMotion.Source.CONTENT){
         val now=android.os.SystemClock.uptimeMillis()
         val pinned=geckoView.shouldPinOnScreen()
         if(!pinned){motion.lock(locked());if(motion.unpin(now))animateTarget(true)}
-        if(motion.request(show,source,now,pinned))animateTarget(true)
+        val accepted=motion.request(show,source,now,pinned)
+        trace(TraceEvent.REQUEST,source.ordinal,motion.decision.ordinal,if(show)1f else 0f)
+        if(accepted)animateTarget(true)
         else if(locked()&&!pinned){animator?.cancel();applyOffset(toolbarHeight.toFloat())}
     }
     private fun showToolbar(show:Boolean,animate:Boolean){
-        if(geckoView.shouldPinOnScreen()) {motion.request(show,ToolbarMotion.Source.UI,android.os.SystemClock.uptimeMillis(),true);animator?.cancel();return}
-        if(show&&!animate){animator?.cancel();motion.reset();applyOffset(toolbarHeight.toFloat());return}
-        if(motion.request(show,ToolbarMotion.Source.UI,android.os.SystemClock.uptimeMillis()))animateTarget(animate)
+        if(geckoView.shouldPinOnScreen()) {motion.request(show,ToolbarMotion.Source.UI,android.os.SystemClock.uptimeMillis(),true);trace(TraceEvent.REQUEST,ToolbarMotion.Source.UI.ordinal,motion.decision.ordinal,if(show)1f else 0f);animator?.cancel();return}
+        if(show&&!animate){animator?.cancel();motion.reset();trace(TraceEvent.RESET,ToolbarMotion.Source.UI.ordinal,show=1f);applyOffset(toolbarHeight.toFloat());return}
+        val accepted=motion.request(show,ToolbarMotion.Source.UI,android.os.SystemClock.uptimeMillis())
+        trace(TraceEvent.REQUEST,ToolbarMotion.Source.UI.ordinal,motion.decision.ordinal,if(show)1f else 0f)
+        if(accepted)animateTarget(animate)
     }
     private fun animateTarget(animate:Boolean){
-        animator?.cancel()
+        animator?.cancel();trace(TraceEvent.START)
         val target=motion.target*toolbarHeight
         if(animate&&ValueAnimator.areAnimatorsEnabled()&&!accessibility.isTouchExplorationEnabled){
             animator=ValueAnimator.ofFloat(motion.visible*toolbarHeight,target).apply {
                 duration=DesignTokens.ANIMATION_MS
-                addUpdateListener {if(geckoView.shouldPinOnScreen()){motion.request(motion.target==1f,ToolbarMotion.Source.UI,android.os.SystemClock.uptimeMillis(),true);cancel()}else applyOffset(it.animatedValue as Float)}
+                addListener(object:AnimatorListenerAdapter(){
+                    override fun onAnimationCancel(animation:Animator){trace(TraceEvent.CANCEL)}
+                    override fun onAnimationEnd(animation:Animator){trace(TraceEvent.END)}
+                })
+                addUpdateListener {if(geckoView.shouldPinOnScreen()){motion.pin();trace(TraceEvent.PIN);cancel()}else {applyOffset(it.animatedValue as Float);trace(TraceEvent.FRAME)}}
                 start()
             }
         }else applyOffset(target)
@@ -194,13 +227,15 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
         val geometry=ToolbarGeometry.calculate(toolbarHeight,visible,bottomAddress,dynamicMax>0)
         motion.frame(visible/toolbarHeight)
         toolbar.importantForAccessibility=if(motion.target==1f)View.IMPORTANT_FOR_ACCESSIBILITY_AUTO else View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-        toolbar.translationY=geometry.toolbarTranslation
+        if(toolbar.translationY!=geometry.toolbarTranslation)toolbar.translationY=geometry.toolbarTranslation
         // Move the parent, not GeckoView/SurfaceView; keep session/surface ownership intact.
-        engineContainer.translationY=geometry.contentTranslation
+        if(engineContainer.translationY!=geometry.contentTranslation)engineContainer.translationY=geometry.contentTranslation
         if(geckoView.height>toolbarHeight&&lastClipping!=geometry.clipping){lastClipping=geometry.clipping;geckoView.setVerticalClipping(lastClipping)}
+        trace(TraceEvent.APPLY)
     }
     fun showStart(show:Boolean){if(starting==show)return;starting=show;homeSurface.visibility=if(show)View.VISIBLE else View.GONE;syncDynamic()}
-    fun updateState(tabCount:Int,privateMode:Boolean,mode:String,lite:Boolean,busy:Boolean,decisions:Int,status:String,selectedId:String?=null){
+    fun updateState(tabCount:Int,privateMode:Boolean,mode:String,lite:Boolean,busy:Boolean,decisions:Int,status:String,selectedId:String?=null,identity:Long?=null,epoch:Long=0){
+        ScrollDiagnostics.context(selectedId,identity,epoch,privateMode)
         if(homeContext!=selectedId){showToolbar(true,false);homeContext=selectedId;homeSearch.setText(selectedId?.let(homeInputs::get).orEmpty())}
         if(this.privateMode!=privateMode){this.privateMode=privateMode;applyPalette(palette);setAddressUrl(rawAddress)}
         updateAddressActions()

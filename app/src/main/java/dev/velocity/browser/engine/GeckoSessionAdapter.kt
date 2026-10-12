@@ -6,7 +6,7 @@ import dev.velocity.browser.security.UrlPolicy
 import org.mozilla.geckoview.*
 
 /** Delegateのイベントはcoordinatorへ集約。GeckoSessionはUIへ公開しない。 */
-class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boolean,
+class GeckoSessionAdapter(val id: String, val identity: Long, private val privateMode: Boolean,
     private val owner: AdaptiveTabCoordinator, private val readOnly: Boolean = false) {
     val session = GeckoSession(GeckoSessionSettings.Builder().usePrivateMode(privateMode).useTrackingProtection(true).allowJavascript(!readOnly).build())
     private var expectedDataUri: String? = null
@@ -14,21 +14,27 @@ class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boole
     var canGoBack = false; private set
     var canGoForward = false; private set
     var loading = false; private set
+    private fun traceScope(){
+        if(dev.velocity.browser.diagnostics.ScrollDiagnostics.enabled&&owner.isCurrent(id,identity)&&owner.scheduler.selectedId==id)
+            dev.velocity.browser.diagnostics.ScrollDiagnostics.context(id,identity,owner.scheduler.tab(id)?.epoch?:0,privateMode)
+    }
     private fun emit(e: Event) { if (owner.isCurrent(id, identity)) owner.dispatch(e) }
     fun risk(p: Protection, on: Boolean) = emit(Event.RiskChanged(id, identity, p, on))
-    private var scrollY=Float.NaN
-    private var scrollIntent=0f
+    private val scrollTracker=dev.velocity.browser.ui.ScrollIntentTracker()
+    fun resetScrollTracking(){scrollTracker.reset()}
     init {
         session.compositorScrollDelegate=object:GeckoSession.CompositorScrollDelegate {
             override fun onScrollChanged(s:GeckoSession,update:GeckoSession.ScrollPositionUpdate) {
-                val y=update.scrollY*update.zoom
-                val previous=scrollY;scrollY=y
-                if(previous.isNaN()||update.source!=GeckoSession.ScrollPositionUpdate.SOURCE_USER_INTERACTION){scrollIntent=0f;return}
-                if(!owner.isCurrent(id,identity)||owner.scheduler.selectedId!=id)return
-                val delta=y-previous
-                if(delta*scrollIntent<0)scrollIntent=0f
-                scrollIntent+=delta
-                if(kotlin.math.abs(scrollIntent)>=24*(owner.host?.activity?.resources?.displayMetrics?.density?:1f)){owner.host?.toolbarVisibility(scrollIntent<0,dev.velocity.browser.ui.ToolbarMotion.Source.COMPOSITOR);scrollIntent=0f}
+                val active=owner.isCurrent(id,identity)&&owner.scheduler.selectedId==id&&owner.scheduler.foreground
+                val epoch=owner.scheduler.tab(id)?.epoch?:Long.MIN_VALUE
+                val user=update.source==GeckoSession.ScrollPositionUpdate.SOURCE_USER_INTERACTION
+                val hint=scrollTracker.update(update.scrollY,update.zoom,user,active,epoch,24*(owner.host?.activity?.resources?.displayMetrics?.density?:1f))
+                if(!active)return
+                traceScope()
+                if(user)owner.host?.toolbarUserScroll()
+                dev.velocity.browser.diagnostics.ScrollDiagnostics.record(dev.velocity.browser.diagnostics.ScrollDiagnostics.Event.SAMPLE,update.source,hint.reason.ordinal,y=update.scrollY,zoom=update.zoom,delta=hint.deltaPx,intent=hint.intentPx)
+                hint.show?.let {owner.host?.toolbarVisibility(it,dev.velocity.browser.ui.ToolbarMotion.Source.COMPOSITOR)}
+
             }
         }
 
@@ -44,7 +50,7 @@ class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boole
                 return GeckoResult.fromValue(if (allowed) AllowOrDeny.ALLOW else AllowOrDeny.DENY)
             }
             override fun onLocationChange(s: GeckoSession, url: String?, perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>, hasUserGesture: Boolean) {
-                scrollY=Float.NaN;scrollIntent=0f
+                resetScrollTracking()
                 if (!readOnly && url != null && (url == "about:blank" || UrlPolicy.httpUrl(url) != null || owner.extensionPageAllowed(id, url))) emit(Event.LocationChanged(id, identity, url))
             }
             override fun onCanGoBack(s: GeckoSession, value: Boolean) { canGoBack = value; owner.render() }
@@ -62,6 +68,7 @@ class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boole
         }
         session.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(s: GeckoSession, url: String) {
+                resetScrollTracking();traceScope();if(owner.isCurrent(id,identity)&&owner.scheduler.selectedId==id)owner.host?.toolbarContextReset()
                 if (readOnly) { loading = true; owner.render(); return }
                 if (url != "about:blank") pristineBlank = false
                 loading = true; emit(Event.NavigationStarted(id, identity, url)); owner.render()
@@ -80,9 +87,13 @@ class GeckoSessionAdapter(val id: String, val identity: Long, privateMode: Boole
             }
         }
         session.contentDelegate = object : GeckoSession.ContentDelegate {
-            override fun onShowDynamicToolbar(s: GeckoSession) { if (owner.isCurrent(id,identity) && owner.scheduler.selectedId==id) owner.host?.toolbarVisibility(true) }
-            override fun onHideDynamicToolbar(s: GeckoSession) { if (owner.isCurrent(id,identity) && owner.scheduler.selectedId==id) owner.host?.toolbarVisibility(false) }
+            override fun onShowDynamicToolbar(s: GeckoSession) { traceScope();if (owner.isCurrent(id,identity) && owner.scheduler.selectedId==id) owner.host?.toolbarVisibility(true) }
+            override fun onHideDynamicToolbar(s: GeckoSession) { traceScope();if (owner.isCurrent(id,identity) && owner.scheduler.selectedId==id) owner.host?.toolbarVisibility(false) }
             override fun onTitleChange(s: GeckoSession, title: String?) { emit(Event.TitleChanged(id, identity, title.orEmpty())) }
+            override fun onFirstComposite(s:GeckoSession) {
+                traceScope()
+                if(owner.isCurrent(id,identity)&&owner.scheduler.selectedId==id&&owner.isDisplayed(s))owner.host?.toolbarViewportReady()
+            }
             override fun onFirstContentfulPaint(s: GeckoSession) { if (owner.isCurrent(id, identity)) owner.firstContent(id) }
             override fun onCrash(s: GeckoSession) { emit(Event.Crashed(id, identity)); owner.notice(dev.velocity.browser.R.string.crash) }
             override fun onExternalResponse(s: GeckoSession, response: WebResponse) {

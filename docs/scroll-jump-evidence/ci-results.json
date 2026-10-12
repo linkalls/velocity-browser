@@ -1,0 +1,235 @@
+{
+  "source": "0c41a0bf66ee7f90ca598a3a6011bacf53b01264",
+  "productionSource": "5919ddb6a86ca53b5a2868983bae2813e41ae30f",
+  "run": 38249023979,
+  "device": {
+    "tests": 31,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "fixture": "normal localhost / real Gecko / API36 x86_64",
+  "matrixScenarios": 16,
+  "traceFiles": 52,
+  "fixtureScreenshotFiles": 32,
+  "matrix": [
+    {
+      "scenario": 0,
+      "events": 223,
+      "samples": 125,
+      "sizeBounded": true,
+      "identityCount": 1,
+      "epochValues": [
+        "0",
+        "1",
+        "2"
+      ],
+      "frameGapMeaning": "toolbar animator callbacks only"
+    },
+    {
+      "scenario": 1,
+      "events": 259,
+      "samples": 124,
+      "sizeBounded": true,
+      "identityCount": 1,
+      "epochValues": [
+        "0",
+        "1",
+        "2"
+      ],
+      "frameGapMeaning": "toolbar animator callbacks only"
+    },
+    {
+      "scenario": 2,
+      "events": 225,
+      "samples": 125,
+      "sizeBounded": true,
+      "identityCount": 1,
+      "epochValues": [
+        "0",
+        "1",
+        "2"
+      ],
+      "frameGapMeaning": "toolbar animator callbacks only"
+    },
+    {
+      "scenario": 3,
+      "events": 305,
+      "samples": 124,
+      "sizeBounded": true,
+      "identityCount": 1,
+      "epochValues": [
+        "0",
+        "1",
+        "2"
+      ],
+      "frameGapMeaning": "toolbar animator callbacks only"
+    },
+    {
+      "scenario": 4,
+      "events": 225,
+      "samples": 125,
+      "sizeBounded": true,
+      "identityCount": 1,
+      "epochValues": [
+        "0",
+        "1",
+        "2"
+      ],
+      "frameGapMeaning": "toolbar animator callbacks only"
+    },
+    {
+      "scenario": 5,
+      "events": 270,
+      "samples": 126,
+      "sizeBounded": true,
+      "identityCount": 1,
+      "epochValues": [
+        "0",
+        "1",
+        "2"
+      ],
+      "frameGapMeaning": "toolbar animator callbacks only"
+    },
+    {
+      "scenario": 6,
+      "events": 227,
+      "samples": 127,
+      "sizeBounded": true,
+      "identityCount": 1,
+      "epochValues": [
+        "0",
+        "1",
+        "2"
+      ],
+      "frameGapMeaning": "toolbar animator callbacks only"
+    },
+    {
+      "scenario": 7,
+      "events": 352,
+      "samples": 123,
+      "sizeBounded": true,
+      "identityCount": 1,
+      "epochValues": [
+        "0",
+        "1",
+        "2"
+      ],
+      "frameGapMeaning": "toolbar animator callbacks only"
+    },
+    {
+      "scenario": 8,
+      "events": 226,
+      "samples": 126,
+      "sizeBounded": true,
+      "identityCount": 1,
+      "epochValues": [
+        "0",
+        "1",
+        "2"
+      ],
+      "frameGapMeaning": "toolbar animator callbacks only"
+    },
+    {
+      "scenario": 9,
+      "events": 267,
+      "samples": 124,
+      "sizeBounded": true,
+      "identityCount": 1,
+      "epochValues": [
+        "0",
+        "1",
+        "2"
+      ],
+      "frameGapMeaning": "toolbar animator callbacks only"
+    },
+    {
+      "scenario": 10,
+      "events": 220,
+      "samples": 124,
+      "sizeBounded": true,
+      "identityCount": 1,
+      "epochValues": [
+        "0",
+        "1",
+        "2"
+      ],
+      "frameGapMeaning": "toolbar animator callbacks only"
+    },
+    {
+      "scenario": 11,
+      "events": 309,
+      "samples": 124,
+      "sizeBounded": true,
+      "identityCount": 1,
+      "epochValues": [
+        "0",
+        "1",
+        "2"
+      ],
+      "frameGapMeaning": "toolbar animator callbacks only"
+    },
+    {
+      "scenario": 12,
+      "events": 225,
+      "samples": 127,
+      "sizeBounded": true,
+      "identityCount": 1,
+      "epochValues": [
+        "0",
+        "1",
+        "2"
+      ],
+      "frameGapMeaning": "toolbar animator callbacks only"
+    },
+    {
+      "scenario": 13,
+      "events": 267,
+      "samples": 124,
+      "sizeBounded": true,
+      "identityCount": 1,
+      "epochValues": [
+        "0",
+        "1",
+        "2"
+      ],
+      "frameGapMeaning": "toolbar animator callbacks only"
+    },
+    {
+      "scenario": 14,
+      "events": 224,
+      "samples": 126,
+      "sizeBounded": true,
+      "identityCount": 1,
+      "epochValues": [
+        "0",
+        "1",
+        "2"
+      ],
+      "frameGapMeaning": "toolbar animator callbacks only"
+    },
+    {
+      "scenario": 15,
+      "events": 302,
+      "samples": 119,
+      "sizeBounded": true,
+      "identityCount": 1,
+      "epochValues": [
+        "0",
+        "1",
+        "2"
+      ],
+      "frameGapMeaning": "toolbar animator callbacks only"
+    }
+  ],
+  "retainedFiles": {
+    "matrix-0-after-tap.csv": "b07e1e6c51f0e950c70be2e9d169629f00b2704babd4c91a65fc0913ce822bfe",
+    "focus-ime-form.csv": "9559774073f4b4eb980cecfa33998992f90d2e0982b1d0424f7c6d36753ba699",
+    "matrix-0-after-tap.png": "01ab4242715d67551e294403f4d6ae4b6e44e2616808c491eab9fbfcc8ecca2b",
+    "anchor-user.csv": "9596614cbb692c05e963b6df967c4f9507775e69ec36c533aed6792e39364bf8",
+    "matrix-0-before-tap.png": "c4a593e44970eece5c7ed6dac2aa6755088746f1eab6630c8d9f0a2e8123b227",
+    "nested-scroll.csv": "6c1d7300c9ec8539eda2f7ba270f13199262279dae1f78caa3d79e062d83c623",
+    "zoom-user.csv": "737fb8e99d03586d3bdf282093d4e08cf3a55ef13737f827a708148fe3845123",
+    "matrix-0-before-tap.csv": "b07e1e6c51f0e950c70be2e9d169629f00b2704babd4c91a65fc0913ce822bfe"
+  }
+}

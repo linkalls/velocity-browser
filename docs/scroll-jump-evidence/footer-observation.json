@@ -1,0 +1,19 @@
+{
+  "source": "e3c571b51055249597f17f788ab32b9e1223a67d",
+  "run": 38247528988,
+  "scenario": "ALL_OFF / auto-hide OFF / bottom",
+  "emulator": "API36 x86_64 / 320x640 density1",
+  "paintedFooterY": [
+    480,
+    536
+  ],
+  "accessibleFooterBounds": [
+    0,
+    536,
+    320,
+    592
+  ],
+  "sourceOfBounds": "failure XML",
+  "result": "UiObject2.click entered native address editing; footer title callback absent",
+  "reportedYahooCausality": "NOT_ESTABLISHED"
+}

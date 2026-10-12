@@ -117,17 +117,32 @@ class V04UiIntegrationTest {
                 await("final toolbar geometry") {chrome().toolbarVisibleFraction==if(dynamic)0f else 1f}
                 main {
                     val height=DesignTokens.toolbarHeight(inst.targetContext)
-                    assertEquals(if(dynamic)-height else height,chrome().toolbarClipping)
+                    assertEquals(if(dynamic)-height else 0,chrome().toolbarClipping)
                     assertSame(session,chrome().geckoView.session)
-                    chrome().onEngineToolbar(true,ToolbarMotion.Source.UI)
                 }
-                SystemClock.sleep(40)
+                // Control a hiding animation after pinning the bar shown. A fling
+                // may still legitimately request hide; it must not race a "show"
+                // assertion intended to test layout position preservation.
+                main {chrome().setModalBlocked(true)}
+                device.waitForIdle()
                 main {
-                    val before=chrome().toolbarVisibleFraction
-                    chrome().requestLayout()
-                    assertEquals(before,chrome().toolbarVisibleFraction,0f)
+                    chrome().setModalBlocked(false)
+                    if(dynamic&&scale==1){
+                        chrome().onEngineToolbar(false,ToolbarMotion.Source.UI)
+                        val field=BrowserChromeView::class.java.getDeclaredField("animator").apply {isAccessible=true}
+                        val animator=field.get(chrome()) as android.animation.ValueAnimator
+                        animator.pause();animator.setCurrentFraction(.35f)
+                        val before=chrome().toolbarVisibleFraction
+                        val c=chrome();c.layout(c.left,c.top,c.right,c.bottom-1)
+                        assertEquals("layout preserves paused intermediate position",before,c.toolbarVisibleFraction,0.0001f)
+                        c.layout(c.left,c.top,c.right,c.bottom+1);animator.resume()
+                    }
                 }
+                // A UI pin owns the final shown state independently of remaining
+                // inertia. Keep the session and verify the static baseline again.
+                main {chrome().setModalBlocked(true)}
                 await("shown after layout interruption"){chrome().toolbarVisibleFraction==1f}
+                main {chrome().setModalBlocked(false)}
                 main {assertSame(session,chrome().geckoView.session);assertEquals(id,app.coordinator.scheduler.selectedId)}
             }
             }

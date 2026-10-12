@@ -105,6 +105,9 @@ class MainActivity : Activity(), BrowserHost {
         coordinator.unbind(this); super.onDestroy()
     }
     override fun onWindowFocusChanged(hasFocus:Boolean) { super.onWindowFocusChanged(hasFocus);if(::chrome.isInitialized)chrome.setModalBlocked(!hasFocus) }
+    override fun toolbarUserScroll(){chrome.onUserScroll()}
+    override fun toolbarContextReset(){chrome.resetScrollContext()}
+    override fun toolbarViewportReady(){chrome.onEngineViewportReady()}
     override fun toolbarVisibility(show:Boolean,source:ToolbarMotion.Source) {chrome.onEngineToolbar(show,source)}
     override fun render(tabs: List<TabRecord>, selectedId: String?, canBack: Boolean, canForward: Boolean, loading: Boolean) {
         settingsView?.refresh()
@@ -116,6 +119,7 @@ class MainActivity : Activity(), BrowserHost {
             else capacity?.update(tabs)
         }
         val t = tabs.find { it.id == selectedId }
+        dev.velocity.browser.diagnostics.ScrollDiagnostics.context(selectedId,t?.identity,t?.epoch?:0,t?.privateMode==true)
         chrome.showStart(t == null || t.url == "about:blank")
         val secure=tabs.any {it.privateMode};val alreadySecure=window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_SECURE!=0
         if(secure!=alreadySecure){if(secure)window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE) else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)}
@@ -123,7 +127,7 @@ class MainActivity : Activity(), BrowserHost {
         if (chrome.title.text.toString() != title) chrome.title.text = title
         val url = t?.url?.takeUnless { it == "about:blank" }.orEmpty()
         chrome.setAddressUrl(url)
-        chrome.updateState(tabs.size, t?.privateMode == true, blocker.mode.name, blocker.enabled(t?.privateMode == true), blocker.busy, if (t?.privateMode == true) blocker.privateDecisions else blocker.normalDecisions, blocker.status, selectedId)
+        chrome.updateState(tabs.size, t?.privateMode == true, blocker.mode.name, blocker.enabled(t?.privateMode == true), blocker.busy, if (t?.privateMode == true) blocker.privateDecisions else blocker.normalDecisions, blocker.status, selectedId,t?.identity,t?.epoch?:0)
         if(chrome.back.isEnabled!=canBack)chrome.back.isEnabled=canBack; if(chrome.forward.isEnabled!=canForward)chrome.forward.isEnabled=canForward
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             if (canBack && !backRegistered) { onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, modernBack); backRegistered = true }
@@ -271,6 +275,24 @@ class MainActivity : Activity(), BrowserHost {
         rows.add(SettingsView.Row("ダウンロードと権限","サイト権限","Android設定でアプリの権限を確認・取り消し") {startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,android.net.Uri.parse("package:$packageName")))})
         rows.add(SettingsView.Row("詳細・診断","Velocity ${packageManager.getPackageInfo(packageName,0).versionName}","GeckoView 157 · Android Views") {dialog().setTitle("既知の制限").setMessage(R.string.restore_limits).setPositiveButton(R.string.close_confirm,null).showThemed()})
         if(applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE!=0)rows.add(SettingsView.Row("詳細・診断","配色プレビュー","全トークンのライト・ダーク確認") {PalettePreview.show(this,appearance)})
+        if(BuildConfig.DEBUG){
+            rows.add(SettingsView.Row("詳細・診断","スクロール診断を記録","通常タブのみ・匿名数値768件・常時保存や送信なし") {
+                dev.velocity.browser.diagnostics.ScrollDiagnostics.enable(!dev.velocity.browser.diagnostics.ScrollDiagnostics.enabled);coordinator.render()
+            }.apply {checked={dev.velocity.browser.diagnostics.ScrollDiagnostics.enabled}})
+            rows.add(SettingsView.Row("詳細・診断","スクロール診断をローカル保存","操作・座標・ツールバー状態のみをCSVで保存") {
+                val id=coordinator.scheduler.selectedId
+                val csv=dev.velocity.browser.diagnostics.ScrollDiagnostics.snapshot()
+                if(id!=null&&csv.isNotEmpty()){
+                    val appContext=applicationContext
+                    coordinator.externalActivities.launch(id,Intent(Intent.ACTION_CREATE_DOCUMENT).apply {type="text/csv";addCategory(Intent.CATEGORY_OPENABLE);putExtra(Intent.EXTRA_TITLE,"velocity-scroll-trace.csv")}) {data->
+                        data?.data?.let {uri->Thread {
+                            val ok=runCatching {appContext.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use {it.write(csv)}?:error("No stream")}.isSuccess
+                            runOnUiThread {Toast.makeText(appContext,if(ok)"診断を保存しました" else "診断を保存できませんでした",Toast.LENGTH_LONG).show()}
+                        }.start()}
+                    }
+                }
+            }.apply {available={dev.velocity.browser.diagnostics.ScrollDiagnostics.size>0}})
+        }
         val categoryOrder = listOf("一般", "外観と操作", "プライバシーとブロック", "タブと性能", "ダウンロードと権限", "詳細・診断")
         showSettings("settings","設定",rows.sortedBy {categoryOrder.indexOf(it.category)})
     }
