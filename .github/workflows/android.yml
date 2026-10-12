@@ -71,6 +71,7 @@ jobs:
         with:
           api-level: 36
           arch: x86_64
+          disable-animations: false
           script: bash tools/device-smoke.sh
         env:
           VELOCITY_CAPTURE_BASELINE: '1'

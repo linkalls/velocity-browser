@@ -98,6 +98,7 @@ class V04UiIntegrationTest {
     @Test fun clippingMatrixAndLayoutDuringMotionRetainSession() {
         launch();val prefs=app.getSharedPreferences("settings",0)
         val oldBottom=prefs.getBoolean("address_bottom",true);val oldScroll=prefs.getBoolean("toolbar_scroll",true);val oldMode=app.blocker.mode
+        val oldAnimation=device.executeShellCommand("settings get global animator_duration_scale").trim().toFloatOrNull()?:1f
         Fixture().use {f->try {
             val id=page(f);var session:org.mozilla.geckoview.GeckoSession?=null
             main {session=chrome().geckoView.session;chrome().cancelAddressEdit()}
@@ -105,6 +106,9 @@ class V04UiIntegrationTest {
             for(mode in listOf(dev.velocity.browser.block.BlockController.Mode.ETP_ONLY,dev.velocity.browser.block.BlockController.Mode.LITE)) {
             main {app.blocker.setMode(mode)}
             await("block mode $mode"){!app.blocker.busy&&app.blocker.mode==mode}
+            for(scale in listOf(0,1)) {
+            device.executeShellCommand("settings put global animator_duration_scale $scale")
+            device.waitForIdle()
             for(bottom in listOf(true,false))for(dynamic in listOf(false,true)) {
                 main {chrome().setAddressBottom(bottom);prefs.edit().putBoolean("toolbar_scroll",dynamic).apply()}
                 device.waitForIdle()
@@ -127,7 +131,8 @@ class V04UiIntegrationTest {
                 main {assertSame(session,chrome().geckoView.session);assertEquals(id,app.coordinator.scheduler.selectedId)}
             }
             }
-        }finally {await("block settles before restore"){!app.blocker.busy};main {app.blocker.setMode(oldMode);chrome().setAddressBottom(oldBottom);prefs.edit().putBoolean("toolbar_scroll",oldScroll).apply()};cleanup()}}
+            }
+        }finally {device.executeShellCommand("settings put global animator_duration_scale $oldAnimation");await("block settles before restore"){!app.blocker.busy};main {app.blocker.setMode(oldMode);chrome().setAddressBottom(oldBottom);prefs.edit().putBoolean("toolbar_scroll",oldScroll).apply()};cleanup()}}
     }
 
     @Test fun homeShortcutGridOrderingAndMenuRoutesRetainIdentity() {
