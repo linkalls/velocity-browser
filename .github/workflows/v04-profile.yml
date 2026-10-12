@@ -1,6 +1,12 @@
 name: v0.4 emulator frame comparison
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/v04-profile.yml
+      - tools/emulator-profile.sh
+      - tools/frame-report.py
+      - tools/profile-summary.py
 permissions:
   contents: read
 jobs:
@@ -36,7 +42,7 @@ jobs:
               s=s.replace(needle,needle+'\n            ndk { abiFilters.clear(); abiFilters += "x86_64" }')
               p.write_text(s)
               rules=root/'app/proguard-rules.pro'
-              rules.write_text(rules.read_text()+'\n# Measurement only: instrumentation shares the Kotlin runtime.\n-keep,allowoptimization class kotlin.** { *; }\n')
+              rules.write_text(rules.read_text()+'\n# Measurement only: instrumentation shares the Kotlin runtime.\n-keep,allowoptimization class kotlin.** { *; }\n-keep,allowoptimization class androidx.** { *; }\n')
           PY
           ./gradlew --max-workers=1 :app:assembleBenchmark :app:assembleDebugAndroidTest
           (cd ../velocity-baseline && ./gradlew --max-workers=1 :app:assembleBenchmark)
