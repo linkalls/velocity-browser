@@ -1,0 +1,17 @@
+{
+  "source": "0c41a0bf66ee7f90ca598a3a6011bacf53b01264",
+  "run": 38249023979,
+  "artifact": 11747056741,
+  "variant": "benchmark",
+  "version": "0.5.1",
+  "versionCode": 9,
+  "bytes": 191416987,
+  "sha256": "b4314cf3673264dd1777f5e7862f2d2970de343214a1e73a0d33b441429dcbf2",
+  "zipIntegrity": "PASS",
+  "alignment16KiB": "PASS",
+  "signatureV2": "PASS",
+  "diagnosticHeaderInDex": false,
+  "nativeAbis": [
+    "arm64-v8a"
+  ]
+}

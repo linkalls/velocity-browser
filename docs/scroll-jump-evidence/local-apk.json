@@ -1,0 +1,13 @@
+{
+  "source": "0c41a0bf66ee7f90ca598a3a6011bacf53b01264",
+  "productionSource": "5919ddb6a86ca53b5a2868983bae2813e41ae30f",
+  "variant": "benchmark",
+  "version": "0.5.1",
+  "versionCode": 9,
+  "bytes": 191416987,
+  "sha256": "eb392ae8c0ac71d05780f2bca4e8879e6bae686340e446e8c5ebc7abdee69748",
+  "zipIntegrity": "PASS",
+  "alignment16KiB": "PASS",
+  "signatureV2": "PASS",
+  "diagnosticHeaderInDex": false
+}
