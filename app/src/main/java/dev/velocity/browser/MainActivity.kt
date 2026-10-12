@@ -91,6 +91,7 @@ class MainActivity : Activity(), BrowserHost {
     }
     override fun onStart() { super.onStart(); foreground = true; coordinator.foreground(true) }
     override fun onStop() {
+        if (BuildConfig.DEBUG) dev.velocity.browser.diagnostics.SiteScrollBenchmark.stop("background")
         blocker.activityStopped(this)
         foreground = false; permissionResult?.invoke(false); permissionResult = null
         if (coordinator.host === this) {
@@ -119,6 +120,7 @@ class MainActivity : Activity(), BrowserHost {
             else capacity?.update(tabs)
         }
         val t = tabs.find { it.id == selectedId }
+        if (BuildConfig.DEBUG) dev.velocity.browser.diagnostics.SiteScrollBenchmark.onScope(selectedId,t?.identity,t?.epoch?:0,t?.privateMode==true)
         dev.velocity.browser.diagnostics.ScrollDiagnostics.context(selectedId,t?.identity,t?.epoch?:0,t?.privateMode==true)
         chrome.showStart(t == null || t.url == "about:blank")
         val secure=tabs.any {it.privateMode};val alreadySecure=window.attributes.flags and android.view.WindowManager.LayoutParams.FLAG_SECURE!=0
@@ -276,6 +278,7 @@ class MainActivity : Activity(), BrowserHost {
         rows.add(SettingsView.Row("詳細・診断","Velocity ${packageManager.getPackageInfo(packageName,0).versionName}","GeckoView 157 · Android Views") {dialog().setTitle("既知の制限").setMessage(R.string.restore_limits).setPositiveButton(R.string.close_confirm,null).showThemed()})
         if(applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE!=0)rows.add(SettingsView.Row("詳細・診断","配色プレビュー","全トークンのライト・ダーク確認") {PalettePreview.show(this,appearance)})
         if(BuildConfig.DEBUG){
+            rows.add(SettingsView.Row("詳細・診断","Webスクロール性能ラボ","主要サイトで手動スクロールを測定しZIP出力",::scrollPerformanceSettings))
             rows.add(SettingsView.Row("詳細・診断","スクロール診断を記録","通常タブのみ・匿名数値768件・常時保存や送信なし") {
                 dev.velocity.browser.diagnostics.ScrollDiagnostics.enable(!dev.velocity.browser.diagnostics.ScrollDiagnostics.enabled);coordinator.render()
             }.apply {checked={dev.velocity.browser.diagnostics.ScrollDiagnostics.enabled}})
@@ -296,6 +299,84 @@ class MainActivity : Activity(), BrowserHost {
         val categoryOrder = listOf("一般", "外観と操作", "プライバシーとブロック", "タブと性能", "ダウンロードと権限", "詳細・診断")
         showSettings("settings","設定",rows.sortedBy {categoryOrder.indexOf(it.category)})
     }
+
+    /**
+     * Developer-only measurement of real page scrolling. The test does not
+     * synthesize touch events or modify website JavaScript / scroll coordinates.
+     */
+    private fun scrollPerformanceSettings() {
+        if (!BuildConfig.DEBUG) return
+        val lab = dev.velocity.browser.diagnostics.SiteScrollBenchmark
+        val rows = mutableListOf<SettingsView.Row>()
+        rows.add(SettingsView.Row("状態","計測状態","リフレッシュHzは端末の報告値") {})
+            .apply {liveText={"計測状態\\n"+lab.status()};available={false};navigation=false})
+        rows.add(SettingsView.Row("主要サイト","計測サイトを開く","Yahooニュース・Google検索・Wikipedia・Reddit・YouTube・Amazon") {
+            val list=lab.presets
+            dialog().setTitle("スクロール計測サイト").setItems(list.map{it.label}.toTypedArray()) {_,n->
+                appearance.dismissFor(this)
+                coordinator.createTab(list[n].url)
+            }.setNegativeButton(R.string.cancel,null).showThemed()
+        })
+        rows.add(SettingsView.Row("計測","記録を開始","通常タブ限定・最大180秒・手でスクロール／フリング") {
+            val currentId=coordinator.scheduler.selectedId
+            val t=currentId?.let{coordinator.scheduler.tab(it)}
+            if(t==null||t.privateMode||t.url=="about:blank"||!coordinator.scheduler.foreground){
+                Toast.makeText(this,"通常のWebページを選択してから開始してね",Toast.LENGTH_LONG).show()
+            }else if(lab.active){
+                Toast.makeText(this,"すでに記録中だよ",Toast.LENGTH_SHORT).show()
+            }else{
+                val id=t.id;val identity=t.identity;val epoch=t.epoch
+                // Closing Settings must precede recording: overlays skew frame timing.
+                appearance.dismissFor(this)
+                chrome.postDelayed({
+                    val selected=coordinator.scheduler.selectedId?.let{coordinator.scheduler.tab(it)}
+                    val same=selected!=null&&selected.id==id&&selected.identity==identity&&
+                        selected.epoch==epoch&&!selected.privateMode&&coordinator.scheduler.foreground
+                    val started=same&&lab.start(this,id,identity,epoch,selected!!.url,
+                        blocker.mode.name,blocker.collapseEnabled)
+                    Toast.makeText(this,if(started)"計測開始：ページを手でスクロールしてね" else
+                        "開始できなかったよ。通常のページと端末状態を確認してね",Toast.LENGTH_LONG).show()
+                },300)
+            }
+        }.apply {available={!lab.active}})
+        rows.add(SettingsView.Row("計測","記録を終了","中断後も保存するまでメモリに保持") {
+            lab.stop("manual")
+            Toast.makeText(this,"計測を終了したよ。ZIPで保存できるよ",Toast.LENGTH_SHORT).show()
+        }.apply {available={lab.active}})
+        rows.add(SettingsView.Row("ファイル","計測結果をZIPに保存","summary.json＋events.csv＋README.txt／URLやフォーム内容なし") {
+            val zip=lab.exportZip()
+            val id=coordinator.scheduler.selectedId
+            if(zip!=null&&id!=null){
+                val appContext=applicationContext
+                coordinator.externalActivities.launch(id,Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    type="application/zip"
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    putExtra(Intent.EXTRA_TITLE,"velocity-scroll-benchmark.zip")
+                }){data->
+                    data?.data?.let{uri->Thread{
+                        val saved=runCatching {
+                            appContext.contentResolver.openOutputStream(uri)?.use{it.write(zip)}
+                                ?:error("No output stream")
+                        }.isSuccess
+                        runOnUiThread{Toast.makeText(appContext,if(saved)
+                            "計測ZIPを保存したよ" else "ZIPを保存できなかったよ",Toast.LENGTH_LONG).show()}
+                    }.start()}
+                }
+            }
+        }.apply {available={lab.canExport&&coordinator.scheduler.selectedId!=null}})
+        rows.add(SettingsView.Row("ファイル","計測データを破棄","現在の測定と未保存結果を消去") {
+            lab.discard()
+        }.apply {available={lab.active||lab.canExport}})
+        rows.add(SettingsView.Row("注意","計測値の意味","Gecko通知間隔とAndroid Window描画時間はWebコンテンツの実FPSではない") {
+            dialog().setTitle("性能指標について").setMessage(
+                "Geckoスクロール通知間隔は実表示FPSではなく、Android Window描画時間はGecko SurfaceViewの全フレームを含まない。\\n\\n"+
+                "真の表示カクつきの確定にはPerfetto FrameTimeline・Gecko Profiler・実機動画を併用してね。"+
+                "CPUとPSSはブラウザ本体プロセスのみ。画面の120Hzは実表示フレーム数の保証ではない。"
+            ).setPositiveButton(R.string.close_confirm,null).showThemed()
+        })
+        showSettings("scroll_perf","Scroll Performance Lab",rows)
+    }
+
     private fun memorySettings() {
         val options=arrayOf("省メモリ · 3枚 / 30秒","バランス · 6枚 / 120秒","高速重視 · 12枚 / 600秒","カスタム")
         dialog().setTitle("タブとメモリ").setItems(options) {_,n->
