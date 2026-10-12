@@ -138,8 +138,17 @@ class V04UiIntegrationTest {
     @Test fun captureMajorScreensInBothThemes() {
         launch()
         val label=InstrumentationRegistry.getArguments().getString("screenshot_label","after")
+        require(label=="before"||label=="after")
         val folder=java.io.File(inst.targetContext.getExternalFilesDir(null),"screenshots/$label").apply {mkdirs()}
-        fun capture(name:String){device.waitForIdle();assertTrue("capture $name",device.takeScreenshot(java.io.File(folder,"$name.png")))}
+        val export="/sdcard/Download/Velocity-validation/$label"
+        device.executeShellCommand("mkdir -p $export")
+        fun capture(name:String){
+            device.waitForIdle();val file=java.io.File(folder,"$name.png")
+            assertTrue("capture $name",device.takeScreenshot(file))
+            // Gradle uninstalls the target after connected tests: export fixture-only
+            // screenshots through UiAutomation's shell identity before that cleanup.
+            device.executeShellCommand("cp ${file.absolutePath} $export/$name.png")
+        }
         Fixture().use {f->try {
             for(mode in listOf(ThemeController.Mode.LIGHT,ThemeController.Mode.DARK)) {
                 val prefix=mode.name.lowercase()

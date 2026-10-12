@@ -18,4 +18,4 @@ text=Path('dist/screenshots/baseline-instrumentation.txt').read_text()
 if 'OK (1 test)' not in text or 'FAILURES' in text:
     raise SystemExit('Baseline screenshot instrumentation failed')
 PY
-adb pull /sdcard/Android/data/dev.velocity.browser/files/screenshots/before dist/screenshots/before
+adb pull /sdcard/Download/Velocity-validation/before dist/screenshots/before
