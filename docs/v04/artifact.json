@@ -1,0 +1,18 @@
+{
+  "version": "0.4.0",
+  "versionCode": 7,
+  "applicationSource": "f019c57a064bd281f0c0c52fca2f33de868f515b",
+  "build": "release",
+  "abi": "arm64-v8a",
+  "file": "velocity-browser-0.4.0-release-test-signed.apk",
+  "bytes": 191410886,
+  "sha256": "75b46e798a88f17234255ede6d0266a062328e3b92829b669d04b8bc67cd098b",
+  "unsignedBytes": 191391627,
+  "minimalGeckoBytes": 191118123,
+  "additionalBytes": 273504,
+  "nativeLibraries": 13,
+  "nativeMatch": true,
+  "signature": "TEST_ONLY: local Android Debug key, not production",
+  "signatureVerification": "PASS: v2/v3 and 16KiB alignment",
+  "physicalInstall": "UNVERIFIED"
+}

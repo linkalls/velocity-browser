@@ -1,0 +1,35 @@
+{
+  "applicationSource": "f019c57a064bd281f0c0c52fca2f33de868f515b",
+  "run": 38187030374,
+  "build": "PASS",
+  "bun": {
+    "tests": 25,
+    "failures": 0,
+    "typecheck": "PASS"
+  },
+  "device": {
+    "api": 36,
+    "abi": "x86_64",
+    "engine": "GeckoView",
+    "tests": 24,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "localLint": {
+    "errors": 0,
+    "warnings": 35
+  },
+  "physicalPixel7Pro": "UNVERIFIED",
+  "performanceComparison": "EMULATOR_CPU_PSS_ACTIVITY_MEASURED; CURRENT_HOST_FRAME_TIME_MEASURED; BASELINE_JANK_COMPARISON_UNAVAILABLE",
+  "history": "validation.md",
+  "coreJvm": {
+    "tests": 40,
+    "failures": 0,
+    "errors": 0,
+    "note": "Existing core XML results and CI core:test; no additional core behavior change in UI work"
+  },
+  "performanceRun": 38189014222,
+  "optimizationSuccess": "NOT_ESTABLISHED",
+  "normalCiLatest": 38189014283
+}

@@ -1,0 +1,1625 @@
+{
+  "environment": "API36 x86_64 disposable emulator",
+  "build": "R8 benchmark, profileable, x86_64 ABI override and identical shared Kotlin/AndroidX runtime keep rules",
+  "expectedSamples": 20,
+  "actualSamples": 20,
+  "status": "CAPTURED",
+  "physicalPixel7Pro": "UNVERIFIED",
+  "optimizationSuccess": "NOT_ESTABLISHED",
+  "startupMeaning": "instrumented am start -W activity TotalTime; not FCP or guaranteed cold start",
+  "osPageCache": "UNCONTROLLED",
+  "instrumentation": "same UiAutomation readiness driver in both APKs; extra test code overhead",
+  "samples": [
+    {
+      "sample": "baseline-dynamic-1",
+      "frames": {
+        "status": "NOT_MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": []
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:49:20.836Z",
+        "processes": [
+          {
+            "pid": "2917",
+            "pssKiB": 209005
+          },
+          {
+            "pid": "2951",
+            "pssKiB": 7683
+          },
+          {
+            "pid": "2997",
+            "pssKiB": 37090
+          },
+          {
+            "pid": "3040",
+            "pssKiB": 52050
+          },
+          {
+            "pid": "3089",
+            "pssKiB": 64677
+          },
+          {
+            "pid": "3182",
+            "pssKiB": 47164
+          }
+        ],
+        "totalPssKiB": 417669,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:49:20.461Z",
+        "pids": [
+          "2917",
+          "2951",
+          "2997",
+          "3040",
+          "3089",
+          "3182"
+        ],
+        "wallMs": 15118.499221,
+        "cpuMs": 4970,
+        "cpuPct": 32.873633337206755,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1192\nWaitTime: 1202\nComplete\n",
+      "traceMetadata": {
+        "scenario": "dynamic",
+        "trace": "baseline-dynamic-1.perfetto-trace",
+        "bytes": 13662902,
+        "sha256": "d95d2e74d811bc034c11dbb99738003c0ab26f49c6b5fb5c8d36548c6078acb1",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "baseline-dynamic-2",
+      "frames": {
+        "status": "MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": [
+          {
+            "layer": "TX - dev.velocity.browser/dev.velocity.browser.MainActivity#319",
+            "frames": 5,
+            "durationMs": {
+              "p50": 8.514056,
+              "p95": 224.057073,
+              "p99": 224.057073
+            },
+            "incomplete": 0,
+            "jank": 5,
+            "unknownJank": 0
+          }
+        ]
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:53:00.542Z",
+        "processes": [
+          {
+            "pid": "6068",
+            "pssKiB": 203641
+          },
+          {
+            "pid": "6102",
+            "pssKiB": 7624
+          },
+          {
+            "pid": "6150",
+            "pssKiB": 37321
+          },
+          {
+            "pid": "6198",
+            "pssKiB": 52195
+          },
+          {
+            "pid": "6246",
+            "pssKiB": 65630
+          },
+          {
+            "pid": "6314",
+            "pssKiB": 46815
+          }
+        ],
+        "totalPssKiB": 413226,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:53:00.162Z",
+        "pids": [
+          "6068",
+          "6102",
+          "6150",
+          "6198",
+          "6246",
+          "6314"
+        ],
+        "wallMs": 15136.738113,
+        "cpuMs": 4600,
+        "cpuPct": 30.389638544709623,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1279\nWaitTime: 1283\nComplete\n",
+      "traceMetadata": {
+        "scenario": "dynamic",
+        "trace": "baseline-dynamic-2.perfetto-trace",
+        "bytes": 12362193,
+        "sha256": "215d7d9770d4453ec3faa07006aad795dbf9ba8e01536861ad6df8626d29f934",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "baseline-dynamic-3",
+      "frames": {
+        "status": "NOT_MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": []
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:54:14.327Z",
+        "processes": [
+          {
+            "pid": "7108",
+            "pssKiB": 204824
+          },
+          {
+            "pid": "7145",
+            "pssKiB": 7668
+          },
+          {
+            "pid": "7191",
+            "pssKiB": 37433
+          },
+          {
+            "pid": "7239",
+            "pssKiB": 51723
+          },
+          {
+            "pid": "7263",
+            "pssKiB": 65358
+          },
+          {
+            "pid": "7384",
+            "pssKiB": 47291
+          }
+        ],
+        "totalPssKiB": 414297,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:54:13.949Z",
+        "pids": [
+          "7108",
+          "7145",
+          "7191",
+          "7239",
+          "7263",
+          "7384"
+        ],
+        "wallMs": 15115.235842999999,
+        "cpuMs": 4310,
+        "cpuPct": 28.514275561211303,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1256\nWaitTime: 1270\nComplete\n",
+      "traceMetadata": {
+        "scenario": "dynamic",
+        "trace": "baseline-dynamic-3.perfetto-trace",
+        "bytes": 13068898,
+        "sha256": "1a3c47da6d6d25dc94a20180b411d42d278f9a524d8f5c1cc323f7a9ab9724f5",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "baseline-dynamic-4",
+      "frames": {
+        "status": "NOT_MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": []
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:57:54.966Z",
+        "processes": [
+          {
+            "pid": "10151",
+            "pssKiB": 210987
+          },
+          {
+            "pid": "10184",
+            "pssKiB": 7730
+          },
+          {
+            "pid": "10233",
+            "pssKiB": 37619
+          },
+          {
+            "pid": "10278",
+            "pssKiB": 51559
+          },
+          {
+            "pid": "10326",
+            "pssKiB": 65283
+          },
+          {
+            "pid": "10425",
+            "pssKiB": 47032
+          }
+        ],
+        "totalPssKiB": 420210,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:57:54.591Z",
+        "pids": [
+          "10151",
+          "10184",
+          "10233",
+          "10278",
+          "10326",
+          "10425"
+        ],
+        "wallMs": 15131.246963000001,
+        "cpuMs": 5740,
+        "cpuPct": 37.9347453255892,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1272\nWaitTime: 1278\nComplete\n",
+      "traceMetadata": {
+        "scenario": "dynamic",
+        "trace": "baseline-dynamic-4.perfetto-trace",
+        "bytes": 13762788,
+        "sha256": "ce10758cfee0589d693bfcc2d2a25dce2599de1fa3a456a8e4bf8af39fad9ecf",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "baseline-dynamic-5",
+      "frames": {
+        "status": "NOT_MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": []
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:59:08.887Z",
+        "processes": [
+          {
+            "pid": "11141",
+            "pssKiB": 200970
+          },
+          {
+            "pid": "11176",
+            "pssKiB": 7758
+          },
+          {
+            "pid": "11222",
+            "pssKiB": 37426
+          },
+          {
+            "pid": "11262",
+            "pssKiB": 51976
+          },
+          {
+            "pid": "11315",
+            "pssKiB": 65145
+          },
+          {
+            "pid": "11402",
+            "pssKiB": 47079
+          }
+        ],
+        "totalPssKiB": 410354,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:59:08.511Z",
+        "pids": [
+          "11141",
+          "11176",
+          "11222",
+          "11262",
+          "11315",
+          "11402"
+        ],
+        "wallMs": 15112.441258,
+        "cpuMs": 4260,
+        "cpuPct": 28.188695176862336,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1268\nWaitTime: 1280\nComplete\n",
+      "traceMetadata": {
+        "scenario": "dynamic",
+        "trace": "baseline-dynamic-5.perfetto-trace",
+        "bytes": 13253733,
+        "sha256": "817b08d95d8708f0d43a54284538f0914dbaa5e6f35c729fb26b0ad1d791bfa2",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "baseline-static-1",
+      "frames": {
+        "status": "NOT_MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": []
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:48:44.039Z",
+        "processes": [
+          {
+            "pid": "2394",
+            "pssKiB": 208892
+          },
+          {
+            "pid": "2428",
+            "pssKiB": 7601
+          },
+          {
+            "pid": "2492",
+            "pssKiB": 37047
+          },
+          {
+            "pid": "2532",
+            "pssKiB": 51710
+          },
+          {
+            "pid": "2569",
+            "pssKiB": 63837
+          },
+          {
+            "pid": "2656",
+            "pssKiB": 46647
+          }
+        ],
+        "totalPssKiB": 415734,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:48:43.678Z",
+        "pids": [
+          "2394",
+          "2428",
+          "2492",
+          "2532",
+          "2569",
+          "2656"
+        ],
+        "wallMs": 15138.217599,
+        "cpuMs": 4850,
+        "cpuPct": 32.0381178846338,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1342\nWaitTime: 1345\nComplete\n",
+      "traceMetadata": {
+        "scenario": "static",
+        "trace": "baseline-static-1.perfetto-trace",
+        "bytes": 13085865,
+        "sha256": "279673d91768c803379f8ec47708b9be054b3741df46f402e0b6aecd70e698ff",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "baseline-static-2",
+      "frames": {
+        "status": "NOT_MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": []
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:52:23.829Z",
+        "processes": [
+          {
+            "pid": "5548",
+            "pssKiB": 197905
+          },
+          {
+            "pid": "5583",
+            "pssKiB": 7711
+          },
+          {
+            "pid": "5630",
+            "pssKiB": 37223
+          },
+          {
+            "pid": "5675",
+            "pssKiB": 52002
+          },
+          {
+            "pid": "5723",
+            "pssKiB": 64328
+          },
+          {
+            "pid": "5807",
+            "pssKiB": 46541
+          }
+        ],
+        "totalPssKiB": 405710,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:52:23.471Z",
+        "pids": [
+          "5548",
+          "5583",
+          "5630",
+          "5675",
+          "5723",
+          "5807"
+        ],
+        "wallMs": 15096.628041,
+        "cpuMs": 4140,
+        "cpuPct": 27.423342409685326,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1337\nWaitTime: 1340\nComplete\n",
+      "traceMetadata": {
+        "scenario": "static",
+        "trace": "baseline-static-2.perfetto-trace",
+        "bytes": 12329774,
+        "sha256": "84076cc14e6a42867bae603f1079e8b8f51b76f96b73d3beb32a2391fdb93863",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "baseline-static-3",
+      "frames": {
+        "status": "NOT_MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": []
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:53:37.895Z",
+        "processes": [
+          {
+            "pid": "6576",
+            "pssKiB": 195342
+          },
+          {
+            "pid": "6610",
+            "pssKiB": 7744
+          },
+          {
+            "pid": "6658",
+            "pssKiB": 37095
+          },
+          {
+            "pid": "6707",
+            "pssKiB": 52400
+          },
+          {
+            "pid": "6764",
+            "pssKiB": 63774
+          },
+          {
+            "pid": "6850",
+            "pssKiB": 47076
+          }
+        ],
+        "totalPssKiB": 403431,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:53:37.511Z",
+        "pids": [
+          "6576",
+          "6610",
+          "6658",
+          "6707",
+          "6764",
+          "6850"
+        ],
+        "wallMs": 15098.330851,
+        "cpuMs": 3350,
+        "cpuPct": 22.187883104827584,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1288\nWaitTime: 1292\nComplete\n",
+      "traceMetadata": {
+        "scenario": "static",
+        "trace": "baseline-static-3.perfetto-trace",
+        "bytes": 12248033,
+        "sha256": "81f498015575836c37fa782375d7f239f25b8a493f4af354313e51e49037bac6",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "baseline-static-4",
+      "frames": {
+        "status": "NOT_MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": []
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:57:18.240Z",
+        "processes": [
+          {
+            "pid": "9670",
+            "pssKiB": 202806
+          },
+          {
+            "pid": "9704",
+            "pssKiB": 7765
+          },
+          {
+            "pid": "9752",
+            "pssKiB": 37004
+          },
+          {
+            "pid": "9800",
+            "pssKiB": 51754
+          },
+          {
+            "pid": "9837",
+            "pssKiB": 64088
+          },
+          {
+            "pid": "9925",
+            "pssKiB": 47519
+          }
+        ],
+        "totalPssKiB": 410936,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:57:17.859Z",
+        "pids": [
+          "9670",
+          "9704",
+          "9752",
+          "9800",
+          "9837",
+          "9925"
+        ],
+        "wallMs": 15100.120162,
+        "cpuMs": 4140,
+        "cpuPct": 27.417000365457092,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1225\nWaitTime: 1230\nComplete\n",
+      "traceMetadata": {
+        "scenario": "static",
+        "trace": "baseline-static-4.perfetto-trace",
+        "bytes": 13038179,
+        "sha256": "26c8b1bd118991374717fe5b4ee6e81eefab6a9e7970f8e0e4824e8ed06115d4",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "baseline-static-5",
+      "frames": {
+        "status": "NOT_MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": []
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:58:32.190Z",
+        "processes": [
+          {
+            "pid": "10652",
+            "pssKiB": 192812
+          },
+          {
+            "pid": "10687",
+            "pssKiB": 7795
+          },
+          {
+            "pid": "10734",
+            "pssKiB": 37292
+          },
+          {
+            "pid": "10780",
+            "pssKiB": 52102
+          },
+          {
+            "pid": "10827",
+            "pssKiB": 64045
+          },
+          {
+            "pid": "10906",
+            "pssKiB": 46985
+          }
+        ],
+        "totalPssKiB": 401031,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:58:31.827Z",
+        "pids": [
+          "10652",
+          "10687",
+          "10734",
+          "10780",
+          "10827",
+          "10906"
+        ],
+        "wallMs": 15105.80986,
+        "cpuMs": 4000,
+        "cpuPct": 26.47987785542006,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1280\nWaitTime: 1281\nComplete\n",
+      "traceMetadata": {
+        "scenario": "static",
+        "trace": "baseline-static-5.perfetto-trace",
+        "bytes": 12649050,
+        "sha256": "37cba0615ac3b9680e63b2c5790be4b0a08d02ec6c1a6e28373045c5e74cd51d",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "current-dynamic-1",
+      "frames": {
+        "status": "MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": [
+          {
+            "layer": "TX - dev.velocity.browser/dev.velocity.browser.MainActivity#203",
+            "frames": 92,
+            "durationMs": {
+              "p50": 7.285741,
+              "p95": 19.817592,
+              "p99": 414.333462
+            },
+            "incomplete": 0,
+            "jank": 92,
+            "unknownJank": 0
+          }
+        ]
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:50:33.945Z",
+        "processes": [
+          {
+            "pid": "3993",
+            "pssKiB": 200080
+          },
+          {
+            "pid": "4028",
+            "pssKiB": 7714
+          },
+          {
+            "pid": "4076",
+            "pssKiB": 37675
+          },
+          {
+            "pid": "4121",
+            "pssKiB": 51942
+          },
+          {
+            "pid": "4179",
+            "pssKiB": 64994
+          },
+          {
+            "pid": "4266",
+            "pssKiB": 47119
+          }
+        ],
+        "totalPssKiB": 409524,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:50:33.581Z",
+        "pids": [
+          "3993",
+          "4028",
+          "4076",
+          "4121",
+          "4179",
+          "4266"
+        ],
+        "wallMs": 15100.65523,
+        "cpuMs": 6080,
+        "cpuPct": 40.26315353469599,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1352\nWaitTime: 1356\nComplete\n",
+      "traceMetadata": {
+        "scenario": "dynamic",
+        "trace": "current-dynamic-1.perfetto-trace",
+        "bytes": 14485011,
+        "sha256": "373d8699d21cf407ed19094a07987474aa8a429cab0b72544402e7e2630d3063",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "current-dynamic-2",
+      "frames": {
+        "status": "MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": [
+          {
+            "layer": "TX - dev.velocity.browser/dev.velocity.browser.MainActivity#261",
+            "frames": 87,
+            "durationMs": {
+              "p50": 7.597903,
+              "p95": 17.792742,
+              "p99": 411.735261
+            },
+            "incomplete": 0,
+            "jank": 87,
+            "unknownJank": 0
+          }
+        ]
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:51:47.378Z",
+        "processes": [
+          {
+            "pid": "5036",
+            "pssKiB": 227125
+          },
+          {
+            "pid": "5070",
+            "pssKiB": 7743
+          },
+          {
+            "pid": "5116",
+            "pssKiB": 37617
+          },
+          {
+            "pid": "5162",
+            "pssKiB": 52406
+          },
+          {
+            "pid": "5199",
+            "pssKiB": 64457
+          },
+          {
+            "pid": "5283",
+            "pssKiB": 46984
+          }
+        ],
+        "totalPssKiB": 436332,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:51:46.929Z",
+        "pids": [
+          "5036",
+          "5070",
+          "5116",
+          "5162",
+          "5199",
+          "5283"
+        ],
+        "wallMs": 15174.011992,
+        "cpuMs": 5420,
+        "cpuPct": 35.71896478569753,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1350\nWaitTime: 1351\nComplete\n",
+      "traceMetadata": {
+        "scenario": "dynamic",
+        "trace": "current-dynamic-2.perfetto-trace",
+        "bytes": 14273918,
+        "sha256": "6a797bf981310b8ea392f1563dd3d917a0eca8cc032185b404685297d331c7a9",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "current-dynamic-3",
+      "frames": {
+        "status": "MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": [
+          {
+            "layer": "TX - dev.velocity.browser/dev.velocity.browser.MainActivity#435",
+            "frames": 84,
+            "durationMs": {
+              "p50": 6.881194,
+              "p95": 10.43302,
+              "p99": 326.926316
+            },
+            "incomplete": 0,
+            "jank": 84,
+            "unknownJank": 0
+          }
+        ]
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:55:28.103Z",
+        "processes": [
+          {
+            "pid": "8164",
+            "pssKiB": 214207
+          },
+          {
+            "pid": "8198",
+            "pssKiB": 7679
+          },
+          {
+            "pid": "8247",
+            "pssKiB": 37694
+          },
+          {
+            "pid": "8297",
+            "pssKiB": 51986
+          },
+          {
+            "pid": "8331",
+            "pssKiB": 65487
+          },
+          {
+            "pid": "8432",
+            "pssKiB": 46821
+          }
+        ],
+        "totalPssKiB": 423874,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:55:27.728Z",
+        "pids": [
+          "8164",
+          "8198",
+          "8247",
+          "8297",
+          "8331",
+          "8432"
+        ],
+        "wallMs": 15112.822531000002,
+        "cpuMs": 6010,
+        "cpuPct": 39.767554920148484,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1375\nWaitTime: 1377\nComplete\n",
+      "traceMetadata": {
+        "scenario": "dynamic",
+        "trace": "current-dynamic-3.perfetto-trace",
+        "bytes": 14276090,
+        "sha256": "ca66895fcc05b5bb719c5f56fbed0ac21caa6ffab478105948d61f348a978a38",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "current-dynamic-4",
+      "frames": {
+        "status": "MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": [
+          {
+            "layer": "TX - dev.velocity.browser/dev.velocity.browser.MainActivity#493",
+            "frames": 86,
+            "durationMs": {
+              "p50": 7.042319,
+              "p95": 15.538148,
+              "p99": 106.113658
+            },
+            "incomplete": 0,
+            "jank": 86,
+            "unknownJank": 0
+          }
+        ]
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:56:41.428Z",
+        "processes": [
+          {
+            "pid": "9178",
+            "pssKiB": 203712
+          },
+          {
+            "pid": "9213",
+            "pssKiB": 7629
+          },
+          {
+            "pid": "9259",
+            "pssKiB": 37461
+          },
+          {
+            "pid": "9306",
+            "pssKiB": 51769
+          },
+          {
+            "pid": "9351",
+            "pssKiB": 64743
+          },
+          {
+            "pid": "9429",
+            "pssKiB": 46676
+          }
+        ],
+        "totalPssKiB": 411990,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:56:41.035Z",
+        "pids": [
+          "9178",
+          "9213",
+          "9259",
+          "9306",
+          "9351",
+          "9429"
+        ],
+        "wallMs": 15109.953147,
+        "cpuMs": 5300,
+        "cpuPct": 35.07621730152278,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1381\nWaitTime: 1409\nComplete\n",
+      "traceMetadata": {
+        "scenario": "dynamic",
+        "trace": "current-dynamic-4.perfetto-trace",
+        "bytes": 14125635,
+        "sha256": "e162624dca8e2a3ac0e1e19ba585f036359451e7884a20ff06cd63c4d592382a",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "current-dynamic-5",
+      "frames": {
+        "status": "MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": [
+          {
+            "layer": "TX - dev.velocity.browser/dev.velocity.browser.MainActivity#667",
+            "frames": 86,
+            "durationMs": {
+              "p50": 7.647968,
+              "p95": 18.052796,
+              "p99": 104.582235
+            },
+            "incomplete": 0,
+            "jank": 86,
+            "unknownJank": 0
+          }
+        ]
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T01:00:21.997Z",
+        "processes": [
+          {
+            "pid": "12124",
+            "pssKiB": 200621
+          },
+          {
+            "pid": "12163",
+            "pssKiB": 7795
+          },
+          {
+            "pid": "12205",
+            "pssKiB": 38143
+          },
+          {
+            "pid": "12253",
+            "pssKiB": 51520
+          },
+          {
+            "pid": "12278",
+            "pssKiB": 64268
+          },
+          {
+            "pid": "12381",
+            "pssKiB": 47151
+          }
+        ],
+        "totalPssKiB": 409498,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T01:00:21.604Z",
+        "pids": [
+          "12124",
+          "12163",
+          "12205",
+          "12253",
+          "12278",
+          "12381"
+        ],
+        "wallMs": 15138.442915,
+        "cpuMs": 5370,
+        "cpuPct": 35.472604614303556,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1272\nWaitTime: 1276\nComplete\n",
+      "traceMetadata": {
+        "scenario": "dynamic",
+        "trace": "current-dynamic-5.perfetto-trace",
+        "bytes": 14310121,
+        "sha256": "4c2d024fe9ec08db0f84dddd45d9b9d1267c6583e556b3054ede45196580b0be",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "current-static-1",
+      "frames": {
+        "status": "MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": [
+          {
+            "layer": "TX - dev.velocity.browser/dev.velocity.browser.MainActivity#174",
+            "frames": 82,
+            "durationMs": {
+              "p50": 6.652075,
+              "p95": 18.804548,
+              "p99": 376.678211
+            },
+            "incomplete": 0,
+            "jank": 82,
+            "unknownJank": 0
+          }
+        ]
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:49:57.579Z",
+        "processes": [
+          {
+            "pid": "3458",
+            "pssKiB": 223223
+          },
+          {
+            "pid": "3493",
+            "pssKiB": 7739
+          },
+          {
+            "pid": "3539",
+            "pssKiB": 37227
+          },
+          {
+            "pid": "3585",
+            "pssKiB": 51442
+          },
+          {
+            "pid": "3619",
+            "pssKiB": 63535
+          },
+          {
+            "pid": "3731",
+            "pssKiB": 46622
+          }
+        ],
+        "totalPssKiB": 429788,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:49:57.169Z",
+        "pids": [
+          "3458",
+          "3493",
+          "3539",
+          "3585",
+          "3619",
+          "3731"
+        ],
+        "wallMs": 15174.444543,
+        "cpuMs": 5230,
+        "cpuPct": 34.46584146905469,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1363\nWaitTime: 1364\nComplete\n",
+      "traceMetadata": {
+        "scenario": "static",
+        "trace": "current-static-1.perfetto-trace",
+        "bytes": 13236610,
+        "sha256": "640eedc13c7e5ff56af2aafe80f04ee3a890e5eb5ad9ea18024cc8009e800c1e",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "current-static-2",
+      "frames": {
+        "status": "MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": [
+          {
+            "layer": "TX - dev.velocity.browser/dev.velocity.browser.MainActivity#232",
+            "frames": 81,
+            "durationMs": {
+              "p50": 7.154338,
+              "p95": 21.748873,
+              "p99": 291.888538
+            },
+            "incomplete": 0,
+            "jank": 81,
+            "unknownJank": 0
+          }
+        ]
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:51:10.828Z",
+        "processes": [
+          {
+            "pid": "4529",
+            "pssKiB": 191703
+          },
+          {
+            "pid": "4562",
+            "pssKiB": 7724
+          },
+          {
+            "pid": "4611",
+            "pssKiB": 37919
+          },
+          {
+            "pid": "4654",
+            "pssKiB": 51756
+          },
+          {
+            "pid": "4713",
+            "pssKiB": 63936
+          },
+          {
+            "pid": "4787",
+            "pssKiB": 46648
+          }
+        ],
+        "totalPssKiB": 399686,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:51:10.476Z",
+        "pids": [
+          "4529",
+          "4562",
+          "4611",
+          "4654",
+          "4713",
+          "4787"
+        ],
+        "wallMs": 15121.398186,
+        "cpuMs": 4250,
+        "cpuPct": 28.105866585371857,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1267\nWaitTime: 1276\nComplete\n",
+      "traceMetadata": {
+        "scenario": "static",
+        "trace": "current-static-2.perfetto-trace",
+        "bytes": 13315119,
+        "sha256": "fea68caefd87b9a342d9dc4bc82e42dc2753635ae126df3e8ef87fed43be2195",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "current-static-3",
+      "frames": {
+        "status": "MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": [
+          {
+            "layer": "TX - dev.velocity.browser/dev.velocity.browser.MainActivity#406",
+            "frames": 86,
+            "durationMs": {
+              "p50": 7.771604,
+              "p95": 11.127868,
+              "p99": 424.742595
+            },
+            "incomplete": 0,
+            "jank": 86,
+            "unknownJank": 0
+          }
+        ]
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:54:51.006Z",
+        "processes": [
+          {
+            "pid": "7630",
+            "pssKiB": 201520
+          },
+          {
+            "pid": "7664",
+            "pssKiB": 7758
+          },
+          {
+            "pid": "7714",
+            "pssKiB": 37194
+          },
+          {
+            "pid": "7761",
+            "pssKiB": 52445
+          },
+          {
+            "pid": "7797",
+            "pssKiB": 64169
+          },
+          {
+            "pid": "7906",
+            "pssKiB": 47333
+          }
+        ],
+        "totalPssKiB": 410419,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:54:50.636Z",
+        "pids": [
+          "7630",
+          "7664",
+          "7714",
+          "7761",
+          "7797",
+          "7906"
+        ],
+        "wallMs": 15100.401849,
+        "cpuMs": 5850,
+        "cpuPct": 38.74069086702754,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1368\nWaitTime: 1378\nComplete\n",
+      "traceMetadata": {
+        "scenario": "static",
+        "trace": "current-static-3.perfetto-trace",
+        "bytes": 13480764,
+        "sha256": "2ea4f63ac21011b012ee977f7c72d4c5b5766f035b3dcba558a7fbcb3fada3c4",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "current-static-4",
+      "frames": {
+        "status": "MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": [
+          {
+            "layer": "TX - dev.velocity.browser/dev.velocity.browser.MainActivity#464",
+            "frames": 79,
+            "durationMs": {
+              "p50": 7.303186,
+              "p95": 120.742064,
+              "p99": 398.319184
+            },
+            "incomplete": 0,
+            "jank": 79,
+            "unknownJank": 0
+          }
+        ]
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:56:04.608Z",
+        "processes": [
+          {
+            "pid": "8686",
+            "pssKiB": 197737
+          },
+          {
+            "pid": "8722",
+            "pssKiB": 7724
+          },
+          {
+            "pid": "8769",
+            "pssKiB": 37260
+          },
+          {
+            "pid": "8816",
+            "pssKiB": 51567
+          },
+          {
+            "pid": "8865",
+            "pssKiB": 64339
+          },
+          {
+            "pid": "8943",
+            "pssKiB": 47218
+          }
+        ],
+        "totalPssKiB": 405845,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:56:04.145Z",
+        "pids": [
+          "8686",
+          "8722",
+          "8769",
+          "8816",
+          "8865",
+          "8943"
+        ],
+        "wallMs": 15127.513192999999,
+        "cpuMs": 5130,
+        "cpuPct": 33.9117205488462,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1328\nWaitTime: 1335\nComplete\n",
+      "traceMetadata": {
+        "scenario": "static",
+        "trace": "current-static-4.perfetto-trace",
+        "bytes": 12900736,
+        "sha256": "423b49fa64bc1a1fa12b107b46443e0ed26d315358eb3fdd9b77931eda7216a9",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    },
+    {
+      "sample": "current-static-5",
+      "frames": {
+        "status": "MEASURED",
+        "metric": "Android FrameTimeline actual duration, not Gecko FPS",
+        "layers": [
+          {
+            "layer": "TX - dev.velocity.browser/dev.velocity.browser.MainActivity#638",
+            "frames": 81,
+            "durationMs": {
+              "p50": 6.985064,
+              "p95": 26.084647,
+              "p99": 390.406956
+            },
+            "incomplete": 0,
+            "jank": 81,
+            "unknownJank": 0
+          }
+        ]
+      },
+      "memory": {
+        "status": "MEASURED",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:59:45.639Z",
+        "processes": [
+          {
+            "pid": "11630",
+            "pssKiB": 198988
+          },
+          {
+            "pid": "11665",
+            "pssKiB": 7706
+          },
+          {
+            "pid": "11711",
+            "pssKiB": 37630
+          },
+          {
+            "pid": "11741",
+            "pssKiB": 52047
+          },
+          {
+            "pid": "11804",
+            "pssKiB": 63504
+          },
+          {
+            "pid": "11904",
+            "pssKiB": 46896
+          }
+        ],
+        "totalPssKiB": 406771,
+        "device": "Android SDK built for x86_64",
+        "android": "16"
+      },
+      "cpu": {
+        "status": "MEASURED",
+        "method": "proc-stat-stable-process-set",
+        "packageName": "dev.velocity.browser",
+        "timestamp": "2026-10-12T00:59:45.260Z",
+        "pids": [
+          "11630",
+          "11665",
+          "11711",
+          "11741",
+          "11804",
+          "11904"
+        ],
+        "wallMs": 15103.907627,
+        "cpuMs": 4370,
+        "cpuPct": 28.932909998655674,
+        "clockTicks": 100,
+        "limitation": "snapshot sampling excludes short-lived processes; proc access may be denied; use Perfetto for release comparison"
+      },
+      "activityLaunchRaw": "Starting: Intent { act=android.intent.action.VIEW dat=http://127.0.0.1:8181/... cmp=dev.velocity.browser/.MainActivity }\nStatus: ok\nLaunchState: WARM\nActivity: dev.velocity.browser/.MainActivity\nTotalTime: 1272\nWaitTime: 1281\nComplete\n",
+      "traceMetadata": {
+        "scenario": "static",
+        "trace": "current-static-5.perfetto-trace",
+        "bytes": 12770285,
+        "sha256": "d567b2b7e91061d601196c52ed860402105d5e15926e53d39f62c92a1310ca0e",
+        "metrics": "NOT_ANALYZED",
+        "deviceComparison": "NOT_MEASURED"
+      }
+    }
+  ],
+  "workflowRun": 38189014222,
+  "baselineSource": "8de8e0b",
+  "applicationSource": "f019c57a064bd281f0c0c52fca2f33de868f515b",
+  "metrics": [
+    {
+      "version": "baseline",
+      "scene": "static",
+      "samples": 5,
+      "pssSamples": 5,
+      "pssMiBMedian": 396.201171875,
+      "cpuSamples": 5,
+      "cpuPctMedian": 27.417000365457092,
+      "activityLaunchSamples": 5,
+      "activityTotalTimeMsMedian": 1288,
+      "appFrameSamples": 0
+    },
+    {
+      "version": "baseline",
+      "scene": "dynamic",
+      "samples": 5,
+      "pssSamples": 5,
+      "pssMiBMedian": 404.5869140625,
+      "cpuSamples": 5,
+      "cpuPctMedian": 30.389638544709623,
+      "activityLaunchSamples": 5,
+      "activityTotalTimeMsMedian": 1268,
+      "appFrameSamples": 1
+    },
+    {
+      "version": "current",
+      "scene": "static",
+      "samples": 5,
+      "pssSamples": 5,
+      "pssMiBMedian": 397.2373046875,
+      "cpuSamples": 5,
+      "cpuPctMedian": 33.9117205488462,
+      "activityLaunchSamples": 5,
+      "activityTotalTimeMsMedian": 1328,
+      "appFrameSamples": 5
+    },
+    {
+      "version": "current",
+      "scene": "dynamic",
+      "samples": 5,
+      "pssSamples": 5,
+      "pssMiBMedian": 402.333984375,
+      "cpuSamples": 5,
+      "cpuPctMedian": 35.71896478569753,
+      "activityLaunchSamples": 5,
+      "activityTotalTimeMsMedian": 1352,
+      "appFrameSamples": 5
+    }
+  ],
+  "currentHostFrameSummary": [
+    {
+      "scene": "static",
+      "medianPerRunP50Ms": 7.154338,
+      "medianPerRunP95Ms": 21.748873,
+      "medianPerRunP99Ms": 390.406956
+    },
+    {
+      "scene": "dynamic",
+      "medianPerRunP50Ms": 7.285741,
+      "medianPerRunP95Ms": 17.792742,
+      "medianPerRunP99Ms": 326.926316
+    }
+  ],
+  "comparisonInterpretation": "CPU medians increased in both scenes; PSS close; no optimization success established. Baseline host FrameTimeline coverage insufficient for jank comparison."
+}
