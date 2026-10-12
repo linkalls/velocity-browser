@@ -332,7 +332,7 @@ class MainActivity : Activity(), BrowserHost {
                     val selected=coordinator.scheduler.selectedId?.let{coordinator.scheduler.tab(it)}
                     val same=selected!=null&&selected.id==id&&selected.identity==identity&&
                         selected.epoch==epoch&&!selected.privateMode&&coordinator.scheduler.foreground
-                    val started=same&&lab.start(this,id,identity,epoch,selected!!.url,
+                    val started=same&&identity!=null&&lab.start(this,id,identity,epoch,selected!!.url,
                         blocker.mode.name,blocker.collapseEnabled)
                     Toast.makeText(this,if(started)"計測開始：ページを手でスクロールしてね" else
                         "開始できなかったよ。通常のページと端末状態を確認してね",Toast.LENGTH_LONG).show()
