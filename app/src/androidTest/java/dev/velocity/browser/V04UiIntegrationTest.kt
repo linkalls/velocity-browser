@@ -38,7 +38,10 @@ class V04UiIntegrationTest {
     private fun page(f:Fixture):String {var id="";main {app.coordinator.createTab(f.url);id=app.coordinator.scheduler.selectedId!!};await("fixture"){app.coordinator.scheduler.tab(id)?.title=="V04_FIXTURE"};assertTrue(device.wait(Until.hasObject(By.text("V04_INPUT")),15000));return id}
     @Test fun compactMenuAndPlacementPreserveRealDraftAndSession() {
         launch();Fixture().use {f->try {
-            val id=page(f);val before=app.getSharedPreferences("settings",0).getBoolean("address_bottom",true)
+            val id=page(f)
+            main {assertEquals("127.0.0.1",chrome().address.text.toString());chrome().address.performClick();assertEquals(f.url,chrome().address.text.toString());chrome().cancelAddressEdit()}
+            device.waitForIdle()
+            val before=app.getSharedPreferences("settings",0).getBoolean("address_bottom",true)
             assertNotNull(input());input()!!.text="V04_UNSAVED"
             var identity:Long?=null;var epoch=0L;var session:org.mozilla.geckoview.GeckoSession?=null
             main {val c=chrome();identity=app.coordinator.scheduler.tab(id)!!.identity;epoch=app.coordinator.scheduler.tab(id)!!.epoch;session=c.geckoView.session;assertNull(c.title.parent);assertNull(c.forward.parent);assertTrue(c.back.height>=inst.targetContext.dp(48))}

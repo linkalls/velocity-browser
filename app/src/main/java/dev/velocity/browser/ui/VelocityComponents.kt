@@ -41,9 +41,10 @@ class VelocitySheet(private val context: Context, private val appearance: ThemeC
         val handle=FrameLayout(context).apply {
             minimumHeight=context.dp(24);importantForAccessibility=View.IMPORTANT_FOR_ACCESSIBILITY_NO
             addView(View(context).apply {background=context.rounded(appearance.palette().border,4)},FrameLayout.LayoutParams(context.dp(32),context.dp(4),Gravity.CENTER))
-            setOnTouchListener {_,e->when(e.actionMasked){
+            setOnClickListener {dialog.dismiss()}
+            setOnTouchListener {v,e->when(e.actionMasked){
                 MotionEvent.ACTION_DOWN->{downY=e.rawY;true}
-                MotionEvent.ACTION_UP->{if(e.rawY-downY>context.dp(64))dialog.dismiss();true}
+                MotionEvent.ACTION_UP->{if(e.rawY-downY>context.dp(64))v.performClick();true}
                 else->true
             }}
         }

@@ -95,16 +95,29 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
             override fun afterTextChanged(s:android.text.Editable?){}
         })
         homeSearch.setOnFocusChangeListener {_,_->syncDynamic()}
-        var x=0f;var y=0f;var editing=false
-        address.setOnTouchListener {_,e->when(e.actionMasked){
-            MotionEvent.ACTION_DOWN->{x=e.x;y=e.y;editing=address.hasFocus();false}
-            MotionEvent.ACTION_UP->if(swipeEnabled&&!editing&&kotlin.math.abs(e.x-x)>context.dp(100)&&kotlin.math.abs(e.y-y)<context.dp(40)){onSwitchTab(if(e.x>x)-1 else 1);true}else false
-            else->false
-        }}
-        address.setOnLongClickListener {if(address.hasFocus())false else {PopupMenu(context,address).apply {
-            menu.add("URLをコピー").setOnMenuItemClickListener {(context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("URL",rawAddress));true}
-            menu.add("サイト情報").setOnMenuItemClickListener {onBlock();true}
-        }.show();true}}
+        var x=0f;var y=0f;var editing=false;var longPressed=false
+        val detector=GestureDetector(context,object:GestureDetector.SimpleOnGestureListener(){
+            override fun onDown(e:MotionEvent)=true
+            override fun onLongPress(e:MotionEvent){longPressed=true;showAddressMenu()}
+        })
+        address.setOnClickListener {
+            if(!address.hasFocus()){
+                address.requestFocus()
+                (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(address,InputMethodManager.SHOW_IMPLICIT)
+            }
+        }
+        address.setOnTouchListener {_,e->
+            if(e.actionMasked==MotionEvent.ACTION_DOWN){x=e.x;y=e.y;editing=address.hasFocus();longPressed=false}
+            if(editing)false else {
+                detector.onTouchEvent(e)
+                if(e.actionMasked==MotionEvent.ACTION_UP&&!longPressed){
+                    if(swipeEnabled&&kotlin.math.abs(e.x-x)>context.dp(100)&&kotlin.math.abs(e.y-y)<context.dp(40))onSwitchTab(if(e.x>x)-1 else 1)
+                    else if(kotlin.math.abs(e.x-x)<context.dp(24)&&kotlin.math.abs(e.y-y)<context.dp(24))address.performClick()
+                }
+                true
+            }
+        }
+        address.setOnLongClickListener {if(address.hasFocus())false else {showAddressMenu();true}}
         setOnApplyWindowInsetsListener {_,insets->
             if(android.os.Build.VERSION.SDK_INT>=30){
                 val bars=insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout());ime=insets.isVisible(WindowInsets.Type.ime())
@@ -116,6 +129,10 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
         isFocusableInTouchMode=true;requestFocus();positionHome();refreshShortcuts();applyPalette(palette)
         addOnLayoutChangeListener {_,_,_,_,_,_,_,_,_->syncDynamic()}
     }
+    private fun showAddressMenu(){PopupMenu(context,address).apply {
+        menu.add("URLをコピー").setOnMenuItemClickListener {(context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("URL",rawAddress));true}
+        menu.add("サイト情報").setOnMenuItemClickListener {onBlock();true}
+    }.show()}
     private fun navigate(value:String,input:EditText){input.clearFocus();(context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(input.windowToken,0);onNavigate(value)}
     private fun positionHome(){homeSurface.setPadding(0,if(bottomAddress)0 else toolbarHeight,0,if(bottomAddress)toolbarHeight else 0)}
     fun setAddressBottom(bottom:Boolean){if(bottomAddress==bottom)return;bottomAddress=bottom;positionHome();preferences.edit().putBoolean("address_bottom",bottom).apply();toolbar.layoutParams=LayoutParams(-1,toolbarHeight,if(bottom)Gravity.BOTTOM else Gravity.TOP);showToolbar(true,false);syncDynamic()}
