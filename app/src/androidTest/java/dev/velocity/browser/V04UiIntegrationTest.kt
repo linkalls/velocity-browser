@@ -74,9 +74,9 @@ class V04UiIntegrationTest {
             device.waitForIdle()
             val w=device.displayWidth;val h=device.displayHeight
             device.swipe(w/2,h*3/4,w/2,h/3,40)
-            await("Gecko toolbar hide on ${if(dynamic)"dynamic" else "static"} scroll") {val field=BrowserChromeView::class.java.getDeclaredField("hidden").apply {isAccessible=true};field.getBoolean(chrome())}
+            await("Gecko toolbar hide on ${if(dynamic)"dynamic" else "static"} scroll") {chrome().toolbarVisibleFraction==0f}
             device.swipe(w/2,h/3,w/2,h*3/4,40)
-            await("Gecko toolbar show on reverse scroll") {val field=BrowserChromeView::class.java.getDeclaredField("hidden").apply {isAccessible=true};!field.getBoolean(chrome())}
+            await("Gecko toolbar show on reverse scroll") {chrome().toolbarVisibleFraction==1f}
             main {assertSame(session,chrome().geckoView.session);assertEquals(identity,app.coordinator.scheduler.tab(id)!!.identity);assertEquals(epoch,app.coordinator.scheduler.tab(id)!!.epoch)}
             main {app.coordinator.close(id,true)}
         }} }finally {prefs.edit().putBoolean("address_bottom",oldBottom).putBoolean("toolbar_scroll",oldScroll).apply();cleanup()}
