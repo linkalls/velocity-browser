@@ -45,7 +45,7 @@ for round in 1 2 3 4 5; do
       wait "$cpu" || echo 'CPU sampling failed; retain its unavailable status'
       (cd tools/bench-runner && bun src/cli.ts memory dev.velocity.browser "../../$prefix-memory.json") || echo 'PSS sampling unavailable'
       wait "$driver"
-      if ! rg -q 'OK \(1 test\)' "$prefix-driver.txt"; then cat "$prefix-driver.txt";exit 1;fi
+      if ! python3 -c 'import sys;from pathlib import Path;sys.exit(0 if "OK (1 test)" in Path(sys.argv[1]).read_text() else 1)' "$prefix-driver.txt"; then cat "$prefix-driver.txt";exit 1;fi
       python3 tools/frame-report.py "$prefix.perfetto-trace" /tmp/velocity-trace-processor "$prefix-frames.json"
     done
   done
