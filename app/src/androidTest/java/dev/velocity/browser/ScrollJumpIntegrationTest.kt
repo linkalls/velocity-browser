@@ -63,7 +63,7 @@ class ScrollJumpIntegrationTest {
                 main {
                     val t = app.coordinator.scheduler.tab(normalId)!!
                     assertTrue(SiteScrollBenchmark.start(app.coordinator.host!!.activity,
-                        t.id, t.identity, t.epoch, f.url, app.blocker.mode.name,
+                        t.id, t.identity!!, t.epoch, f.url, app.blocker.mode.name,
                         app.blocker.collapseEnabled))
                 }
                 device.swipe(device.displayWidth/2,device.displayHeight*3/4,
