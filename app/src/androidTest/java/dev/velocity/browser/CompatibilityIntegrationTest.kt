@@ -130,7 +130,13 @@ class CompatibilityIntegrationTest {
             var uri:android.net.Uri?=null
             main { val job=app.coordinator.downloads.snapshot().last();uri=job.destination;assertEquals(26L,job.bytes);assertTrue(app.coordinator.scheduler.liveCount<=2) }
             assertEquals("download-real-gecko-stream",inst.targetContext.contentResolver.openInputStream(uri!!)!!.bufferedReader().use { it.readText() })
-            click("閉じる");main { app.coordinator.select(id);app.coordinator.navigate(f.url+"/") }
+            click("閉じる");var previousEpoch=0L
+            main {previousEpoch=app.coordinator.scheduler.tab(id)!!.epoch;app.coordinator.select(id);app.coordinator.navigate(f.url+"/")}
+            await("fresh page settled before second download click") {
+                val field=MainActivity::class.java.getDeclaredField("chrome").apply {isAccessible=true}
+                app.coordinator.scheduler.tab(id)!!.epoch>previousEpoch && app.coordinator.scheduler.tab(id)!!.title=="COMPAT_FIXTURE" &&
+                    (field.get(app.coordinator.host!!.activity) as dev.velocity.browser.ui.BrowserChromeView).reload.text.toString()=="更新"
+            }
             assertTrue(device.wait(Until.hasObject(By.text("DOWNLOAD_FIXTURE")),15000));click("DOWNLOAD_FIXTURE")
             await("second offer") { app.coordinator.downloads.snapshot().last().state==DownloadController.State.OFFERED }
             main { app.coordinator.downloads.cancel(app.coordinator.downloads.snapshot().last().id);assertEquals(DownloadController.State.CANCELED,app.coordinator.downloads.snapshot().last().state) }

@@ -87,6 +87,11 @@ class ScrollJumpIntegrationTest {
                         // Footer's real click is the coordinate test; no JS scroll compensation.
                         assertTrue(device.wait(Until.hasObject(By.text("FOOTER_TAP")),10000));val footer=device.findObject(By.text("FOOTER_TAP"))
                         val bounds=footer.visibleBounds
+                        if(bottom)main {
+                            val c=chrome();val origin=IntArray(2);c.getLocationOnScreen(origin)
+                            val unobscuredBottom=origin[1]+c.height-c.paddingBottom-DesignTokens.toolbarHeight(inst.targetContext)*c.toolbarVisibleFraction
+                            assertTrue("footer accessibility bounds must stay above toolbar: $bounds bottom=$unobscuredBottom",bounds.bottom<=unobscuredBottom+1)
+                        }
                         capture("matrix-${scenario}-before-tap")
                         footer.click();device.waitForIdle();export("matrix-${scenario}-after-tap");capture("matrix-${scenario}-after-tap")
                         await("fixed footer accepts real tap at $bounds scenario=$scenario bottom=$bottom dynamic=$dynamic"){app.coordinator.scheduler.tab(id)?.title=="JUMP_TAP_OK"}
@@ -119,11 +124,22 @@ class ScrollJumpIntegrationTest {
             export("nested-scroll")
             // Focus scrolls to the actual input; closing IME must preserve typed form content.
             device.findObject(By.text("FOCUS")).click();await("focus jump allowed"){app.coordinator.scheduler.tab(id)?.title=="JUMP_FOCUS"}
-            val field=device.wait(Until.findObject(By.clazz("android.widget.EditText").res(java.util.regex.Pattern.compile("^(?!dev.velocity.browser:id/address).*$"))),1000)
-            val form=field?:device.findObjects(By.clazz("android.widget.EditText")).first {it.resourceName!="dev.velocity.browser:id/address"}
-            form.text="KEEP_AFTER_ANCHOR"
-            device.pressBack();main {chrome().onMenu()};assertTrue(device.wait(Until.hasObject(By.text("閉じる")),10000));device.findObject(By.text("閉じる")).click()
-            assertEquals("KEEP_AFTER_ANCHOR",device.findObjects(By.clazz("android.widget.EditText")).first {it.resourceName!="dev.velocity.browser:id/address"}.text)
+            device.waitForIdle()
+            fun form():UiObject2 {
+                val end=SystemClock.uptimeMillis()+15000
+                while(SystemClock.uptimeMillis()<end){
+                    val field=device.findObjects(By.clazz("android.widget.EditText")).firstOrNull {it.resourceName!="dev.velocity.browser:id/address"}
+                    if(field!=null)return field
+                    SystemClock.sleep(100)
+                }
+                fail("focused fixture input accessible");throw IllegalStateException()
+            }
+            form().text="KEEP_AFTER_ANCHOR"
+            var keyboard=false
+            main {keyboard=chrome().rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime())==true}
+            if(keyboard){device.pressBack();device.waitForIdle()}
+            main {chrome().onMenu()};assertTrue(device.wait(Until.hasObject(By.text("閉じる")),10000));device.findObject(By.text("閉じる")).click()
+            device.waitForIdle();assertEquals("KEEP_AFTER_ANCHOR",form().text)
             main {assertEquals(identity,app.coordinator.scheduler.tab(id)!!.identity);assertEquals(epoch,app.coordinator.scheduler.tab(id)!!.epoch)}
             export("focus-ime-form")
         }finally {cleanup()}}

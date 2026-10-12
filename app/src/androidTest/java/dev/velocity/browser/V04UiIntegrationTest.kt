@@ -117,7 +117,7 @@ class V04UiIntegrationTest {
                 await("final toolbar geometry") {chrome().toolbarVisibleFraction==if(dynamic)0f else 1f}
                 main {
                     val height=DesignTokens.toolbarHeight(inst.targetContext)
-                    assertEquals(if(dynamic)-height else height,chrome().toolbarClipping)
+                    assertEquals(if(dynamic)-height else 0,chrome().toolbarClipping)
                     assertSame(session,chrome().geckoView.session)
                 }
                 // Control a hiding animation after pinning the bar shown. A fling

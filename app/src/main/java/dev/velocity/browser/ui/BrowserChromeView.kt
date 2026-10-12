@@ -169,7 +169,11 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
         // Defer a preference/density max-height change until a later unpinned event.
         if(geckoView.shouldPinOnScreen()){motion.pin();trace(TraceEvent.PIN);animator?.cancel();return}
         // Transient UI locks must not change Gecko's ICB baseline (forms/fixed elements).
-        val maximum=if(preferences.getBoolean("toolbar_scroll",true))toolbarHeight else 0
+        // Reserve the same ICB for a toolbar locked shown (auto-hide OFF).
+        // With max=0, positive fixed-bottom offset moves rendered fixed elements
+        // but Gecko 157 accessibility bounds still point below the toolbar.
+        // Keep the baseline stable; locked() alone disables automatic motion.
+        val maximum=toolbarHeight
         if(maximum!=dynamicMax){dynamicMax=maximum;geckoView.setDynamicToolbarMaxHeight(maximum);lastClipping=Int.MIN_VALUE;trace(TraceEvent.MAXIMUM)}
         val wasPinned=motion.state==ToolbarMotion.State.PINNED
         trace(TraceEvent.LOCK)
