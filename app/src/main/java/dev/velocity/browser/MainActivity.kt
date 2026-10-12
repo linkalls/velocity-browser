@@ -308,7 +308,7 @@ class MainActivity : Activity(), BrowserHost {
         if (!BuildConfig.DEBUG) return
         val lab = dev.velocity.browser.diagnostics.SiteScrollBenchmark
         val rows = mutableListOf<SettingsView.Row>()
-        rows.add(SettingsView.Row("状態","計測状態","リフレッシュHzは端末の報告値") {})
+        rows.add(SettingsView.Row("状態","計測状態","リフレッシュHzは端末の報告値",action={})
             .apply {liveText={"計測状態\n"+lab.status()};available={false};navigation=false})
         rows.add(SettingsView.Row("主要サイト","計測サイトを開く","Yahooニュース・Google検索・Wikipedia・Reddit・YouTube・Amazon") {
             val list=lab.presets
