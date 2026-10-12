@@ -243,7 +243,7 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
         palette=next;setBackgroundColor(next.background);start.setBackgroundColor(next.background);toolbar.setBackgroundColor(next.surface)
         addressGroup.background=context.rounded(next.card,DesignTokens.ADDRESS_RADIUS,if(privateMode)next.privateAccent else null)
         address.applyTextPalette(next);address.background=null
-        homeSearch.applyTextPalette(next);homeSearch.setPadding(context.dp(16),context.dp(12),context.dp(16),context.dp(12));homeSearch.background=context.rounded(next.surface,DesignTokens.ADDRESS_RADIUS,next.border)
+        homeSearch.applyTextPalette(next);homeSearch.backgroundTintList=null;homeSearch.setPadding(context.dp(16),context.dp(12),context.dp(16),context.dp(12));homeSearch.background=context.rounded(next.surface,DesignTokens.ADDRESS_RADIUS,next.border)
         wordmark.setTextColor(next.muted);privateTag.setTextColor(next.privateAccent)
         listOf(back,forward,reload,tabsButton,menuButton,info).forEach {it.palette=next}
         addShortcut.actionPalette(next)

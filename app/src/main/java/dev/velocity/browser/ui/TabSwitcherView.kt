@@ -111,12 +111,12 @@ class TabSwitcherView(context: Context, private val appearance: ThemeController,
         shown=snapshot.filter {it.privateMode==privateMode && (query.isEmpty() || it.displayTitle().contains(query,true) || it.displayLocation().contains(query,true))}
         count.text=(if(privateMode)"非公開" else "タブ")+" ${shown.size}枚";adapter.notifyDataSetChanged();val retained=shown.indexOfFirst {it.id==first};if(shown.isNotEmpty())grid.setSelection(if(retained>=0)retained else old.coerceAtMost(shown.lastIndex))
         undoButton.visibility=if(!privateMode&&canUndo())View.VISIBLE else View.GONE
-        normalButton.text="通常 ${snapshot.count {!it.privateMode}}";privateButton.text="非公開タブ ${snapshot.count {it.privateMode}}"
+        normalButton.text="通常 ${snapshot.count {!it.privateMode}}";privateButton.text="非公開 ${snapshot.count {it.privateMode}}"
         normalButton.actionPalette(appearance.palette(),!privateMode);privateButton.actionPalette(appearance.palette(),privateMode)
         if(snapshot.any {it.privateMode})dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else dialog.window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
     fun applyPalette() {
-        val p=appearance.palette();sheet.applyPalette();search.applyTextPalette(p);search.background=panel.context.rounded(p.card,DesignTokens.CONTROL_RADIUS);count.setTextColor(if(privateMode)p.privateAccent else p.text);empty.setTextColor(p.muted)
+        val p=appearance.palette();sheet.applyPalette();search.applyTextPalette(p);search.backgroundTintList=null;search.background=panel.context.rounded(p.card,DesignTokens.CONTROL_RADIUS);count.setTextColor(if(privateMode)p.privateAccent else p.text);empty.setTextColor(p.muted)
         fun tint(v:View) {if(v is Button)v.actionPalette(p);if(v is ViewGroup&&v!==grid)for(i in 0 until v.childCount)tint(v.getChildAt(i))}
         tint(panel);normalButton.actionPalette(p,!privateMode);privateButton.actionPalette(p,privateMode);adapter.notifyDataSetChanged()
     }

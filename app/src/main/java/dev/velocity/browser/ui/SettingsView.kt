@@ -122,7 +122,7 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
     private fun applyPalette() {
         val p = appearance.palette(); panel.setBackgroundColor(p.background); heading.setTextColor(p.text)
         close.actionPalette(p)
-        search.applyTextPalette(p); search.background = search.context.rounded(p.surface, DesignTokens.CONTROL_RADIUS)
+        search.applyTextPalette(p); search.backgroundTintList=null; search.background = search.context.rounded(p.surface, DesignTokens.CONTROL_RADIUS)
         empty.setTextColor(p.muted); headings.values.forEach { it.setTextColor(p.muted) };separators.forEach {it.setBackgroundColor(p.border)}
         bindings.forEach { b ->
             b.root.background = RippleDrawable(ColorStateList.valueOf(p.pressed), b.root.context.rounded(p.surface, DesignTokens.CONTROL_RADIUS), null)

@@ -57,6 +57,17 @@ class V04UiIntegrationTest {
             assertTrue(device.wait(Until.hasObject(By.text("velocity")),10000));assertFalse(device.hasObject(By.text("Wikipedia  ↗")))
             assertTrue(device.hasObject(By.text("非公開")))
             assertTrue(device.hasObject(By.desc("ホームの検索・URL入力")))
+            main {
+                val field=BrowserChromeView::class.java.getDeclaredField("homeSearch").apply {isAccessible=true}
+                val search=field.get(chrome()) as android.widget.EditText
+                val background=search.backgroundTintList?.defaultColor ?: (search.background as android.graphics.drawable.GradientDrawable).color!!.defaultColor
+                fun luma(color:Int):Double {
+                    fun channel(n:Int):Double {val v=n/255.0;return if(v<=.04045)v/12.92 else Math.pow((v+.055)/1.055,2.4)}
+                    return .2126*channel(android.graphics.Color.red(color))+.7152*channel(android.graphics.Color.green(color))+.0722*channel(android.graphics.Color.blue(color))
+                }
+                val a=luma(search.currentHintTextColor);val b=luma(background)
+                assertTrue("actual native search hint contrast",(maxOf(a,b)+.05)/(minOf(a,b)+.05)>=4.5)
+            }
             device.findObject(By.desc("ホームの検索・URL入力")).text="PRIVATE_NATIVE_DRAFT"
             main {repeat(32){app.appearance.track(android.app.Dialog(app.coordinator.host!!.activity))}}
             System.gc()

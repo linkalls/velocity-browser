@@ -252,7 +252,7 @@ class MainActivity : Activity(), BrowserHost {
         rows[4].liveText = { getString(R.string.adaptive) }; rows[3].navigation=false;rows[5].navigation=false;rows[4].navigation=false;rows[4].checked = { coordinator.scheduler.adaptiveEnabled }
         rows[9].liveText = { getString(R.string.appearance) + " · " + arrayOf("システム", "ライト", "ダーク")[appearance.mode.ordinal] }
         rows.add(0,SettingsView.Row("タブと性能","ライブ目標 ${coordinator.scheduler.config.liveTarget}枚 · ${coordinator.scheduler.config.discardAfterMs/1000}秒","保護中は目標を超えて保持します。RAMの推奨: ${coordinator.recommendedProfile().name}",::memorySettings).apply { liveText = { "ライブ目標 ${coordinator.scheduler.config.liveTarget}枚 · ${coordinator.scheduler.config.discardAfterMs/1000}秒" } })
-        rows.add(SettingsView.Row("一般","アドレスバー位置",if(chrome.bottomAddress)"下" else "上") {chrome.setAddressBottom(!chrome.bottomAddress)}.apply {liveText={"アドレスバー位置 · "+if(chrome.bottomAddress)"下" else "上"};navigation=false})
+        rows.add(SettingsView.Row("一般","アドレスバー位置",if(chrome.bottomAddress)"下" else "上") {chrome.setAddressBottom(!chrome.bottomAddress)}.apply {liveText={"アドレスバー位置\n"+if(chrome.bottomAddress)"下" else "上"};navigation=false})
         rows.add(SettingsView.Row("外観と操作","アドレスバーのスワイプ","左右にスワイプしてタブを切り替える") {chrome.swipeEnabled=!chrome.swipeEnabled}.apply {liveText={"アドレスバーのスワイプ"};checked={chrome.swipeEnabled}})
         rows.add(SettingsView.Row("プライバシーとブロック","広告ブロック",blocker.mode.name,::blockSettings))
         rows.add(SettingsView.Row("一般","ホームのショートカット","最大12件・並べ替え・追加・削除",::shortcutSettings))
