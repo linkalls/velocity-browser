@@ -29,7 +29,7 @@ class ScrollJumpIntegrationTest {
         override fun close(){server.close();io.shutdownNow()}
     }
     private fun fixture()=Fixture(inst.context.assets.open("scroll-jump.html").use {it.readBytes()})
-    private fun page(f:Fixture):String {var id="";main {app.coordinator.createTab(f.url);id=app.coordinator.scheduler.selectedId!!;ScrollDiagnostics.enable(true);app.coordinator.render()};await("fixture ready"){app.coordinator.scheduler.tab(id)?.title=="JUMP_READY"};assertTrue(device.wait(Until.hasObject(By.text("FOOTER_TAP")),15000));device.waitForIdle();return id}
+    private fun page(f:Fixture):String {var id="";main {app.coordinator.createTab(f.url);id=app.coordinator.scheduler.selectedId!!;chrome().cancelAddressEdit();ScrollDiagnostics.enable(true);app.coordinator.render()};await("fixture ready"){app.coordinator.scheduler.tab(id)?.title=="JUMP_READY"};assertTrue(device.wait(Until.hasObject(By.text("FOOTER_TAP")),15000));device.waitForIdle();return id}
     private fun export(label:String):String {
         var csv="";main {csv=ScrollDiagnostics.snapshot()}
         val file=File(inst.targetContext.getExternalFilesDir(null),"scroll-jump-$label.csv");file.writeText(csv)
@@ -68,6 +68,7 @@ class ScrollJumpIntegrationTest {
                         val w=device.displayWidth;val h=device.displayHeight
                         device.swipe(w/2,h*3/4,w/2,h/3,70);device.waitForIdle()
                         device.swipe(w/2,h/3,w/2,h*3/4,15);device.waitForIdle()
+                        export("matrix-${scenario}-before-tap")
                         // Footer's real click is the coordinate test; no JS scroll compensation.
                         assertTrue(device.wait(Until.hasObject(By.text("FOOTER_TAP")),10000));device.findObject(By.text("FOOTER_TAP")).click()
                         await("fixed footer accepts real tap"){app.coordinator.scheduler.tab(id)?.title=="JUMP_TAP_OK"}
@@ -95,14 +96,16 @@ class ScrollJumpIntegrationTest {
             device.findObject(By.text("NESTED")).click();await("nested area"){app.coordinator.scheduler.tab(id)?.title=="JUMP_NESTED_READY"}
             assertTrue(device.wait(Until.hasObject(By.text("Nested row 0")),10000))
             val nested=device.findObject(By.text("Nested row 0")).visibleBounds
-            device.swipe(nested.centerX(),nested.bottom-6,nested.centerX(),nested.top+6,40)
+            device.swipe(nested.centerX(),nested.top+140,nested.centerX(),nested.top+30,60)
             await("internal container moved"){app.coordinator.scheduler.tab(id)?.title?.let {it.startsWith("JUMP_NESTED_")&&it!="JUMP_NESTED_READY"}==true}
             export("nested-scroll")
             // Focus scrolls to the actual input; closing IME must preserve typed form content.
             device.findObject(By.text("FOCUS")).click();await("focus jump allowed"){app.coordinator.scheduler.tab(id)?.title=="JUMP_FOCUS"}
-            assertTrue(device.wait(Until.hasObject(By.desc("JUMP_INPUT")),10000));device.findObject(By.desc("JUMP_INPUT")).text="KEEP_AFTER_ANCHOR"
+            val field=device.wait(Until.findObject(By.clazz("android.widget.EditText").res(java.util.regex.Pattern.compile("^(?!dev.velocity.browser:id/address).*$"))),1000)
+            val form=field?:device.findObjects(By.clazz("android.widget.EditText")).first {it.resourceName!="dev.velocity.browser:id/address"}
+            form.text="KEEP_AFTER_ANCHOR"
             device.pressBack();main {chrome().onMenu()};assertTrue(device.wait(Until.hasObject(By.text("閉じる")),10000));device.findObject(By.text("閉じる")).click()
-            assertTrue(device.wait(Until.hasObject(By.desc("JUMP_INPUT")),10000));assertEquals("KEEP_AFTER_ANCHOR",device.findObject(By.desc("JUMP_INPUT")).text)
+            assertEquals("KEEP_AFTER_ANCHOR",device.findObjects(By.clazz("android.widget.EditText")).first {it.resourceName!="dev.velocity.browser:id/address"}.text)
             main {assertEquals(identity,app.coordinator.scheduler.tab(id)!!.identity);assertEquals(epoch,app.coordinator.scheduler.tab(id)!!.epoch)}
             export("focus-ime-form")
         }finally {cleanup()}}

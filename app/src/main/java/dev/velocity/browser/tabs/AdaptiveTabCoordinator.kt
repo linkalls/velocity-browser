@@ -20,6 +20,8 @@ interface BrowserHost {
     fun notice(message: Int)
     fun capacityBlocked(id: String, adguard: Boolean)
     fun toolbarVisibility(show: Boolean, source: dev.velocity.browser.ui.ToolbarMotion.Source = dev.velocity.browser.ui.ToolbarMotion.Source.CONTENT) {}
+    fun toolbarUserScroll() {}
+    fun toolbarContextReset() {}
     fun confirmClose(id: String)
     fun requestAndroidPermissions(permissions: Array<String>, done: (Boolean) -> Unit)
 }
@@ -175,6 +177,8 @@ class AdaptiveTabCoordinator(private val context: Context) {
         }
     }
     private fun attach(adapter: GeckoSessionAdapter) {
+        scheduler.tab(adapter.id)?.let {t->dev.velocity.browser.diagnostics.ScrollDiagnostics.context(t.id,t.identity,t.epoch,t.privateMode)}
+        adapter.resetScrollTracking()
         view?.let { if (adapter.session.isOpen && it.session != adapter.session) { it.releaseSession(); it.setSession(adapter.session) } }
     }
     fun acceptBlankSnapshot(id: String, identity: Long, state: GeckoSession.SessionState) {
@@ -292,6 +296,8 @@ class AdaptiveTabCoordinator(private val context: Context) {
         dispatch(Event.CreateTab(id,t.url,readOnly=t.readOnly,title=t.title,position=undoIndex)); dispatch(Event.SetPinned(id,t.pinned));select(id)
     }
     fun foreground(active: Boolean) {
+        adapters.values.forEach {it.resetScrollTracking()}
+        host?.toolbarContextReset()
         if (!active) repository.flush()
         handler.removeCallbacks(scan)
         dispatch(Event.AppForegroundChanged(active))

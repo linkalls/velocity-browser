@@ -105,6 +105,8 @@ class MainActivity : Activity(), BrowserHost {
         coordinator.unbind(this); super.onDestroy()
     }
     override fun onWindowFocusChanged(hasFocus:Boolean) { super.onWindowFocusChanged(hasFocus);if(::chrome.isInitialized)chrome.setModalBlocked(!hasFocus) }
+    override fun toolbarUserScroll(){chrome.onUserScroll()}
+    override fun toolbarContextReset(){chrome.resetScrollContext()}
     override fun toolbarVisibility(show:Boolean,source:ToolbarMotion.Source) {chrome.onEngineToolbar(show,source)}
     override fun render(tabs: List<TabRecord>, selectedId: String?, canBack: Boolean, canForward: Boolean, loading: Boolean) {
         settingsView?.refresh()

@@ -45,7 +45,8 @@ class ToolbarMotionTest {
     @Test fun imeModalAndSelectionPinInterruptAndRecoverSafely() {
         val m=ToolbarMotion();m.request(false,ToolbarMotion.Source.COMPOSITOR,100);m.frame(.5f)
         assertFalse(m.request(true,ToolbarMotion.Source.CONTENT,400,true));assertEquals(.5f,m.visible,0f)
-        assertTrue(m.unpin(410));assertEquals(1f,m.target,0f)
+        assertTrue(m.unpin(410));assertEquals(0f,m.target,0f)
+        assertTrue(m.request(true,ToolbarMotion.Source.COMPOSITOR,500));assertEquals(1f,m.target,0f)
         m.lock(true);assertEquals(ToolbarMotion.State.PINNED,m.state);assertEquals(1f,m.visible,0f)
         assertFalse(m.request(false,ToolbarMotion.Source.COMPOSITOR,500));m.lock(false)
         assertEquals(ToolbarMotion.State.SHOWN,m.state)
@@ -57,4 +58,23 @@ class ToolbarMotionTest {
         assertTrue(m.request(false,ToolbarMotion.Source.CONTENT,101));m.frame(0f)
         assertEquals(ToolbarMotion.State.HIDDEN,m.state)
     }
+    @Test fun delayedContentCannotReverseUnfinishedCompositorAnimation() {
+        val m=ToolbarMotion();m.request(false,ToolbarMotion.Source.COMPOSITOR,100);m.frame(.6f)
+        assertFalse(m.request(true,ToolbarMotion.Source.CONTENT,300))
+        assertEquals(0f,m.target,0f);assertEquals(.6f,m.visible,0f)
+    }
+    @Test fun unpinCannotPromoteOldAutomaticHideToAUiCommand() {
+        val m=ToolbarMotion();m.request(false,ToolbarMotion.Source.COMPOSITOR,100,true)
+        assertFalse(m.unpin(1000));assertEquals(1f,m.target,0f);assertEquals(1f,m.visible,0f)
+    }
+
+    @Test fun slowPanRenewsAuthorityWithoutAnotherDistanceThreshold() {
+        val m=ToolbarMotion();m.request(false,ToolbarMotion.Source.COMPOSITOR,100);m.frame(0f)
+        m.observeUserScroll(290)
+        assertFalse(m.request(true,ToolbarMotion.Source.CONTENT,300))
+        assertTrue(m.request(true,ToolbarMotion.Source.COMPOSITOR,310))
+        m.frame(1f);assertFalse(m.request(false,ToolbarMotion.Source.CONTENT,400))
+        assertTrue(m.request(false,ToolbarMotion.Source.CONTENT,500))
+    }
+
 }

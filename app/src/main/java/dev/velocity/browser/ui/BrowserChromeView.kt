@@ -160,15 +160,17 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
     private fun trace(event:TraceEvent,source:Int=-1,reason:Int=-1,show:Float=Float.NaN){
         if(!ScrollDiagnostics.enabled)return
         val flags=(if(starting)1 else 0) or (if(modal)2 else 0) or (if(ime)4 else 0) or (if(address.hasFocus())8 else 0) or (if(accessibility.isTouchExplorationEnabled)16 else 0)
-        ScrollDiagnostics.geometry(motion,toolbarHeight,dynamicMax,flags,lastClipping,toolbar.translationY,engineContainer.translationY)
+        ScrollDiagnostics.geometry(motion,toolbarHeight,dynamicMax,flags,if(event==TraceEvent.MAXIMUM)0 else lastClipping,toolbar.translationY,engineContainer.translationY)
         ScrollDiagnostics.record(event,source,reason,show=show)
     }
     private fun syncDynamic(){
         if(geckoView.height<=toolbarHeight)return
+        // Selection drag pins the display, including its viewport baseline.
+        // Defer a preference/density max-height change until a later unpinned event.
+        if(geckoView.shouldPinOnScreen()){motion.pin();trace(TraceEvent.PIN);animator?.cancel();return}
         // Transient UI locks must not change Gecko's ICB baseline (forms/fixed elements).
         val maximum=if(preferences.getBoolean("toolbar_scroll",true))toolbarHeight else 0
         if(maximum!=dynamicMax){dynamicMax=maximum;geckoView.setDynamicToolbarMaxHeight(maximum);lastClipping=Int.MIN_VALUE;trace(TraceEvent.MAXIMUM)}
-        if(geckoView.shouldPinOnScreen()) {trace(TraceEvent.PIN);animator?.cancel();return}
         val wasPinned=motion.state==ToolbarMotion.State.PINNED
         trace(TraceEvent.LOCK)
         motion.lock(locked())
@@ -178,6 +180,8 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
             applyOffset(motion.visible*toolbarHeight)
         }
     }
+    fun onUserScroll(){motion.observeUserScroll(android.os.SystemClock.uptimeMillis())}
+    fun resetScrollContext(){showToolbar(true,false);trace(TraceEvent.RESET);syncDynamic()}
     fun onEngineToolbar(show:Boolean,source:ToolbarMotion.Source=ToolbarMotion.Source.CONTENT){
         val now=android.os.SystemClock.uptimeMillis()
         val pinned=geckoView.shouldPinOnScreen()
@@ -188,9 +192,11 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
         else if(locked()&&!pinned){animator?.cancel();applyOffset(toolbarHeight.toFloat())}
     }
     private fun showToolbar(show:Boolean,animate:Boolean){
-        if(geckoView.shouldPinOnScreen()) {motion.request(show,ToolbarMotion.Source.UI,android.os.SystemClock.uptimeMillis(),true);animator?.cancel();return}
-        if(show&&!animate){animator?.cancel();motion.reset();applyOffset(toolbarHeight.toFloat());return}
-        if(motion.request(show,ToolbarMotion.Source.UI,android.os.SystemClock.uptimeMillis()))animateTarget(animate)
+        if(geckoView.shouldPinOnScreen()) {motion.request(show,ToolbarMotion.Source.UI,android.os.SystemClock.uptimeMillis(),true);trace(TraceEvent.REQUEST,ToolbarMotion.Source.UI.ordinal,motion.decision.ordinal,if(show)1f else 0f);animator?.cancel();return}
+        if(show&&!animate){animator?.cancel();motion.reset();trace(TraceEvent.RESET,ToolbarMotion.Source.UI.ordinal,show=1f);applyOffset(toolbarHeight.toFloat());return}
+        val accepted=motion.request(show,ToolbarMotion.Source.UI,android.os.SystemClock.uptimeMillis())
+        trace(TraceEvent.REQUEST,ToolbarMotion.Source.UI.ordinal,motion.decision.ordinal,if(show)1f else 0f)
+        if(accepted)animateTarget(animate)
     }
     private fun animateTarget(animate:Boolean){
         animator?.cancel();trace(TraceEvent.START)
@@ -202,7 +208,7 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
                     override fun onAnimationCancel(animation:Animator){trace(TraceEvent.CANCEL)}
                     override fun onAnimationEnd(animation:Animator){trace(TraceEvent.END)}
                 })
-                addUpdateListener {if(geckoView.shouldPinOnScreen()){motion.request(motion.target==1f,ToolbarMotion.Source.UI,android.os.SystemClock.uptimeMillis(),true);cancel()}else {applyOffset(it.animatedValue as Float);trace(TraceEvent.FRAME)}}
+                addUpdateListener {if(geckoView.shouldPinOnScreen()){motion.pin();trace(TraceEvent.PIN);cancel()}else {applyOffset(it.animatedValue as Float);trace(TraceEvent.FRAME)}}
                 start()
             }
         }else applyOffset(target)

@@ -2,12 +2,12 @@ import {expect,test} from 'bun:test';
 import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {runInNewContext} from 'node:vm';
-function fixture(workload=0){
+function fixture(workload=0,protectedCandidates=false){
  let now=0,scans=0,styleReads=0,next=1;
  const events:Record<string,()=>void>={},timers=new Map<number,{at:number,run:()=>void}>();
  class Element {
   childNodes:unknown[]=[];isConnected=true;isAd=false;
-  matches(selector:string){return this.isAd&&selector==='.ad';}closest(){return null;}querySelector(){return null;}
+  matches(selector:string){return this.isAd&&selector==='.ad';}closest(){return this.isAd&&protectedCandidates?this:null;}querySelector(){return null;}
   querySelectorAll(){scans++;if(this===document.documentElement&&workload){now+=2;return Array.from({length:workload},()=>{const e=new Element();e.isAd=true;return e;});}return [];}
   appendChild(){}remove(){}setAttribute(){}removeAttribute(){}
  }
@@ -59,4 +59,16 @@ test('scrolling during a multi-batch scan postpones all further inspection',asyn
  expect(f.styleReads()).toBe(read);
  f.advance(350);
  expect(f.styleReads()).toBeGreaterThan(read);
+});
+
+
+test('candidate overflow stops inspection without scheduling unbounded work',async()=>{
+ const f=fixture(150);await f.ready;f.advance(150);
+ expect(f.styleReads()).toBe(0);expect(f.pending()).toBe(0);
+ f.advance(5000);expect(f.scans()).toBe(1);
+});
+test('candidates inside protected forms never trigger style inspection or collapse',async()=>{
+ const f=fixture(48,true);await f.ready;
+ for(let tick=150;tick<=1500&&f.pending();tick+=16)f.advance(tick);
+ expect(f.scans()).toBe(1);expect(f.styleReads()).toBe(0);expect(f.pending()).toBe(0);
 });
