@@ -1,7 +1,8 @@
 'use strict';
 // Page-local reversible state. No form reads, screenshots or page text cross messaging.
 let sheet=null,generation=0,policy=null,timer=null,observer=null,stopped=false;
-const hiddenSet=new Set(),collapsed=new Set(),queue=new Set();
+const hiddenSet=new Set(),collapsed=new Set(),queue=new Set(),candidates=new Set();
+let hiddenRecheck=null,collapsedRecheck=null;
 const wrapper='.ad-wrapper,.ad-container,[data-ad-container],[data-ad-wrapper]';
 const protectedSelector='html,body,main,article,header,nav,footer,'+VelocityRules.protectedNodes;
 const marker='data-velocity-lite-collapsed';
@@ -10,7 +11,11 @@ const scrollQuietMs=180;
 // Capture nested scrolling too; this passive handler only records time.
 window.addEventListener('scroll',()=>{lastScrollAt=performance.now();},{capture:true,passive:true});
 function safe(element){return element instanceof Element&&!element.matches(protectedSelector)&&!element.closest('form,[role="dialog"]')&&!element.querySelector(VelocityRules.protectedNodes);}
-function stop(){if(observer)observer.disconnect();observer=null;if(timer)clearTimeout(timer);timer=null;queue.clear();}
+function stop(){
+ if(observer)observer.disconnect();observer=null;
+ if(timer!==null)clearTimeout(timer);timer=null;
+ queue.clear();candidates.clear();hiddenRecheck=null;collapsedRecheck=null;
+}
 function restore(){stop();if(sheet)sheet.remove();sheet=null;if(markerSheet)markerSheet.remove();markerSheet=null;for(const e of collapsed)e.removeAttribute(marker);collapsed.clear();hiddenSet.clear();}
 function report(){browser.runtime.sendMessage({type:'cosmeticStats',generation:policy?.generation,hidden:hiddenSet.size,collapsed:collapsed.size,stopped}).catch(()=>{});}
 function emptyDedicated(e){
@@ -28,37 +33,62 @@ function emptyDedicated(e){
 function enqueue(root){
  if(!(root instanceof Element)||!policy||stopped)return;
  if(queue.size>=100){stopped=true;stop();report();return;}
+ // A mutation inside an already-collapsed wrapper must revalidate its safety,
+ // even when a previous recheck slice has finished but candidates remain.
+ if(collapsed.has(root)&&collapsedRecheck!==null&&!collapsedRecheck.includes(root))collapsedRecheck.push(root);
  queue.add(root);if(!timer)timer=setTimeout(batch,150);
 }
 function batch(){
  timer=null;if(!policy||document.hidden||stopped)return;
- // Keep CSS blocking active, but postpone DOM/layout inspection while scrolling.
+ // Only inspect after scrolling stops. CSS blocking remains immediate and active.
  const quietRemaining=scrollQuietMs-(performance.now()-lastScrollAt);
  if(quietRemaining>0){timer=setTimeout(batch,quietRemaining);return;}
- const started=performance.now();let processed=0;
- // Recheck our own collapsed elements when controls/content are subsequently inserted.
- for(const e of [...collapsed])if(!e.isConnected||!emptyDedicated(e)){e.removeAttribute(marker);collapsed.delete(e);}
- const roots=[...queue];queue.clear();
- const selectors=policy.selectors||[];
- const candidates=new Set(),matchingSelector=[wrapper,...selectors].join(',');
- for(const root of roots){
-  if(root.matches(wrapper)||selectors.some(s=>root.matches(s)))candidates.add(root);
-  const matching=root.querySelectorAll(matchingSelector);
-  for(const e of matching){if(candidates.size>=100)break;candidates.add(e);}
-  if(performance.now()-started>32){stopped=true;break;}
+ const started=performance.now();
+ // One 32 ms callback can miss four frames on a 120 Hz screen. Instead yield
+ // between small slices. A single querySelectorAll call is still not preemptible.
+ const budgetMs=4,maxElements=12;
+ let examined=0;
+ const room=()=>examined<maxElements && performance.now()-started<budgetMs;
+ if(hiddenRecheck===null){hiddenRecheck=[...hiddenSet];collapsedRecheck=[...collapsed];}
+ while(hiddenRecheck.length && room()){
+  const e=hiddenRecheck.pop();
+  if(!e.isConnected||getComputedStyle(e).display!=='none')hiddenSet.delete(e);
+  examined++;
  }
- for(const e of [...hiddenSet])if(!e.isConnected||getComputedStyle(e).display!=='none')hiddenSet.delete(e);
- for(const e of candidates){
-  if(++processed>100||performance.now()-started>32){stopped=true;break;}
-  if(!safe(e))continue;
-  if(selectors.some(s=>e.matches(s))&&getComputedStyle(e).display==='none'){if(hiddenSet.size<100)hiddenSet.add(e);}
+ while(!hiddenRecheck.length && collapsedRecheck.length && room()){
+  const e=collapsedRecheck.pop();
+  if(!e.isConnected||!emptyDedicated(e)){e.removeAttribute(marker);collapsed.delete(e);}
+  examined++;
+ }
+ const selectors=policy.selectors||[];
+ const matchingSelector=[wrapper,...selectors].join(',');
+ // Never lose unfinished roots or candidates when yielding between frames.
+ while(!hiddenRecheck.length && !collapsedRecheck.length && queue.size && room() && !stopped){
+  const root=queue.values().next().value;queue.delete(root);
+  if(!root.isConnected){examined++;continue;}
+  if(root.matches(wrapper)||selectors.some(s=>root.matches(s)))candidates.add(root);
+  for(const e of root.querySelectorAll(matchingSelector)){
+   if(candidates.size>=100){stopped=true;break;}
+   candidates.add(e);
+  }
+  examined++;
+ }
+ while(!hiddenRecheck.length && !collapsedRecheck.length && !queue.size && candidates.size && room() && !stopped){
+  const e=candidates.values().next().value;candidates.delete(e);examined++;
+  if(!e.isConnected||!safe(e))continue;
+  if(selectors.some(s=>e.matches(s))&&getComputedStyle(e).display==='none'&&hiddenSet.size<100)hiddenSet.add(e);
   if(!policy.collapse)continue;
   let parent=e.matches(wrapper)?e:e.parentElement;
   for(let depth=0;parent&&depth<3;depth++,parent=parent.parentElement){
    if(emptyDedicated(parent)&&collapsed.size<100){parent.setAttribute(marker,'');collapsed.add(parent);}
   }
  }
- if(stopped)stop();report();
+ if(stopped){stop();report();return;}
+ if(hiddenRecheck.length||collapsedRecheck.length||queue.size||candidates.size){
+  timer=setTimeout(batch,16); // Yield the main thread before doing more layout work.
+ }else{
+  hiddenRecheck=null;collapsedRecheck=null;report();
+ }
 }
 function watch(){
  stop();if(!policy||document.hidden||stopped)return;

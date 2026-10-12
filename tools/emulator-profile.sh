@@ -6,6 +6,12 @@ if [ "$qemu" != 1 ]; then echo 'Refusing profile isolation on a physical device'
 adb root
 adb wait-for-device
 mkdir -p dist/profile
+adb shell dumpsys display > dist/profile/display.txt
+adb shell wm density > dist/profile/density.txt
+adb shell settings get system font_scale > dist/profile/font-scale.txt
+sha256sum app/build/outputs/apk/benchmark/app-benchmark.apk ../velocity-baseline/app/build/outputs/apk/benchmark/app-benchmark.apk > dist/profile/apk-sha256.txt
+git rev-parse HEAD > dist/profile/current-commit.txt
+git -C ../velocity-baseline rev-parse HEAD > dist/profile/baseline-commit.txt
 curl -fsSL https://get.perfetto.dev/trace_processor -o /tmp/velocity-trace-processor
 chmod +x /tmp/velocity-trace-processor
 bun tools/bench-runner/src/scroll-fixture-server.ts 8181 > /tmp/velocity-fixtures.log 2>&1 &

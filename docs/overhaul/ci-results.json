@@ -1,0 +1,174 @@
+{
+  "source": "88578f7c46da41d1bc74c12c82b673d5017b540a",
+  "workflow": "https://github.com/linkalls/velocity-browser/actions/runs/38228147415",
+  "tests": {
+    "tests": 27,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "screenshots": [
+    {
+      "file": "screenshots/after/dark-browser.png",
+      "sha256": "5e6577a8303f45478d6436a6099b1b3fc81376c7b852e43958526abf41828e53",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/after/dark-home.png",
+      "sha256": "e07d68bd1d14c03f28cb67054db30b576c89228cd1f627143c79c087895de8b2",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/after/dark-menu.png",
+      "sha256": "6147964caf9ea6ca08f843915fd2e67855761a623d1af2d73fd314feb1472791",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/after/dark-settings.png",
+      "sha256": "3d65944d429616095c1a034358a1efac510012182bdb85aef1fa984cde46ebc0",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/after/dark-tabs.png",
+      "sha256": "1ca0fd29e36a2f969712a8c2fa8295a8bbe2eadc965132c9592e17473b4327bf",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/after/light-browser.png",
+      "sha256": "6d4b56bee3c8fc63d2e8570263bf33f517b6f0485d25f1b3914143e0c57677da",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/after/light-home.png",
+      "sha256": "2bb7c1267ab425ec9032b6a04e61ee147d05a524456f7c060dc3cfd2d7e38eee",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/after/light-menu.png",
+      "sha256": "a684fdd81d4d7c0308e9469133497673d2a4e005f6a891d25acf73c6ae2dc6f0",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/after/light-settings.png",
+      "sha256": "675179227ab3e3b32d40e92c5494373f77cb4d7fe9875d0a3e599ad9f18e64ad",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/after/light-tabs.png",
+      "sha256": "dbbb2ded2fd5e8ac4a7580f0fb9d1ac8ad72a7e238783d6d7b7806568484e98b",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/before/dark-browser.png",
+      "sha256": "71da524d0dd57652173814e6b8bddf37d9810d59b2b26f95a290b58817636fdd",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/before/dark-home.png",
+      "sha256": "ef089843f7f70bf30d7b8f02d361bdc74ce1a821cec2bfbab81270aefbdb63bf",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/before/dark-menu.png",
+      "sha256": "35100c275a75069bed1c6fa41fd72c293eda65995c8512368f0c5b556b0d0daa",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/before/dark-settings.png",
+      "sha256": "fb7c1288d7d654b18d8c0b6be905595ee4d6f9d917f9a89e557c79ff93cab3ab",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/before/dark-tabs.png",
+      "sha256": "33035dd61a087bca97b095d0698cf3237b1ac7292015eb4482fe0afaf01c19ae",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/before/light-browser.png",
+      "sha256": "ee5e41ae95c71f8bdcb1ca578ab602cf89d2c099419419d762c1fd69a4590341",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/before/light-home.png",
+      "sha256": "9769cd7b66899980307cd20af5e4469556614343cc5de1a1299e7fe644f85db8",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/before/light-menu.png",
+      "sha256": "3270dd18f256eb574bf4150cb426127bee0eb88e5f7449d50c63aaf2e5d5eac8",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/before/light-settings.png",
+      "sha256": "4dd622663691dd0b25bbf8dc7e12fb0bf66ab15df232882f6c3cb1c476fc23f6",
+      "size": [
+        320,
+        640
+      ]
+    },
+    {
+      "file": "screenshots/before/light-tabs.png",
+      "sha256": "298759b44f41772024c98b12f6ff7301b79ff5115d95ad892048ec572c71aaee",
+      "size": [
+        320,
+        640
+      ]
+    }
+  ],
+  "screenshotArtifact": 11737147838,
+  "apkArtifact": 11738270520
+}

@@ -142,7 +142,14 @@ class CompatibilityIntegrationTest {
             main { app.coordinator.createTab(f.url+"/auth") }
             assertTrue("initial auth dialog",device.wait(Until.hasObject(By.text("HTTP認証")),15000))
             click("キャンセル")
-            assertTrue("canceled request must settle before retry",device.wait(Until.hasObject(By.text("更新")),15000))
+            // Reload is a menu quick action now; wait for the same rendered loading state,
+            // then require the actual visible menu route before issuing the retry.
+            await("canceled request must settle before retry") {
+                val field=MainActivity::class.java.getDeclaredField("chrome").apply {isAccessible=true}
+                (field.get(app.coordinator.host!!.activity) as dev.velocity.browser.ui.BrowserChromeView).reload.text.toString()=="更新"
+            }
+            assertTrue(device.wait(Until.hasObject(By.desc("メニュー")),10000));device.findObject(By.desc("メニュー")).click()
+            assertTrue(device.wait(Until.hasObject(By.desc("更新")),10000));click("閉じる")
             main { app.coordinator.navigate(f.url+"/auth?retry=1") }
             assertTrue("retry auth dialog, requests=${f.authRequests.get()}",device.wait(Until.hasObject(By.text("HTTP認証")),15000))
             device.findObject(By.hint("ユーザー名")).text="fixture"

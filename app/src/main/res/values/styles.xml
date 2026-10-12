@@ -1,8 +1,18 @@
 <resources>
 <style name="AppThemeLight" parent="android:style/Theme.Material.Light.NoActionBar">
 <item name="android:fontFamily">sans-serif</item><item name="android:textCursorDrawable">@drawable/browser_cursor</item><item name="android:windowLightStatusBar">true</item><item name="android:statusBarColor">@color/browser_light_background</item><item name="android:navigationBarColor">@color/browser_light_background</item><item name="android:windowBackground">@color/browser_light_background</item><item name="android:colorAccent">@color/browser_light_accent</item><item name="android:editTextColor">@color/browser_light_text</item><item name="android:textColorPrimary">@color/browser_light_text</item><item name="android:textColorSecondary">@color/browser_light_muted</item>
+<item name="android:colorBackground">@color/browser_light_background</item>
+<item name="android:colorBackgroundFloating">@color/browser_light_surface</item>
+<item name="android:colorControlNormal">@color/browser_light_muted</item>
+<item name="android:colorControlActivated">@color/browser_light_accent</item>
+<item name="android:colorControlHighlight">@color/browser_light_pressed</item>
 </style>
 <style name="AppThemeDark" parent="android:style/Theme.Material.NoActionBar">
 <item name="android:fontFamily">sans-serif</item><item name="android:textCursorDrawable">@drawable/browser_cursor</item><item name="android:windowLightStatusBar">false</item><item name="android:statusBarColor">@color/browser_dark_background</item><item name="android:navigationBarColor">@color/browser_dark_background</item><item name="android:windowBackground">@color/browser_dark_background</item><item name="android:colorAccent">@color/browser_dark_accent</item><item name="android:editTextColor">@color/browser_dark_text</item><item name="android:textColorPrimary">@color/browser_dark_text</item><item name="android:textColorSecondary">@color/browser_dark_muted</item>
+<item name="android:colorBackground">@color/browser_dark_background</item>
+<item name="android:colorBackgroundFloating">@color/browser_dark_surface</item>
+<item name="android:colorControlNormal">@color/browser_dark_muted</item>
+<item name="android:colorControlActivated">@color/browser_dark_accent</item>
+<item name="android:colorControlHighlight">@color/browser_dark_pressed</item>
 </style><style name="AppTheme" parent="AppThemeLight"/>
 </resources>

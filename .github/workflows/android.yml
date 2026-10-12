@@ -3,6 +3,9 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+concurrency:
+  group: android-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -46,7 +49,7 @@ jobs:
       - run: bun test
       - run: bun run typecheck
   device-smoke:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/scroll-ui-overhaul'))
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
@@ -68,7 +71,10 @@ jobs:
         with:
           api-level: 36
           arch: x86_64
+          disable-animations: false
           script: bash tools/device-smoke.sh
+        env:
+          VELOCITY_CAPTURE_BASELINE: '1'
       - name: Report device test outcomes
         if: always()
         run: |
@@ -91,8 +97,19 @@ jobs:
                   for failure in list(case.findall('failure')) + list(case.findall('error')):
                       print((failure.get('message', '') + '\n' + (failure.text or ''))[:12000])
           print('DEVICE_TOTALS', totals)
-          if totals['tests'] != 24:
-              raise SystemExit('Expected all 24 smoke cases; partial execution is not a pass')
+          if totals['tests'] != 27:
+              raise SystemExit('Expected all 27 smoke cases; partial execution is not a pass')
           if totals['failures'] or totals['errors'] or totals['skipped']:
               raise SystemExit(1)
           PYTHON
+
+      - name: Upload device validation
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: Velocity-UI-validation
+          path: |
+            app/build/outputs/androidTest-results/
+            app/build/reports/androidTests/
+            dist/screenshots/
+          if-no-files-found: error

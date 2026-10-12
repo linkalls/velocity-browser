@@ -55,13 +55,23 @@ class ThemeController(private val context: Context) {
         dialog.window?.setBackgroundDrawable(context.rounded(p.surface,20))
         fun visit(view: View) {
             when (view) {
-                is TextView -> { view.applyTextPalette(p); if (view is Button) { view.setTextColor(if (danger && view.id == android.R.id.button1) p.danger else p.accent); view.backgroundTintList = android.content.res.ColorStateList.valueOf(p.pressed) }; if (view is CompoundButton) view.buttonTintList = android.content.res.ColorStateList.valueOf(p.accent) }
+                is TextView -> { view.applyTextPalette(p); if (view is Button) { view.setTextColor(if(danger&&view.id==android.R.id.button1)p.danger else if(view.id==android.R.id.button1)p.accent else p.text);view.minHeight=context.dp(48);view.stateListAnimator=null;view.elevation=0f;view.background=android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(p.pressed),context.rounded(p.surface,DesignTokens.CONTROL_RADIUS),null) }; if (view is CompoundButton) view.buttonTintList = android.content.res.ColorStateList.valueOf(p.accent) }
                 is ListView -> { view.setBackgroundColor(p.surface); view.selector = ColorDrawable(p.pressed); view.divider = ColorDrawable(p.border) }
                 is ViewGroup -> if (view.background != null) view.setBackgroundColor(p.surface)
             }
             if (view is ViewGroup) for (n in 0 until view.childCount) visit(view.getChildAt(n))
         }
-        dialog.window?.decorView?.let(::visit)
+        dialog.window?.apply {
+            @Suppress("DEPRECATION")
+            statusBarColor=p.background
+            @Suppress("DEPRECATION")
+            navigationBarColor=p.surface
+            if(android.os.Build.VERSION.SDK_INT>=30){
+                val mask=android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+                peekDecorView()?.windowInsetsController?.setSystemBarsAppearance(if(p.dark)0 else mask,mask)
+            }
+        }
+        dialog.window?.peekDecorView()?.let(::visit)
         if (context is dev.velocity.browser.VelocityApp && context.coordinator.scheduler.tabs.any { it.privateMode }) dialog.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
     @Suppress("DEPRECATION")

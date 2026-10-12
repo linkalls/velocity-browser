@@ -14,3 +14,21 @@ Gecko状態通知は要求IDとepochなし。Webのsnapshotは厳密な最新性
 
 
 schema 2は旧記録を保持し、最新immutable snapshotを150msまとめてI/O ownerでserialize/commitする。論理タブは上限で切り捨てず、起動時は選択タブだけopen。GridViewの再利用カードとカテゴリー別標準View設定を使用し、新しいUIフレームワーク依存は追加しない。
+
+## 0.5 chrome / native surfaces
+
+ToolbarMotion and ToolbarGeometry live in pure Kotlin core. BrowserChromeView
+owns current/target toolbar geometry and one animator, never engine sessions.
+Compositor pan direction takes precedence over competing content notifications;
+short distance/time hysteresis filters reversals. Transient UI locks retain the
+Gecko dynamic maximum, while auto-hide OFF changes the baseline and immediately
+reapplies clipping. Top chrome moves the GeckoView's parent; selection pin freezes
+motion. Layout callbacks preserve the visible fraction instead of applying the
+target endpoint. No per-frame requestLayout, page scripting or session churn.
+
+VelocityComponents supplies native text actions, search/empty/header controls and
+VelocitySheet window/insets behavior. BrowserMenuSheet is independent from
+SettingsView. TabSwitcherView retains recycling GridView and normal/private
+filtering. HomeInputState still owns tab-partitioned process-RAM drafts. Color
+resources and BrowserPalette are the only palette source; new private/on-accent
+colors extend it without changing preference schemas.

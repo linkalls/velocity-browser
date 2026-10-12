@@ -1,10 +1,12 @@
 <resources>
-    <color name="browser_light_background">#F7F8FA</color><color name="browser_light_surface">#FFFFFF</color><color name="browser_light_card">#FFFFFF</color>
-    <color name="browser_light_text">#16191E</color><color name="browser_light_muted">#666D78</color><color name="browser_light_accent">#2962D6</color>
-    <color name="browser_light_border">#E0E4E9</color><color name="browser_light_pressed">#E9EFFB</color><color name="browser_light_danger">#B3261E</color>
-    <color name="browser_dark_background">#111317</color><color name="browser_dark_surface">#1A1D22</color><color name="browser_dark_card">#1A1D22</color>
-    <color name="browser_dark_text">#F0F2F4</color><color name="browser_dark_muted">#A7ADB7</color><color name="browser_dark_accent">#8AAEFF</color>
-    <color name="browser_dark_border">#343940</color><color name="browser_dark_pressed">#24324C</color><color name="browser_dark_danger">#FF8E87</color>
+    <color name="browser_light_background">#F6F8F6</color><color name="browser_light_surface">#FFFFFF</color><color name="browser_light_card">#E8EEEA</color>
+    <color name="browser_light_text">#19211D</color><color name="browser_light_muted">#586860</color><color name="browser_light_accent">#216A50</color>
+    <color name="browser_light_border">#D9E2DB</color><color name="browser_light_pressed">#D7EAE0</color><color name="browser_light_danger">#B3261E</color>
+    <color name="browser_dark_background">#0F1216</color><color name="browser_dark_surface">#191F24</color><color name="browser_dark_card">#232B30</color>
+    <color name="browser_dark_text">#F4F6F7</color><color name="browser_dark_muted">#A6B2B8</color><color name="browser_dark_accent">#86D9B9</color>
+    <color name="browser_dark_border">#303840</color><color name="browser_dark_pressed">#233E36</color><color name="browser_dark_danger">#FF8C91</color>
     <!-- Visible on both surfaces for the public pre-29 cursor API fallback. -->
-    <color name="browser_cursor">#2962D6</color>
+    <color name="browser_cursor">#216A50</color>
+<color name="browser_light_on_accent">#FFFFFF</color><color name="browser_dark_on_accent">#10241B</color>
+    <color name="browser_light_private">#6344A4</color><color name="browser_dark_private">#C6ACFF</color>
 </resources>
