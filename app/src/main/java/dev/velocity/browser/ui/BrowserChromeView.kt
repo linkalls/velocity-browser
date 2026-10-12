@@ -35,10 +35,13 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
     private val addressGroup=LinearLayout(context).apply {gravity=Gravity.CENTER_VERTICAL}
     private val start=LinearLayout(context).apply {orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;setPadding(context.dp(24),context.dp(16),context.dp(24),context.dp(16))}
     private val homeSearch=EditText(context).apply {hint="検索またはURL";contentDescription="ホームの検索・URL入力";textSize=16f;setSingleLine(true);isSaveEnabled=false;imeOptions=EditorInfo.IME_ACTION_GO;inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI;minimumHeight=context.dp(48);filters=arrayOf(android.text.InputFilter.LengthFilter(4096))}
-    private val wordmark=TextView(context).apply {text="Velocity";textSize=28f;gravity=Gravity.CENTER}
-    private val shortcuts=LinearLayout(context).apply {orientation=LinearLayout.VERTICAL}
-    private val addShortcut=Button(context).apply {text="ショートカットを追加";isAllCaps=false;minHeight=context.dp(48)}
+    private val wordmark=TextView(context).apply {text="velocity";textSize=22f;gravity=Gravity.CENTER}
+    private val shortcuts=GridLayout(context)
+    private val addShortcut=context.actionButton("＋ 追加"){onAddShortcut()}.apply {contentDescription="ショートカットを追加"}
     private val accessibility=context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+    private var rawAddress="about:blank"
+    private var privateMode=false
+    private var pageLoading=false
     private var homeContext:String?=null
     private var starting=true;private var modal=false;private var ime=false
     private val motion=ToolbarMotion()
@@ -66,7 +69,6 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
         start.addView(wordmark,LinearLayout.LayoutParams(-1,-2).apply {bottomMargin=context.dp(24)})
         start.addView(homeSearch,LinearLayout.LayoutParams(-1,-2))
         start.addView(shortcuts,LinearLayout.LayoutParams(-1,-2).apply {topMargin=context.dp(16)})
-        start.addView(addShortcut,LinearLayout.LayoutParams(-1,-2).apply {topMargin=context.dp(12)})
         addShortcut.setOnClickListener {onAddShortcut()}
         homeSearch.setOnEditorActionListener {_,action,_->if(action==EditorInfo.IME_ACTION_GO){navigate(homeSearch.text.toString(),homeSearch);true}else false}
         toolbar.addView(back,LinearLayout.LayoutParams(context.dp(48),-1))
@@ -81,9 +83,11 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
         tabsButton.setOnClickListener {onTabs()};menuButton.setOnClickListener {onMenu()};info.setOnClickListener {onBlock()}
         address.setOnEditorActionListener {_,action,_->if(action==EditorInfo.IME_ACTION_GO){navigate(address.text.toString(),address);true}else false}
         address.setOnFocusChangeListener {_,focused->
+            if(focused){address.setText(if(rawAddress=="about:blank")"" else rawAddress);address.selectAll()}
+            else setAddressUrl(rawAddress)
             listOf(back,tabsButton,menuButton).forEach {it.visibility=if(focused)View.GONE else View.VISIBLE}
             info.visibility=if(focused||context.resources.configuration.fontScale>=1.5f)View.GONE else View.VISIBLE
-            syncDynamic();onEditingChanged()
+            updateAddressActions();syncDynamic();onEditingChanged()
         }
         homeSearch.addTextChangedListener(object:android.text.TextWatcher {
             override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int){}
@@ -98,7 +102,7 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
             else->false
         }}
         address.setOnLongClickListener {if(address.hasFocus())false else {PopupMenu(context,address).apply {
-            menu.add("URLをコピー").setOnMenuItemClickListener {(context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("URL",address.text.toString()));true}
+            menu.add("URLをコピー").setOnMenuItemClickListener {(context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("URL",rawAddress));true}
             menu.add("サイト情報").setOnMenuItemClickListener {onBlock();true}
         }.show();true}}
         setOnApplyWindowInsetsListener {_,insets->
@@ -115,6 +119,18 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
     private fun navigate(value:String,input:EditText){input.clearFocus();(context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(input.windowToken,0);onNavigate(value)}
     private fun positionHome(){homeSurface.setPadding(0,if(bottomAddress)0 else toolbarHeight,0,if(bottomAddress)toolbarHeight else 0)}
     fun setAddressBottom(bottom:Boolean){if(bottomAddress==bottom)return;bottomAddress=bottom;positionHome();preferences.edit().putBoolean("address_bottom",bottom).apply();toolbar.layoutParams=LayoutParams(-1,toolbarHeight,if(bottom)Gravity.BOTTOM else Gravity.TOP);showToolbar(true,false);syncDynamic()}
+    fun setAddressUrl(url:String){
+        rawAddress=url.ifBlank {"about:blank"}
+        if(address.hasFocus())return
+        val display=if(url=="about:blank")"" else runCatching {java.net.URI(url).host}.getOrNull()?:url
+        if(address.text.toString()!=display)address.setText(display)
+        address.contentDescription=(if(privateMode)"非公開 · " else "")+"アドレス・検索"+(if(display.isBlank())"" else " · $display")
+    }
+    fun setPageLoading(value:Boolean){pageLoading=value;updateAddressActions()}
+    private fun updateAddressActions(){
+        reload.visibility=if(address.hasFocus()||pageLoading)View.VISIBLE else View.GONE
+        privateTag.visibility=if(privateMode&&!address.hasFocus())View.VISIBLE else View.GONE
+    }
     fun submitAddress(){navigate(address.text.toString(),address)}
     fun cancelAddressEdit(){address.clearFocus();requestFocus();(context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(address.windowToken,0);onEditingChanged()}
     fun setModalBlocked(blocked:Boolean){if(modal==blocked)return;modal=blocked;syncDynamic()}
@@ -160,6 +176,7 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
     private fun applyOffset(visible:Float){
         val geometry=ToolbarGeometry.calculate(toolbarHeight,visible,bottomAddress,dynamicMax>0)
         motion.frame(visible/toolbarHeight)
+        toolbar.importantForAccessibility=if(motion.target==1f)View.IMPORTANT_FOR_ACCESSIBILITY_AUTO else View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         toolbar.translationY=geometry.toolbarTranslation
         // Move the parent, not GeckoView/SurfaceView; keep session/surface ownership intact.
         engineContainer.translationY=geometry.contentTranslation
@@ -168,7 +185,8 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
     fun showStart(show:Boolean){if(starting==show)return;starting=show;homeSurface.visibility=if(show)View.VISIBLE else View.GONE;syncDynamic()}
     fun updateState(tabCount:Int,privateMode:Boolean,mode:String,lite:Boolean,busy:Boolean,decisions:Int,status:String,selectedId:String?=null){
         if(homeContext!=selectedId){showToolbar(true,false);homeContext=selectedId;homeSearch.setText(selectedId?.let(homeInputs::get).orEmpty())}
-        privateTag.visibility=if(privateMode)View.VISIBLE else View.GONE
+        if(this.privateMode!=privateMode){this.privateMode=privateMode;applyPalette(palette);setAddressUrl(rawAddress)}
+        updateAddressActions()
         tabsButton.count=tabCount
         val description="タブ $tabCount 件"+(if(privateMode)" · 非公開" else "")
         if(tabsButton.contentDescription!=description)tabsButton.contentDescription=description
@@ -184,15 +202,35 @@ class BrowserChromeView(context: Context,private val homeInputs:HomeInputState=H
         }
         if(info.contentDescription!=state)info.contentDescription=state
     }
-    fun refreshShortcuts(){shortcuts.removeAllViews();val entries=runCatching {org.json.JSONArray(preferences.getString("home_shortcuts","[]"))}.getOrElse {org.json.JSONArray()}
-        for(i in 0 until minOf(entries.length(),12)){val item=entries.optJSONObject(i)?:continue;val url=item.optString("url");if(dev.velocity.browser.security.UrlPolicy.httpUrl(url)==null)continue
-            shortcuts.addView(Button(context).apply {text=item.optString("title",url);isAllCaps=false;stateListAnimator=null;elevation=0f;background=null;minHeight=context.dp(48);setOnClickListener {onNavigate(url)};setOnLongClickListener {onAddShortcut();true}},LinearLayout.LayoutParams(-1,-2))
-        };applyPalette(palette)
+    fun refreshShortcuts(){
+        shortcuts.removeAllViews()
+        val columns=if(context.resources.configuration.fontScale>=1.5f)2 else if(context.resources.configuration.screenWidthDp>=600)4 else 3
+        shortcuts.columnCount=columns
+        fun add(view:View,index:Int){shortcuts.addView(view,GridLayout.LayoutParams(GridLayout.spec(index/columns),GridLayout.spec(index%columns,1f)).apply {
+            width=0;height=-2;setMargins(context.dp(4),context.dp(4),context.dp(4),context.dp(4))
+        })}
+        val entries=runCatching {org.json.JSONArray(preferences.getString("home_shortcuts","[]"))}.getOrElse {org.json.JSONArray()}
+        var count=0
+        for(i in 0 until minOf(entries.length(),12)){
+            val item=entries.optJSONObject(i)?:continue;val url=item.optString("url")
+            if(dev.velocity.browser.security.UrlPolicy.httpUrl(url)==null)continue
+            val name=item.optString("title",url)
+            add(context.actionButton((name.firstOrNull()?.uppercaseChar()?:'↗').toString()+"\n"+name){onNavigate(url)}.apply {
+                contentDescription="ショートカット · $name";textSize=14f;minHeight=context.dp(88);maxLines=3;ellipsize=android.text.TextUtils.TruncateAt.END
+                setOnLongClickListener {onAddShortcut();true}
+            },count++)
+        }
+        add(addShortcut,count);applyPalette(palette)
     }
-    fun applyPalette(next:BrowserPalette){palette=next;setBackgroundColor(next.background);start.setBackgroundColor(next.background);toolbar.setBackgroundColor(next.surface);addressGroup.background=context.rounded(next.background,14);address.applyTextPalette(next);address.background=null;homeSearch.applyTextPalette(next);homeSearch.background=context.rounded(next.surface,14);wordmark.setTextColor(next.text);privateTag.setTextColor(next.muted)
+    fun applyPalette(next:BrowserPalette){
+        palette=next;setBackgroundColor(next.background);start.setBackgroundColor(next.background);toolbar.setBackgroundColor(next.surface)
+        addressGroup.background=context.rounded(next.card,DesignTokens.ADDRESS_RADIUS,if(privateMode)next.privateAccent else null)
+        address.applyTextPalette(next);address.background=null
+        homeSearch.applyTextPalette(next);homeSearch.setPadding(context.dp(16),context.dp(12),context.dp(16),context.dp(12));homeSearch.background=context.rounded(next.surface,DesignTokens.ADDRESS_RADIUS,next.border)
+        wordmark.setTextColor(next.muted);privateTag.setTextColor(next.privateAccent)
         listOf(back,forward,reload,tabsButton,menuButton,info).forEach {it.palette=next}
-        addShortcut.setTextColor(next.muted);addShortcut.background=null
-        for(i in 0 until shortcuts.childCount)(shortcuts.getChildAt(i) as TextView).setTextColor(next.text)
+        addShortcut.actionPalette(next)
+        for(i in 0 until shortcuts.childCount)(shortcuts.getChildAt(i) as TextView).actionPalette(next)
     }
     override fun onAttachedToWindow(){super.onAttachedToWindow();preferences.registerOnSharedPreferenceChangeListener(prefsChanged);accessibility.addTouchExplorationStateChangeListener(touchExplorationChanged)}
     override fun onDetachedFromWindow(){preferences.unregisterOnSharedPreferenceChangeListener(prefsChanged);accessibility.removeTouchExplorationStateChangeListener(touchExplorationChanged);animator?.cancel();super.onDetachedFromWindow()}

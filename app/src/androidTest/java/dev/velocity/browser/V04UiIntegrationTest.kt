@@ -51,7 +51,7 @@ class V04UiIntegrationTest {
         val font=device.executeShellCommand("settings get system font_scale").trim().toFloatOrNull()?:1f
         launch();try {
             main {app.coordinator.createTab(privateMode=true)}
-            assertTrue(device.wait(Until.hasObject(By.text("Velocity")),10000));assertFalse(device.hasObject(By.text("Wikipedia  ↗")))
+            assertTrue(device.wait(Until.hasObject(By.text("velocity")),10000));assertFalse(device.hasObject(By.text("Wikipedia  ↗")))
             assertTrue(device.hasObject(By.text("非公開")))
             assertTrue(device.hasObject(By.desc("ホームの検索・URL入力")))
             device.findObject(By.desc("ホームの検索・URL入力")).text="PRIVATE_NATIVE_DRAFT"
@@ -110,6 +110,41 @@ class V04UiIntegrationTest {
                 main {assertSame(session,chrome().geckoView.session);assertEquals(id,app.coordinator.scheduler.selectedId)}
             }
         }finally {main {chrome().setAddressBottom(oldBottom);prefs.edit().putBoolean("toolbar_scroll",oldScroll).apply()};cleanup()}}
+    }
+
+    @Test fun homeShortcutGridOrderingAndMenuRoutesRetainIdentity() {
+        launch();val prefs=app.getSharedPreferences("settings",0);val previous=prefs.getString("home_shortcuts",null)
+        try {
+            main {app.coordinator.createTab();prefs.edit().putString("home_shortcuts","[{\"title\":\"Alpha\",\"url\":\"https://example.com/a\"},{\"title\":\"Bravo\",\"url\":\"https://example.com/b\"}]").apply()}
+            assertTrue(device.wait(Until.hasObject(By.desc("ショートカット · Alpha")),10000))
+            val target=device.findObject(By.desc("ショートカット · Alpha"));assertTrue(target.visibleBounds.height()>=inst.targetContext.dp(48))
+            target.longClick();assertTrue(device.wait(Until.hasObject(By.text("Alpha")),10000));device.findObject(By.text("Alpha")).click()
+            assertTrue(device.wait(Until.hasObject(By.text("後へ移動")),10000));device.findObject(By.text("後へ移動")).click();device.waitForIdle()
+            main {assertEquals("Bravo",org.json.JSONArray(prefs.getString("home_shortcuts","[]")).getJSONObject(0).getString("title"))}
+            var id="";var identity:Long?=null
+            main {id=app.coordinator.scheduler.selectedId!!;identity=app.coordinator.scheduler.tab(id)!!.identity}
+            clickDescription("メニュー");assertTrue(device.wait(Until.hasObject(By.desc("共有")),10000));assertFalse(device.findObject(By.desc("共有")).isEnabled)
+            clickDescription("設定");assertTrue(device.wait(Until.hasObject(By.desc("設定を検索")),10000));closeSettings()
+            main {assertEquals(id,app.coordinator.scheduler.selectedId);assertEquals(identity,app.coordinator.scheduler.tab(id)!!.identity)}
+        }finally {main {if(previous==null)prefs.edit().remove("home_shortcuts").apply() else prefs.edit().putString("home_shortcuts",previous).apply()};cleanup()}
+    }
+    @Test fun captureMajorScreensInBothThemes() {
+        launch()
+        val label=InstrumentationRegistry.getArguments().getString("screenshot_label","after")
+        val folder=java.io.File(inst.targetContext.getExternalFilesDir(null),"screenshots/$label").apply {mkdirs()}
+        fun capture(name:String){device.waitForIdle();assertTrue("capture $name",device.takeScreenshot(java.io.File(folder,"$name.png")))}
+        Fixture().use {f->try {
+            for(mode in listOf(ThemeController.Mode.LIGHT,ThemeController.Mode.DARK)) {
+                val prefix=mode.name.lowercase()
+                main {app.coordinator.createTab();app.appearance.select(mode)}
+                capture("$prefix-home")
+                val id=page(f);capture("$prefix-browser")
+                main {chrome().onTabs()};assertTrue(device.wait(Until.hasObject(By.text("完了")),10000));capture("$prefix-tabs");device.findObject(By.text("完了")).click()
+                clickDescription("メニュー");assertTrue(device.wait(Until.hasObject(By.text("閉じる")),10000));capture("$prefix-menu");closeSettings()
+                main {chrome().onSettings()};assertTrue(device.wait(Until.hasObject(By.desc("設定を検索")),10000));capture("$prefix-settings");closeSettings()
+                main {app.coordinator.close(id,true)}
+            }
+        }finally {cleanup()}}
     }
 
 }

@@ -20,20 +20,16 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
         var available: (() -> Boolean)? = null
     }
     private data class Binding(val row: Row, val root: LinearLayout, val label: TextView,
-        val detail: TextView, val trailing: TextView?, val toggle: Switch?)
+        val detail: TextView, val trailing: TextView?, val toggle: Switch?, val separator: View)
     private val dialog = Dialog(context).apply { requestWindowFeature(Window.FEATURE_NO_TITLE) }
     private val panel = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
     private val bindings = mutableListOf<Binding>()
     private val separators=mutableListOf<View>()
     private val headings = mutableMapOf<String, TextView>()
-    private val heading = TextView(context).apply { text = title; textSize = 24f; typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL) }
-    private val close = Button(context).apply { text = "閉じる"; isAllCaps = false; minHeight = context.dp(48); setOnClickListener { dialog.dismiss() } }
-    private val search = EditText(context).apply {
-        hint = "設定を検索"; textSize = 16f; setSingleLine(true); isSaveEnabled = false
-        setPadding(context.dp(16), context.dp(12), context.dp(16), context.dp(12))
-        contentDescription = "設定を検索"
-    }
-    private val empty = TextView(context).apply { text = "一致する設定がありません"; textSize = 16f; setPadding(context.dp(16), context.dp(24), context.dp(16), 0) }
+    private val heading = TextView(context).apply { text = title; textSize = DesignTokens.TITLE_SP; typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL) }
+    private val close=context.actionButton("閉じる"){dialog.dismiss()}
+    private val search=context.searchField("設定を検索")
+    private val empty=context.emptyState("一致する設定がありません")
     private val preferences=listOf("settings","appearance","block_settings").map {context.getSharedPreferences(it,Context.MODE_PRIVATE)}
     private val preferenceChanged=android.content.SharedPreferences.OnSharedPreferenceChangeListener {_,_->refresh()}
     val isShowing get() = dialog.isShowing
@@ -55,11 +51,7 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
         val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         // A category appears once, in the order supplied by the caller.
         rows.groupBy { it.category }.forEach { (category, items) ->
-            val header = TextView(context).apply {
-                text = category; textSize = 13f; typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                setPadding(context.dp(4), context.dp(20), 0, context.dp(8))
-                if (android.os.Build.VERSION.SDK_INT >= 28) isAccessibilityHeading = true
-            }
+            val header = context.sectionHeader(category)
             headings[category] = header; content.addView(header)
             items.forEach { row ->
                 val root = LinearLayout(context).apply {
@@ -74,12 +66,13 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
                 }
                 root.addView(LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; addView(label); addView(detail) }, LinearLayout.LayoutParams(0, -2, 1f))
                 val toggle = row.checked?.let { Switch(context).apply { isClickable = false; isFocusable = false; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO } }
-                val trailing = if (toggle == null && row.navigation) TextView(context).apply { text = "›"; textSize = 24f; setPadding(context.dp(12), 0, context.dp(4), 0) } else null
+                val trailing = if (toggle == null && row.navigation) TextView(context).apply { text = "›"; textSize = DesignTokens.TITLE_SP; setPadding(context.dp(12), 0, context.dp(4), 0) } else null
                 if (toggle != null) root.addView(toggle) else if(trailing!=null)root.addView(trailing)
-                val binding = Binding(row, root, label, detail, trailing, toggle); bindings += binding
+                val separator=View(context).apply {separators+=this}
+                val binding = Binding(row, root, label, detail, trailing, toggle,separator); bindings += binding
                 root.setOnClickListener { if(row.available?.invoke()!=false)row.action(); refreshValues() }
-                content.addView(root, LinearLayout.LayoutParams(-1, -2))
-                content.addView(View(context).apply {setBackgroundColor(appearance.palette().border);separators+=this},LinearLayout.LayoutParams(-1,context.dp(1)))
+                content.addView(root, LinearLayout.LayoutParams(-1, -2).apply {bottomMargin=context.dp(4)})
+                content.addView(separator,LinearLayout.LayoutParams(-1,0))
             }
         }
         content.addView(empty)
@@ -115,6 +108,7 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
             val matches = query.isEmpty() || "${b.row.category} ${b.label.text} ${b.detail.text}".contains(query, ignoreCase = true)
             val next = if (matches) View.VISIBLE else View.GONE
             if (b.root.visibility != next) b.root.visibility = next
+            b.separator.visibility=next
         }
         headings.forEach { (category, header) -> header.visibility = if (!compact && bindings.any { it.row.category == category && it.root.visibility == View.VISIBLE }) View.VISIBLE else View.GONE }
         empty.visibility = if (bindings.none { it.root.visibility == View.VISIBLE }) View.VISIBLE else View.GONE
@@ -127,13 +121,14 @@ class SettingsView(context: Context, private val appearance: ThemeController, ti
     }
     private fun applyPalette() {
         val p = appearance.palette(); panel.setBackgroundColor(p.background); heading.setTextColor(p.text)
-        close.setTextColor(p.accent); close.background = RippleDrawable(ColorStateList.valueOf(p.pressed), close.context.rounded(p.surface, 12), null)
-        search.applyTextPalette(p); search.background = search.context.rounded(p.surface, 12)
+        close.actionPalette(p)
+        search.applyTextPalette(p); search.background = search.context.rounded(p.surface, DesignTokens.CONTROL_RADIUS)
         empty.setTextColor(p.muted); headings.values.forEach { it.setTextColor(p.muted) };separators.forEach {it.setBackgroundColor(p.border)}
         bindings.forEach { b ->
-            b.root.background = RippleDrawable(ColorStateList.valueOf(p.pressed), b.root.context.rounded(p.background, 0), null)
+            b.root.background = RippleDrawable(ColorStateList.valueOf(p.pressed), b.root.context.rounded(p.surface, DesignTokens.CONTROL_RADIUS), null)
             b.label.setTextColor(p.text); b.detail.setTextColor(p.muted); b.trailing?.setTextColor(p.muted)
             b.toggle?.thumbTintList = ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(p.accent, p.muted))
+            b.toggle?.trackTintList=ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked),intArrayOf()),intArrayOf(p.pressed,p.border))
         }
     }
 }
