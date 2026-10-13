@@ -160,7 +160,7 @@ public final class ChromiumTestActivity extends Activity {
     }
 
     private void startChromium(LinearLayout root, FrameLayout content, View header, View footer,
-                               String url) {
+                               String initialUrl) {
         if (destroyed || isFinishing()) return;
         try {
             // Preserve Chromium's native Surface attachment to WindowAndroid.
@@ -187,7 +187,7 @@ public final class ChromiumTestActivity extends Activity {
                 updateNavigation();
             }));
     
-            engine.loadUrl(url);
+            engine.loadUrl(initialUrl);
             updateNavigation();
             Log.i(TAG, "CEF surface created and page navigation started");
         } catch (RuntimeException | LinkageError error) {
