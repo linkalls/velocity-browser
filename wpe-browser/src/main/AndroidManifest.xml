@@ -6,7 +6,6 @@
         android:label="Velocity WPE (Test)"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:allowBackup="false"
-        android:extractNativeLibs="true"
         android:usesCleartextTraffic="false"
         android:supportsRtl="true">
         <activity
