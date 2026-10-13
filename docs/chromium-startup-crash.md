@@ -64,3 +64,37 @@ crashes, OOM kills, SIGKILL, or all failures in child processes; use adb logcat
 when there is no Java stack. Also the diagnostic APK must be **updated** before
 the next crash for this feature to work retroactively (previous Java crashes
 are not recoverable from this file).
+
+## Pixel 7 Pro crash signature confirmed 2026-10-13 13:36 JST
+
+The user captured a Java exception from the primary process on
+`Chrome_ProcessLauncherThread`:
+
+```
+Caused by: android.content.pm.PackageManager$NameNotFoundException:
+ComponentInfo{dev.velocity.browser.chromiumtest/org.chromium.content.app.NativeOnlySandboxedProcessService0}
+    at org.chromium.base.process_launcher.ChildConnectionAllocator.checkServiceExists
+    at org.chromium.content.browser.ChildProcessLauncherHelperImpl.createAndStart
+```
+
+This is a **child process service lookup failure**, not a scrolling/GPU issue.
+The app's `reason=4` now has an actual Java cause. Cefrium's docs promise
+standard multi-process Service declarations via the AAR, but Android 37 /
+Chromium 154 additionally attempts a specifically named **native-only**
+sandboxed Service. It is distinct from `SandboxedProcessService0`.
+
+The experimental manifest declares `NativeOnlySandboxedProcessService0` with
+the same `:sandboxed_process0`, isolated/external/native service attributes
+and the Chromium native-child entry-point properties. It deliberately DOES
+NOT disable sandboxing, set single-process mode, or declare a reduced service
+pool. This is a hypothesis until packaged Manifest audit, exported symbol
+check, emulator, and Pixel 7 Pro runtime tests succeed. If libcef.so does not
+export `NativeChildProcessService_onCreate`, the SDK itself must be updated;
+the manifest alone is insufficient. CI uploads `Chromium-CEF-Native-Service-Audit`
+with the final merged manifest and `readelf` output.
+
+Upstream reference: https://chromium.googlesource.com/chromium/src/+/HEAD/android_webview/nonembedded/java/AndroidManifest.xml
+
+**Important:** Native-only Android child service is an implementation detail.
+Do not ship the patched APK for sensitive browsing until it has passed
+multi-process isolation and renderer crash-recovery tests.

@@ -26,5 +26,23 @@
             android:exported="false"
             android:windowSoftInputMode="adjustResize"
             android:configChanges="uiMode|screenSize|orientation" />
+        <!-- Chromium 154 on Android 37 attempts native-only renderer service 0.
+             The Cefrium 0.9.4 AAR's standard sandboxed services are distinct.
+             Keep the renderer isolated; never disable process sandboxing.
+             Match Chromium native-only service properties and libcef.so name. -->
+        <service
+            android:name="org.chromium.content.app.NativeOnlySandboxedProcessService0"
+            android:process=":sandboxed_process0"
+            android:isolatedProcess="true"
+            android:exported="true"
+            android:externalService="true"
+            android:nativeService="true">
+            <property
+                android:name="android.app.PROPERTY_NATIVE_SERVICE_LIBRARY_NAME"
+                android:value="libcef.so" />
+            <property
+                android:name="android.app.PROPERTY_NATIVE_SERVICE_FUNCTION_NAME"
+                android:value="NativeChildProcessService_onCreate" />
+        </service>
     </application>
 </manifest>

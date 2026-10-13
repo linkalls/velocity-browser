@@ -35,6 +35,35 @@ jobs:
       - name: Build independent Chromium engine APK
         working-directory: experiments/chromium
         run: gradle --no-daemon --max-workers=2 :app:testDebugUnitTest :app:assembleDebug
+      - name: Audit Chromium renderer services and native entry point
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          APK=experiments/chromium/app/build/outputs/apk/debug/app-debug.apk
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt2"
+          "$AAPT" dump xmltree --file AndroidManifest.xml "$APK" > dist/chromium-manifest-tree.txt
+          echo "### Chromium child services in packaged APK" | tee dist/chromium-service-audit.txt
+          grep -E 'NativeOnlySandboxedProcessService0|SandboxedProcessService0|NUM_SANDBOXED_SERVICES|nativeService|externalService|NativeChildProcessService_onCreate|libcef.so' dist/chromium-manifest-tree.txt | head -n 65 | tee -a dist/chromium-service-audit.txt || true
+          if ! grep -q 'org.chromium.content.app.NativeOnlySandboxedProcessService0' dist/chromium-manifest-tree.txt; then
+            echo "ERROR: native-only Chromium renderer service missing in packaged APK" | tee -a dist/chromium-service-audit.txt
+            exit 1
+          fi
+          unzip -p "$APK" lib/arm64-v8a/libcef.so > /tmp/velocity-libcef.so
+          echo "### NativeChildProcessService_onCreate dynamic symbol" | tee -a dist/chromium-service-audit.txt
+          if readelf --dyn-syms -W /tmp/velocity-libcef.so | grep -F 'NativeChildProcessService_onCreate' | tee -a dist/chromium-service-audit.txt; then
+            echo "Native service entry point symbol available" | tee -a dist/chromium-service-audit.txt
+          else
+            echo "WARNING: entry point not in libcef dynamic symbol table; manifest fix alone may not work" | tee -a dist/chromium-service-audit.txt
+          fi
+      - name: Upload Chromium service and symbol audit
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: Chromium-CEF-Native-Service-Audit
+          path: |
+            dist/chromium-service-audit.txt
+            dist/chromium-manifest-tree.txt
+          if-no-files-found: warn
       - name: Validate APK and package
         run: |
           set -euo pipefail
