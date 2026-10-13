@@ -2,6 +2,9 @@ plugins {
     id("com.android.application")
     id("com.cefrium")
 }
+// Override with -PchromiumAbi=x86_64 for CI emulator smoke tests.
+val chromiumAbi = providers.gradleProperty("chromiumAbi").orElse("arm64-v8a").get()
+require(chromiumAbi == "arm64-v8a" || chromiumAbi == "x86_64") { "Unsupported ABI: $chromiumAbi" }
 android {
     namespace = "dev.velocity.chromium"
     compileSdk { version = release(37) { minorApiLevel = 1 } }
@@ -12,7 +15,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1-cefrium-experiment"
-        ndk { abiFilters += "arm64-v8a" }
+        ndk { abiFilters += chromiumAbi }
     }
     buildTypes {
         release { isMinifyEnabled = false }
