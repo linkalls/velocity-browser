@@ -1,0 +1,55 @@
+name: WPE WebKit experimental APK
+on:
+  push:
+    branches: [experiment/wpe-webkit-engine]
+    paths:
+      - 'wpe-browser/**'
+      - 'settings.gradle.kts'
+      - 'gradle/**'
+      - '.github/workflows/wpe-experiment.yml'
+  pull_request:
+    paths:
+      - 'wpe-browser/**'
+      - 'settings.gradle.kts'
+      - 'gradle/**'
+      - '.github/workflows/wpe-experiment.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: wpe-experiment-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  wpe-apk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4.0.4
+        with:
+          packages: platform-tools
+      - run: sdkmanager 'platforms;android-37.1' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v6.4.0
+      - name: Compile WPE WebKit experiment
+        run: ./gradlew --no-daemon --max-workers=1 :wpe-browser:testDebugUnitTest :wpe-browser:assembleDebug
+      - name: Verify engine dependency and build output
+        run: |
+          set -euo pipefail
+          test -s wpe-browser/build/outputs/apk/debug/wpe-browser-debug.apk
+          ./gradlew --quiet :wpe-browser:dependencies --configuration debugRuntimeClasspath > /tmp/wpe-deps.txt
+          grep -F 'org.wpewebkit.wpeview:wpeview:0.3.3' /tmp/wpe-deps.txt
+          mkdir -p dist
+          cp wpe-browser/build/outputs/apk/debug/wpe-browser-debug.apk dist/Velocity-WPE-WebKit-arm64-EXPERIMENT.apk
+          sha256sum dist/Velocity-WPE-WebKit-arm64-EXPERIMENT.apk | tee dist/SHA256SUMS.txt
+      - name: Upload experimental installable APK
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: Velocity-WPE-WebKit-arm64-EXPERIMENT
+          path: |
+            dist/Velocity-WPE-WebKit-arm64-EXPERIMENT.apk
+            dist/SHA256SUMS.txt
+          compression-level: 0
+          if-no-files-found: error

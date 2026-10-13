@@ -4,4 +4,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral(); maven("https://maven.mozilla.org/maven2/") }
 }
 rootProject.name = "VelocityBrowser"
-include(":app", ":core", ":minimal-geckoview", ":benchmark")
+include(":app", ":core", ":minimal-geckoview", ":benchmark", ":wpe-browser")
