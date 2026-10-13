@@ -27,7 +27,7 @@ Without `--require-native-export`, zero exit means the **audit** completed;
 `apk: NOT BUILT`, `runtime: NOT TESTED`. The AAR manifest is plain XML;
 it is not the final merged APK manifest. No APK audit or device test is claimed.
 
-`upstream-lock.json` records commits and SHA256 of 33 inspected files and the
+`upstream-lock.json` records commits and SHA256 of 37 inspected files and the
 official AAR. Fetching these files is sufficient to reproduce inspection and
 patch applicability, **not** to compile Chromium. Byte hashes provide immutable
 comparison with the observed downloads; upstream signature authentication was
@@ -68,6 +68,14 @@ initialization correctly; review every reachable renderer path for JNI calls.
 Do not call `JNI_OnLoad` with a fabricated/null JavaVM, or reuse Chrome's delegate
 in place of CEF's. Confirm the hook and upstream service translation unit are
 linked with `gn desc` and a linker map. No unverified GN toggle is supplied.
+
+The pinned upstream also adds `no-sandbox` in `Cefrium.java:279` and sets
+`settings.no_sandbox = true` in `cef_android_jni_bridge.cc:156` and
+`cefrium_sdk_jni.cc:3378`. This is an additional security **NO-GO** for the native
+experiment. Remove those inherited settings in the separately built experimental
+SDK and verify child command lines and sandbox policy. Preserve the existing
+Java baseline SDK unchanged; its isolated-process declarations alone do not
+establish the effect of these Chromium switches on every sandbox layer.
 
 The existing pinned script supplies its own GN args and builds libcef and the
 matching AAR together. Once those source changes are ready, its arm64 command is:

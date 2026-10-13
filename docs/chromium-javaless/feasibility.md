@@ -21,7 +21,7 @@ diagnostic Application/Activity、Manifest、Gradle、`boot-smoke.sh`、既存CI
 | Chromium | `154.0.8037.98` → `b859317bf11f6be47f9b7799ec690a0a42a1fb33` | [tag](https://chromium.googlesource.com/chromium/src/+/refs/tags/154.0.8037.98) |
 | Android frameworks/base | 調査時 `android17-release` → `94b4c163b7dfe5ce3607f7bb8456f9573f7de57d` | [commit](https://android.googlesource.com/platform/frameworks/base/+/94b4c163b7dfe5ce3607f7bb8456f9573f7de57d) |
 
-33ファイルのURL・decoded SHA256、AARのURL・SHA256を
+37ファイルのURL・decoded SHA256、AARのURL・SHA256を
 [`upstream-lock.json`](../../experiments/chromium/native-engine/upstream-lock.json) に記録した。
 取得ツールは必ずcommit URLを使い、hashが違えば失敗する。
 タグ署名の検証は行っていない。全Chromium/DEPSのcheckoutではない。
@@ -47,6 +47,8 @@ diagnostic Application/Activity、Manifest、Gradle、`boot-smoke.sh`、既存CI
 | Cefrium native source | Cefrium独自の `NativeInitializationHook` 定義は検索で見つからなかった。Java起動相当のVMなし初期化とCEF rendererのJNI依存を調査・実装する必要がある。 |
 | Cefrium `cefrium_sdk/BUILD.gn` | `cef:libcef`、JNI registration、Java classes、pak/ICU/V8 resourcesを同一ビルドのAARに格納。 |
 | Cefrium `cefrium_sdk/AndroidManifest.xml` | 40 Java sandbox serviceを直接列挙するstatic Manifest。Native service生成はない。 |
+| Cefrium `CefriumInitProvider.java` / `Cefrium.java` | providerはActivityより前に `initialize()` を呼ぶ。browser初期化で `in-process-gpu` と **`no-sandbox`** を追加する（`Cefrium.java:279`）。 |
+| Cefrium `cef_android_jni_bridge.cc` / `cefrium_sdk_jni.cc` | native初期化にも **`settings.no_sandbox = true`** がある（それぞれ156行、3378行）。禁止switchを実験側だけで除くには、整合した独自SDKのJava/native両経路を改修する必要がある。 |
 | Cefrium `build-all-variants.sh` / `slim_aar.py` | GN→ninja `cef:libcef cef/cefrium_sdk:cefrium_aar`→slim AAR。既存バイナリへの注入ではない。 |
 
 **確定できる原因:** version scriptはNative入口を隠す。公式AARの両ABIでも
@@ -54,6 +56,13 @@ dynamic symbol非公開を再現した。
 **未確定:** published buildでobjectが残るか、LTO/dead-stripで消えるか、どの強いhookが
 最終的にリンクされるか。strip済み配布物には対応するlink mapがなく、独自リンクも未実行。
 「exportリスト変更だけで完成」「追加GN flagだけでenable可能」とは結論しない。
+
+**追加のsecurity No-Go:** 固定Cefriumソースは自分で `no-sandbox` と
+`settings.no_sandbox=true` を設定する。今回追加したswitchではないが、仕様書はnative実験で
+これを禁止している。Android isolated UIDの宣言が残ることだけでは、Chromium側sandboxが
+要求どおり有効であると断定できない。子プロセスに渡るcommand lineと実際のsandbox policyを
+調査し、独自native SDKでJava/native初期化の両方からこの設定を除いた検証がGo条件となる。
+既存Java安定版のSDK/起動設定を勝手に変更して回避しない。
 
 ### 選択・評価タイミング
 
@@ -118,13 +127,13 @@ loaderからの入口解決、binder互換性は実機未確認。
 
 | 項目 | 結果 / 証拠 |
 |---|---|
-| 固定ソース33ファイル取得・SHA256照合 | ローカル成功 |
+| 固定ソース37ファイル取得・SHA256照合 | ローカル成功 |
 | export-onlyパッチ `git apply --check` | v0.9.4相当の取得ソースで成功。GN/compile/linkは未試験 |
 | ELF export gate unit tests | 4テスト成功。UND/local/hidden/object/mangled/類似名を拒否 |
 | 公式AAR arm64 / x86_64監査 | 取得・監査成功、Native exportゲートは両方FAIL |
 | Javaコード/Manifest/Gradle/既存CI不変 | baselineとの差分なし |
-| Javaビルド・単体テスト・API 36 emulator | baseline [run 38348032541](https://github.com/linkalls/velocity-browser/actions/runs/38348032541) のsuccessをGitHub APIで確認。今回の再実行結果はPRのCI参照 |
-| 新規audit-only GitHub Actions | workflow追加。実行結果はPR/Actions参照。緑でもnative成功を意味しない |
+| Javaビルド・単体テスト・API 36 emulator | 今回 [run 38358783338](https://github.com/linkalls/velocity-browser/actions/runs/38358783338) でarm64 build/単体テスト/Manifest監査とx86_64 emulator起動smokeがsuccess（`cc04c81`）。その後の変更もdocs/source lockのみで、Java実行ソース/設定は不変。ページ/JSの完了を証明する試験ではない |
+| 新規audit-only GitHub Actions | 今回 [run 38358783504](https://github.com/linkalls/velocity-browser/actions/runs/38358783504) がsuccess（`cc04c81`）。以後の37ファイルlock版の結果は [PR #9](https://github.com/linkalls/velocity-browser/pull/9) のChecks参照。緑でもnative成功を意味しない |
 | 新規native engine/AAR/APK・merged Manifest | NOT BUILT / NOT TESTED |
 | API 37 native emulator / Pixel 7 Pro | NOT TESTED |
 | HTML/JS、isolated UID、cross-site、renderer回復 | NOT TESTED |
@@ -137,6 +146,7 @@ loaderからの入口解決、binder互換性は実機未確認。
 
 - Java版/mainのremote branchを変更しない。native flavorやapp ID変更も行わない。
 - WebView/Gecko/WPE fallback、sandbox無効化、Java別名serviceは追加していない。
+- ただしCefrium upstreamに既存の `no-sandbox` 設定が見つかった。Java版を不変に保ったことは、そのSDKのsandbox安全性を認証したことを意味しない。native実験への継承はNo-Go。
 - API 37 headerのABIは `void(ANativeService*)`。onCreateでcallbacks登録、onBindでnative AIDL binderとrenderer thread作成、onUnbindでtoken削除・最後のservice参照解放、onRebind/onDestroyは固定upstreamでは空処理。
 - Binder返却時の `AIBinder_incStrong`、caller PID/class check、setupConnection、FD duplication/registration、clean exit通知・forceKillをupstreamが実装。変更・無効化していない。CEFとの実際のIPC/終了/再起動は未検証。
 - Android `PackageManager.java` のlibrary propertyは完全な `lib*.so` 名、function propertyは入口名。`ServiceInfo.FLAG_NATIVE_SERVICE` はisolatedProcessがなければ無視される。OS feature flagsとnative zygote対応も実機で確認する必要がある。
@@ -158,7 +168,8 @@ OS側native loader/lifecycle実装の全経路は未調査。存在しなかっ�
 ## 7. Next blockers / Go条件
 
 1. 400 GB以上・RAM32 GB以上のLinux build hostで固定Chromium/CEF/DEPSを取得する。標準hosted runnerでengine buildしたように見せない。
-2. export専用パッチを適用し、Cefrium専用のVMなしstrong initialization hookとJNI依存対応を実装・レビューする。既存JNI_OnLoad経路は保つ。
+   このsessionのGitHub権限ではself-hosted runner一覧APIが403となり、利用可能な大型runnerは確認できなかった。
+2. export専用パッチを適用し、Cefrium専用のVMなしstrong initialization hookとJNI依存対応を実装・レビューする。独自SDKの `Cefrium.java` とnative CEF settingsにある `no-sandbox` 設定も除き、childのsandboxを検証する。既存Java安定版のJNI_OnLoad経路と公式SDKは保つ。
 3. `gn desc`/link mapでreal service objectとhookを確認し、同一ビルドのJava/resources/AARを生成。dynamic symbolを定義済みFUNCとして検査し、API 37 loaderで解決する。
 4. OS native loader/zygote経路、CEF IPC/FD/sandboxと終了回復を確認。matching AAR checksum、対応ソース・LGPL改変表示・NOTICEを準備する。
 5. ここでGo再判定。通った後のみ別applicationId/flavorとChrome固定テンプレートのManifest、API37選択、merged APK auditを追加する。
