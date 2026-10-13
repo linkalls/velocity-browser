@@ -6,7 +6,7 @@ This branch adds an independent Chromium engine using **Cefrium 0.9.4**, an expe
 
 ## Build and install
 
-The repository root Gradle environment continues using Java 17, Gradle wrapper 9.6 etc. Cefrium 0.9.4 instead requires **JDK 25, Gradle 9.7.1, AGP 9.4, compileSdk 37**. To avoid breaking the existing Gecko builds, the Chromium experiment is its own Gradle root under `experiments/chromium/`. GitHub Actions supplies the experimental toolchain.
+The repository root Gradle environment continues using Java 17, Gradle wrapper 9.6 etc. Cefrium 0.9.4 instead requires **JDK 25, Gradle 9.7.1, AGP 9.4, compileSdk 37 (SDK 37.1 minor release on this CI runner)**. To avoid breaking the existing Gecko builds, the Chromium experiment is its own Gradle root under `experiments/chromium/`. GitHub Actions supplies the experimental toolchain.
 
 GitHub Actions > **Chromium CEF experiment APK** > `Velocity-Chromium-CEF-arm64-EXPERIMENT` artifact. Install APK from its ZIP. The package is `dev.velocity.browser.chromiumtest` and cannot overwrite the existing `dev.velocity.browser` / `dev.velocity.browser.wpe`.
 
