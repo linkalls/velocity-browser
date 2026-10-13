@@ -145,4 +145,33 @@ public final class StartupDiagnosticActivity extends Activity {
         if (count == 0) result.append("記録なし — 起動前に未記録の障害が起きた可能性もあります");
         status.setText(result.toString());
     }
+    private void refreshJavaCrash() {
+        File file = new File(getFilesDir(), ChromiumDiagnosticApplication.CRASH_FILE);
+        if (!file.isFile()) {
+            lastCrashText = "";
+            if (crashStack != null) {
+                crashStack.setText("Java例外の詳細記録なし。次にChromium本体を起動して再現してください。");
+            }
+            return;
+        }
+        try (FileInputStream in = new FileInputStream(file);
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[4096];
+            int count;
+            while ((count = in.read(buffer)) != -1 && out.size() < 48000) {
+                out.write(buffer, 0, Math.min(count, 48000 - out.size()));
+            }
+            lastCrashText = out.toString(StandardCharsets.UTF_8.name());
+            if (crashStack != null) {
+                crashStack.setText("Java例外スタックトレース（直近）\n" + lastCrashText);
+            }
+        } catch (Exception failure) {
+            lastCrashText = "";
+            if (crashStack != null) {
+                crashStack.setText("Java例外記録の読み込み失敗: " +
+                    failure.getClass().getSimpleName());
+            }
+        }
+    }
+
 }
