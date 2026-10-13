@@ -1,0 +1,221 @@
+{
+  "baseline": "8a223d6b57fbfa7cc978914eb3e51d170aa7bc08",
+  "cefrium": {
+    "tag": "v0.9.4",
+    "tag_object": "f382bcd246986051beb447c03cbadcb58127f1d7",
+    "commit": "1e2367bd80ce762fe75383455b5b1cd7e5e019a5"
+  },
+  "chromium": {
+    "tag": "154.0.8037.98",
+    "commit": "b859317bf11f6be47f9b7799ec690a0a42a1fb33"
+  },
+  "android_frameworks_base": {
+    "observed_ref": "android17-release",
+    "commit": "94b4c163b7dfe5ce3607f7bb8456f9573f7de57d"
+  },
+  "official_aar": {
+    "url": "https://repo.maven.apache.org/maven2/com/cefrium/cefrium-sdk/0.9.4/cefrium-sdk-0.9.4.aar",
+    "sha256": "4ec9aac59f2ef2663170f684be78463acede1fff8cbc25500a34daa20f5d4623",
+    "sha1": "082cb37b2f66a536f677f1f77cf6c47ddae4f0cf"
+  },
+  "sources": [
+    {
+      "path": "cefrium/CHROMIUM_BUILD_COMPATIBILITY.txt",
+      "url": "https://codeberg.org/cefrium/cef-android/raw/commit/1e2367bd80ce762fe75383455b5b1cd7e5e019a5/CHROMIUM_BUILD_COMPATIBILITY.txt",
+      "encoding": "raw",
+      "sha256": "8d300b357d773c967845d14c569d5bf3541b11094213ec58d25dabdb5ee62c0f"
+    },
+    {
+      "path": "cefrium/BUILD.gn",
+      "url": "https://codeberg.org/cefrium/cef-android/raw/commit/1e2367bd80ce762fe75383455b5b1cd7e5e019a5/BUILD.gn",
+      "encoding": "raw",
+      "sha256": "005654609306104d06a8a3156c3aa2552eb88b8804d6e51e3fdff4c9304fa465"
+    },
+    {
+      "path": "cefrium/libcef_dll/libcef.lst",
+      "url": "https://codeberg.org/cefrium/cef-android/raw/commit/1e2367bd80ce762fe75383455b5b1cd7e5e019a5/libcef_dll/libcef.lst",
+      "encoding": "raw",
+      "sha256": "715c04e8cf1300a5e22c44ade2b01a2cdddeb6f53ed716d4129de1214fee826c"
+    },
+    {
+      "path": "cefrium/libcef/browser/android/cef_jni_onload.cc",
+      "url": "https://codeberg.org/cefrium/cef-android/raw/commit/1e2367bd80ce762fe75383455b5b1cd7e5e019a5/libcef/browser/android/cef_jni_onload.cc",
+      "encoding": "raw",
+      "sha256": "d199ee3cd6b05165d367381c8e331a7d45d3725ad3625cfaf950016b3a36729a"
+    },
+    {
+      "path": "cefrium/cefrium_sdk/BUILD.gn",
+      "url": "https://codeberg.org/cefrium/cef-android/raw/commit/1e2367bd80ce762fe75383455b5b1cd7e5e019a5/cefrium_sdk/BUILD.gn",
+      "encoding": "raw",
+      "sha256": "da6d63b1250cf396e13fa71d06c450dffcf4c5632e6dc20009f41bcde77bf9aa"
+    },
+    {
+      "path": "cefrium/cefrium_sdk/AndroidManifest.xml",
+      "url": "https://codeberg.org/cefrium/cef-android/raw/commit/1e2367bd80ce762fe75383455b5b1cd7e5e019a5/cefrium_sdk/AndroidManifest.xml",
+      "encoding": "raw",
+      "sha256": "e63f28f74c0e1257fdd2b4fd3ac68deaee5a81596ac3a37c03790991efe7ca2d"
+    },
+    {
+      "path": "cefrium/cefrium_sdk/java/src/org/chromium/build/BuildConfig.java",
+      "url": "https://codeberg.org/cefrium/cef-android/raw/commit/1e2367bd80ce762fe75383455b5b1cd7e5e019a5/cefrium_sdk/java/src/org/chromium/build/BuildConfig.java",
+      "encoding": "raw",
+      "sha256": "62dab22bb17bdd4aa2a56cd3452960f64a89ac7e7a8ede34161e8bea0d659eff"
+    },
+    {
+      "path": "cefrium/cefrium_sdk/build-all-variants.sh",
+      "url": "https://codeberg.org/cefrium/cef-android/raw/commit/1e2367bd80ce762fe75383455b5b1cd7e5e019a5/cefrium_sdk/build-all-variants.sh",
+      "encoding": "raw",
+      "sha256": "f8157e83476c4df9731565c4a1b3f9094e68d771915217dddb4c94d4b8da0696"
+    },
+    {
+      "path": "cefrium/cefrium_sdk/slim_aar.py",
+      "url": "https://codeberg.org/cefrium/cef-android/raw/commit/1e2367bd80ce762fe75383455b5b1cd7e5e019a5/cefrium_sdk/slim_aar.py",
+      "encoding": "raw",
+      "sha256": "c054e0251be18c4c1c5b5d573d37c1f816486eca375d12c1b80b0fe4205201c9"
+    },
+    {
+      "path": "cefrium/cefrium_sdk/apply-patches.py",
+      "url": "https://codeberg.org/cefrium/cef-android/raw/commit/1e2367bd80ce762fe75383455b5b1cd7e5e019a5/cefrium_sdk/apply-patches.py",
+      "encoding": "raw",
+      "sha256": "5c90d241c1b041130e88a6fd816cc67a8c51673710eb273774fa084e80461084"
+    },
+    {
+      "path": "cefrium/BUILD-GUIDE-CEFRIUM.md",
+      "url": "https://codeberg.org/cefrium/cef-android/raw/commit/1e2367bd80ce762fe75383455b5b1cd7e5e019a5/BUILD-GUIDE-CEFRIUM.md",
+      "encoding": "raw",
+      "sha256": "159e5bf07a930a80538b1e6cf66c54596ac7d763293bbffc5b998b55a041ffa7"
+    },
+    {
+      "path": "cefrium/LICENSE-CEFRIUM.md",
+      "url": "https://codeberg.org/cefrium/cef-android/raw/commit/1e2367bd80ce762fe75383455b5b1cd7e5e019a5/LICENSE-CEFRIUM.md",
+      "encoding": "raw",
+      "sha256": "9ed51cc1f39bcf06d96e73366b4d0360d3ae89d3b155b756acbb05dde2ea485f"
+    },
+    {
+      "path": "chromium/content/app/BUILD.gn",
+      "url": "https://chromium.googlesource.com/chromium/src/+/b859317bf11f6be47f9b7799ec690a0a42a1fb33/content/app/BUILD.gn?format=TEXT",
+      "encoding": "base64",
+      "sha256": "ba4bae5a574695fc571a70a74dd30f9f9c4032c5159843c0e2ba631e9df88b03"
+    },
+    {
+      "path": "chromium/content/app/android/javaless_child_process_service.cc",
+      "url": "https://chromium.googlesource.com/chromium/src/+/b859317bf11f6be47f9b7799ec690a0a42a1fb33/content/app/android/javaless_child_process_service.cc?format=TEXT",
+      "encoding": "base64",
+      "sha256": "46e76c42440e07fbd8f96fd959f8e834038451e4a0a1fbfddd19ba1aa9868fba"
+    },
+    {
+      "path": "chromium/content/app/android/content_main_android.cc",
+      "url": "https://chromium.googlesource.com/chromium/src/+/b859317bf11f6be47f9b7799ec690a0a42a1fb33/content/app/android/content_main_android.cc?format=TEXT",
+      "encoding": "base64",
+      "sha256": "a77f63bc770fc81ed38f9d85f19cc8a5a0067e4ff09191038791df386977e246"
+    },
+    {
+      "path": "chromium/content/app/android/library_loader_hooks.cc",
+      "url": "https://chromium.googlesource.com/chromium/src/+/b859317bf11f6be47f9b7799ec690a0a42a1fb33/content/app/android/library_loader_hooks.cc?format=TEXT",
+      "encoding": "base64",
+      "sha256": "509d10d74048955e07ce1ce47b4c8c908209ce41485f6f48328471b582d207d6"
+    },
+    {
+      "path": "chromium/content/public/app/BUILD.gn",
+      "url": "https://chromium.googlesource.com/chromium/src/+/b859317bf11f6be47f9b7799ec690a0a42a1fb33/content/public/app/BUILD.gn?format=TEXT",
+      "encoding": "base64",
+      "sha256": "fef81406d2e4adbbec931b5adf14bd7b87ab726636de3baf9c1f4d7a40ad4848"
+    },
+    {
+      "path": "chromium/content/public/android/java/src/org/chromium/content/browser/ChildProcessCreationParamsImpl.java",
+      "url": "https://chromium.googlesource.com/chromium/src/+/b859317bf11f6be47f9b7799ec690a0a42a1fb33/content/public/android/java/src/org/chromium/content/browser/ChildProcessCreationParamsImpl.java?format=TEXT",
+      "encoding": "base64",
+      "sha256": "7e49810f5fb809eb90e15678e324c39e048d270eafbc0eaaa058b982299f116f"
+    },
+    {
+      "path": "chromium/content/public/android/java/src/org/chromium/content_public/browser/JavalessRenderersFeatureList.java",
+      "url": "https://chromium.googlesource.com/chromium/src/+/b859317bf11f6be47f9b7799ec690a0a42a1fb33/content/public/android/java/src/org/chromium/content_public/browser/JavalessRenderersFeatureList.java?format=TEXT",
+      "encoding": "base64",
+      "sha256": "338883450f24f9acf78471ddf7fae980292791e843c4cc8efa978f422b80261e"
+    },
+    {
+      "path": "chromium/content/public/android/java/src/org/chromium/content/browser/ChildProcessLauncherHelperImpl.java",
+      "url": "https://chromium.googlesource.com/chromium/src/+/b859317bf11f6be47f9b7799ec690a0a42a1fb33/content/public/android/java/src/org/chromium/content/browser/ChildProcessLauncherHelperImpl.java?format=TEXT",
+      "encoding": "base64",
+      "sha256": "2c9eade53964db008ed4c7279ca7a1af117fe789b0b2bb1e5dc8bfbe87155d3e"
+    },
+    {
+      "path": "chromium/base/android/java/src/org/chromium/base/process_launcher/ChildConnectionAllocator.java",
+      "url": "https://chromium.googlesource.com/chromium/src/+/b859317bf11f6be47f9b7799ec690a0a42a1fb33/base/android/java/src/org/chromium/base/process_launcher/ChildConnectionAllocator.java?format=TEXT",
+      "encoding": "base64",
+      "sha256": "621907017d2d2f57a70a772e7d178fd5a1877b96e5a7486eb9618b4fc01e03da"
+    },
+    {
+      "path": "chromium/chrome/browser/android/chrome_entry_point.cc",
+      "url": "https://chromium.googlesource.com/chromium/src/+/b859317bf11f6be47f9b7799ec690a0a42a1fb33/chrome/browser/android/chrome_entry_point.cc?format=TEXT",
+      "encoding": "base64",
+      "sha256": "7a6f4ada37bd499d1c62408833436e80f9973992291971e610c04b6065754f30"
+    },
+    {
+      "path": "chromium/chrome/app/android/chrome_jni_onload.cc",
+      "url": "https://chromium.googlesource.com/chromium/src/+/b859317bf11f6be47f9b7799ec690a0a42a1fb33/chrome/app/android/chrome_jni_onload.cc?format=TEXT",
+      "encoding": "base64",
+      "sha256": "3a44a75ac403d900c2b6fe1add264560ed4d871d87782b6e0523d50db3795eab"
+    },
+    {
+      "path": "chromium/chrome/android/java/AndroidManifest.xml",
+      "url": "https://chromium.googlesource.com/chromium/src/+/b859317bf11f6be47f9b7799ec690a0a42a1fb33/chrome/android/java/AndroidManifest.xml?format=TEXT",
+      "encoding": "base64",
+      "sha256": "74b0b6251dff01717dc3e54c3ee705722ecb512edc5d91fc35988edd89a6072d"
+    },
+    {
+      "path": "chromium/android_webview/nonembedded/java/AndroidManifest.xml",
+      "url": "https://chromium.googlesource.com/chromium/src/+/b859317bf11f6be47f9b7799ec690a0a42a1fb33/android_webview/nonembedded/java/AndroidManifest.xml?format=TEXT",
+      "encoding": "base64",
+      "sha256": "584065cc39ecdea68e3acda095bc703c36c9ea64a08393496699ef47f510c8c2"
+    },
+    {
+      "path": "chromium/third_party/android_toolchain/native_service.h",
+      "url": "https://chromium.googlesource.com/chromium/src/+/b859317bf11f6be47f9b7799ec690a0a42a1fb33/third_party/android_toolchain/native_service.h?format=TEXT",
+      "encoding": "base64",
+      "sha256": "547a09b08b19b4d9ac3fb3f4b38c8dfbe9274ba9d6ba6edb15bdfe765fa5b3d0"
+    },
+    {
+      "path": "chromium/build/config/android/config.gni",
+      "url": "https://chromium.googlesource.com/chromium/src/+/b859317bf11f6be47f9b7799ec690a0a42a1fb33/build/config/android/config.gni?format=TEXT",
+      "encoding": "base64",
+      "sha256": "2ed6aa1a5c49cd78a71264c40b042845ddd6470a7adc0336ea6989757f6df8a2"
+    },
+    {
+      "path": "chromium/build/config/android/rules.gni",
+      "url": "https://chromium.googlesource.com/chromium/src/+/b859317bf11f6be47f9b7799ec690a0a42a1fb33/build/config/android/rules.gni?format=TEXT",
+      "encoding": "base64",
+      "sha256": "a3bff87d85dcd45fa5efbecb53e43c7ad811affae961665dbf6cd469ab1830e5"
+    },
+    {
+      "path": "chromium/build/config/android/internal_rules.gni",
+      "url": "https://chromium.googlesource.com/chromium/src/+/b859317bf11f6be47f9b7799ec690a0a42a1fb33/build/config/android/internal_rules.gni?format=TEXT",
+      "encoding": "base64",
+      "sha256": "b94f5aa819d198ed1aba308cd1f69cda632cff4b6c3b2c48d3e8f4840f5567b5"
+    },
+    {
+      "path": "chromium/build/config/features.gni",
+      "url": "https://chromium.googlesource.com/chromium/src/+/b859317bf11f6be47f9b7799ec690a0a42a1fb33/build/config/features.gni?format=TEXT",
+      "encoding": "base64",
+      "sha256": "915f78aabf4afa8010b6579f6cb45131e1b24a9176a39185e6e2d17a871f2e2d"
+    },
+    {
+      "path": "android/core/java/android/content/pm/PackageManager.java",
+      "url": "https://android.googlesource.com/platform/frameworks/base/+/94b4c163b7dfe5ce3607f7bb8456f9573f7de57d/core/java/android/content/pm/PackageManager.java?format=TEXT",
+      "encoding": "base64",
+      "sha256": "fefd48c61455289e8b33c3344e5509079b4169ee87cb1d17e950b273966eb0fa"
+    },
+    {
+      "path": "android/core/java/android/content/pm/ServiceInfo.java",
+      "url": "https://android.googlesource.com/platform/frameworks/base/+/94b4c163b7dfe5ce3607f7bb8456f9573f7de57d/core/java/android/content/pm/ServiceInfo.java?format=TEXT",
+      "encoding": "base64",
+      "sha256": "f259a15b5231b8457eecb0ba91c67401392b06e54279fd673d58d1e6028eaa50"
+    },
+    {
+      "path": "android/services/core/java/com/android/server/am/ActiveServices.java",
+      "url": "https://android.googlesource.com/platform/frameworks/base/+/94b4c163b7dfe5ce3607f7bb8456f9573f7de57d/services/core/java/com/android/server/am/ActiveServices.java?format=TEXT",
+      "encoding": "base64",
+      "sha256": "bd27258e4fd4bacec2924fdd6366166104f5961c6600945ae2aedb0163aca7db"
+    }
+  ]
+}

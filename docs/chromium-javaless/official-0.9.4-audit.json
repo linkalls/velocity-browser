@@ -1,0 +1,30 @@
+{
+  "aar_sha256": "4ec9aac59f2ef2663170f684be78463acede1fff8cbc25500a34daa20f5d4623",
+  "entry": "NativeChildProcessService_onCreate",
+  "abis": {
+    "arm64-v8a": {
+      "member": "jni/arm64-v8a/libcef.so",
+      "sha256": "9f57d15af50f38d2fe4a25f1e6de3873f1090471045bde9b0bb1e19735bd5b8f",
+      "entry_defined_and_exported": false
+    },
+    "x86_64": {
+      "member": "jni/x86_64/libcef.so",
+      "sha256": "e8ce70f5cadc5fea429c20aff7cc90adf4b1342a4f5d2f0b72a72853adf410f7",
+      "entry_defined_and_exported": false
+    }
+  },
+  "runtime": "NOT TESTED",
+  "apk": "NOT BUILT",
+  "aar_manifest": {
+    "java_sandboxed_services": 40,
+    "native_services": 0,
+    "scope": "AAR source manifest; not a merged APK audit"
+  },
+  "export_gate": "FAIL",
+  "native_renderer_ready": false,
+  "observed_date": "2026-10-13",
+  "tools": {
+    "readelf": "GNU binutils 2.44",
+    "nm": "GNU binutils 2.44"
+  }
+}

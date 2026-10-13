@@ -1,0 +1,86 @@
+name: Chromium javaless feasibility audit (NO APK)
+on:
+  push:
+    branches: [experiment/chromium-javaless-native-renderer]
+    paths:
+      - 'experiments/chromium/native-engine/**'
+      - 'docs/chromium-javaless/**'
+      - '.github/workflows/chromium-javaless-experiment.yml'
+  pull_request:
+    paths:
+      - 'experiments/chromium/native-engine/**'
+      - 'docs/chromium-javaless/**'
+      - '.github/workflows/chromium-javaless-experiment.yml'
+  workflow_dispatch:
+    inputs:
+      require_native_export:
+        description: 'Hard export gate; official 0.9.4 currently FAILS. No native APK is built.'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: chromium-javaless-audit-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source-and-abi-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Protect the working Java baseline
+        run: |
+          git diff --exit-code 8a223d6b57fbfa7cc978914eb3e51d170aa7bc08 -- \
+            experiments/chromium ':!experiments/chromium/native-engine' \
+            .github/workflows/chromium-experiment.yml
+      - name: Test the export gate
+        run: python3 -m unittest discover -s experiments/chromium/native-engine -p '*_test.py' -v
+      - name: Verify pinned upstream source bytes and patch applicability
+        run: |
+          python3 experiments/chromium/native-engine/fetch_sources.py --output "$RUNNER_TEMP/javaless-sources"
+          git -C "$RUNNER_TEMP/javaless-sources/cefrium" apply --check \
+            "$GITHUB_WORKSPACE/experiments/chromium/native-engine/patches/0001-android-native-service-export.patch"
+          mkdir -p dist/chromium-javaless
+          cp "$RUNNER_TEMP/javaless-sources/verified-sources.json" dist/chromium-javaless/
+      - name: Download the official, unchanged AAR and audit both ABIs
+        env:
+          REQUIRE_NATIVE_EXPORT: ${{ inputs.require_native_export || false }}
+        run: |
+          set -euo pipefail
+          AAR="$RUNNER_TEMP/cefrium-sdk-0.9.4.aar"
+          curl --fail --location --retry 3 --max-time 300 \
+            https://repo.maven.apache.org/maven2/com/cefrium/cefrium-sdk/0.9.4/cefrium-sdk-0.9.4.aar -o "$AAR"
+          EXTRA=()
+          if [ "$REQUIRE_NATIVE_EXPORT" = true ]; then EXTRA+=(--require-native-export); fi
+          python3 experiments/chromium/native-engine/audit.py "$AAR" \
+            --sha256 4ec9aac59f2ef2663170f684be78463acede1fff8cbc25500a34daa20f5d4623 \
+            --abi arm64-v8a --abi x86_64 --output dist/chromium-javaless "${EXTRA[@]}"
+      - name: Report native eligibility separately from audit execution
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = Path('dist/chromium-javaless/audit.json')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('## Phase A only — native APK NOT BUILT; runtime NOT TESTED\n\n')
+              if report.exists():
+                  data = json.loads(report.read_text())
+                  summary.write('Native export gate: **' + data['export_gate'] + '**.\n\n')
+                  summary.write('Audit success means evidence was collected, not that a native renderer works.\n')
+              else:
+                  summary.write('Audit did not complete; inspect the failed step.\n')
+          PY
+      - name: Upload feasibility evidence (no APK or engine binary)
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: Chromium-Javaless-Feasibility-NO-APK
+          path: |
+            dist/chromium-javaless/
+            docs/chromium-javaless/
+            experiments/chromium/native-engine/upstream-lock.json
+            experiments/chromium/native-engine/patches/
+          if-no-files-found: error
