@@ -5,6 +5,8 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.util.Log;
+import android.view.View;
 import android.os.Bundle;
 import android.text.InputType;
 import android.view.Gravity;
@@ -49,6 +51,7 @@ public final class ChromiumTestActivity extends Activity {
     private Button back;
     private Button forward;
     private boolean destroyed;
+    private static final String TAG = "VelocityCefStartup";
 
     private int dp(int v) {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
@@ -71,7 +74,7 @@ public final class ChromiumTestActivity extends Activity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.WHITE);
+        root.setBackgroundColor(Color.TRANSPARENT); // CEF surface may live behind this overlay.
         setContentView(root);
 
         LinearLayout header = new LinearLayout(this);
@@ -116,25 +119,6 @@ public final class ChromiumTestActivity extends Activity {
         FrameLayout content = new FrameLayout(this);
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1f));
 
-        // Creates Chromium's own native ContentViewRenderView-based Surface.
-        // No android.webkit.WebView or GeckoView is used by this experiment.
-        engine = CefriumBrowser.createWithSurface(this);
-        FrameLayout surface = engine.getSurfaceContainer();
-        if (surface.getParent() instanceof ViewGroup) {
-            ((ViewGroup) surface.getParent()).removeView(surface);
-        }
-        content.addView(surface, new FrameLayout.LayoutParams(-1, -1));
-
-        engine.setOnUrlChangedListener(url -> runOnUiThread(() -> {
-            if (destroyed) return;
-            if (!address.hasFocus() && url != null) address.setText(url);
-            updateNavigation();
-        }));
-        engine.setOnTitleChangedListener(name -> runOnUiThread(() -> {
-            if (destroyed) return;
-            title.setText("Chromium · " + (name == null || name.isBlank() ? "Loading" : name));
-            updateNavigation();
-        }));
 
         LinearLayout footer = new LinearLayout(this);
         footer.setGravity(Gravity.CENTER_VERTICAL);
@@ -155,8 +139,70 @@ public final class ChromiumTestActivity extends Activity {
         String initial = SITE_URLS[0];
         address.setText(initial);
         updateNavigation();
-        engine.loadUrl(initial);
         address.clearFocus();
+        // Start native renderer after Android has attached the window.
+        root.post(() -> startChromium(root, content, header, footer, initial));
+    }
+
+    private void positionChromiumSurface(FrameLayout surface, View header, View footer) {
+        if (destroyed || !(surface.getParent() instanceof FrameLayout)) return;
+        int top = header.getHeight();
+        int bottom = footer.getHeight();
+        ViewGroup.LayoutParams old = surface.getLayoutParams();
+        if (old instanceof FrameLayout.LayoutParams &&
+            old.width == -1 && old.height == -1 &&
+            ((FrameLayout.LayoutParams) old).topMargin == top &&
+            ((FrameLayout.LayoutParams) old).bottomMargin == bottom) return;
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(-1, -1);
+        params.topMargin = top;
+        params.bottomMargin = bottom;
+        surface.setLayoutParams(params);
+    }
+
+    private void startChromium(LinearLayout root, FrameLayout content, View header, View footer,
+                               String url) {
+        if (destroyed || isFinishing()) return;
+        try {
+            // Preserve Chromium's native Surface attachment to WindowAndroid.
+            // Reparenting the SDK-owned surface can break native lifecycle.
+            engine = CefriumBrowser.createWithSurface(this);
+            FrameLayout surface = engine.getSurfaceContainer();
+            if (surface.getParent() == null) {
+                content.addView(surface, new FrameLayout.LayoutParams(-1, -1));
+            } else if (surface.getParent() != content) {
+                root.bringToFront();
+                root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, orr, ob) ->
+                    positionChromiumSurface(surface, header, footer));
+                surface.post(() -> positionChromiumSurface(surface, header, footer));
+            }
+    
+            engine.setOnUrlChangedListener(url -> runOnUiThread(() -> {
+                if (destroyed) return;
+                if (!address.hasFocus() && url != null) address.setText(url);
+                updateNavigation();
+            }));
+            engine.setOnTitleChangedListener(name -> runOnUiThread(() -> {
+                if (destroyed) return;
+                title.setText("Chromium · " + (name == null || name.isBlank() ? "Loading" : name));
+                updateNavigation();
+            }));
+    
+            engine.loadUrl(url);
+            updateNavigation();
+            Log.i(TAG, "CEF surface created and page navigation started");
+        } catch (RuntimeException | LinkageError error) {
+            Log.e(TAG, "CEF Surface startup failure", error);
+            if (engine != null) {
+                try { engine.close(); } catch (RuntimeException ignored) { }
+                engine = null;
+            }
+            title.setText("Chromium初期化失敗");
+            new AlertDialog.Builder(this)
+                .setTitle("Chromium起動エラー")
+                .setMessage(error.getClass().getSimpleName() + ": " + error.getMessage() +
+                    "\\n\\nlogcat: VelocityCefStartup / AndroidRuntime")
+                .setPositiveButton("閉じる", null).show();
+        }
     }
 
     private void updateNavigation() {
