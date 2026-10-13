@@ -8,6 +8,7 @@ import android.graphics.Color;
 import android.util.Log;
 import android.view.View;
 import android.os.Bundle;
+import android.os.Build;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -22,6 +23,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.cefrium.CefriumBrowser;
+import org.chromium.base.CommandLine;
+import org.chromium.content.browser.ChildProcessCreationParamsImpl;
 
 /**
  * A strictly separate, single-tab Chromium/CEF prototype to evaluate engine
@@ -159,12 +162,37 @@ public final class ChromiumTestActivity extends Activity {
         surface.setLayoutParams(params);
     }
 
+
+    /**
+     * Chromium 154 selects the Android 17 javaless native service by default,
+     * while Cefrium 0.9.4's bundled libcef.so has no exported
+     * NativeChildProcessService_onCreate symbol. Use Chromium's own documented
+     * compatibility switch to keep the existing isolated Java renderer services.
+     * Do not disable sandboxing or multi-process mode.
+     */
+    private void configureRendererLauncherForApi37() {
+        if (Build.VERSION.SDK_INT < 37) return;
+        if (!CommandLine.isInitialized()) {
+            throw new IllegalStateException(
+                "Chromium CommandLine not initialized before renderer selection");
+        }
+        CommandLine.getInstance().appendSwitchWithValue("javaless-renderers", "disabled");
+        String selected = ChildProcessCreationParamsImpl.getSandboxedServicesName();
+        Log.i(TAG, "Android API " + Build.VERSION.SDK_INT
+            + " selected renderer service: " + selected);
+        if (!"org.chromium.content.app.SandboxedProcessService".equals(selected)) {
+            throw new IllegalStateException(
+                "Incompatible native-only renderer launcher selected: " + selected);
+        }
+    }
+
     private void startChromium(LinearLayout root, FrameLayout content, View header, View footer,
                                String initialUrl) {
         if (destroyed || isFinishing()) return;
         try {
             // Preserve Chromium's native Surface attachment to WindowAndroid.
             // Reparenting the SDK-owned surface can break native lifecycle.
+            configureRendererLauncherForApi37();
             engine = CefriumBrowser.createWithSurface(this);
             FrameLayout surface = engine.getSurfaceContainer();
             if (surface.getParent() == null) {
