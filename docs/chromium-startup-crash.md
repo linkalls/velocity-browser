@@ -1,35 +1,47 @@
-# Chromium (Cefrium) startup crash investigation
+# Startup crash isolation — Pixel 7 Pro (13 October 2026)
 
-The first Cefrium APK compiled, but the Pixel 7 Pro user reported a crash.
+## Why the launcher is now separate
 
-## Current status
+Cefrium 0.9.4 initializes through its manifest ContentProvider, **before**
+`ChromiumTestActivity.onCreate()`. User reports immediate crash. The
+SDK can fail before Activity-level `try/catch` or UI logging is available.
+A Java View/Suface reparent fix cannot address provider startup.
 
-- **No physical-device logcat obtained yet.** The exact Pixel crash mechanism is not established.
-- Suspected app-side issue: `CefriumBrowser.createWithSurface(this)` attached a native Surface to the Activity; the prototype then removed the same Surface from its parent and reattached it beneath a UI container. Native WindowAndroid/Surface lifecycle may not tolerate that.
-- Fixed experimental path now **avoids moving a previously attached Chromium Surface** and defers engine creation until after the Activity window has been attached.
-- Java startup exceptions are surfaced in an in-app alert and logged with `VelocityCefStartup`; native SIGSEGV and process crashes require logcat/tombstones.
-- CI builds x86_64 separately and boots an API 36 Android emulator. This tests basic process survival only, **not native ARM64 behavior on the Pixel 7 Pro**.
-- Use GeckoView mainline for actual browsing until startup and security validated.
+The normal launcher has therefore been moved to `StartupDiagnosticActivity`
+running in `:diagnostic`. It never imports or instantiates Cefrium.
+Press **Chromiumエンジンを起動** to start
+`ChromiumTestActivity` in the normal app process (where the provider runs).
+Then use **クラッシュ情報を更新** after it returns/crashes; the app
+displays Android API 30+ process exit reason/status codes, not private browsing data.
+This isolates stages and avoids the appearance that successful launcher
+startup means Cefrium itself works.
 
-## Pixel 7 Pro evidence collection
+## Get decisive evidence
 
-Use Android SDK Platform Tools with USB debugging enabled:
+With Android platform tools (Windows terminal):
 
-```bash
+```powershell
 adb logcat -c
 adb shell am force-stop dev.velocity.browser.chromiumtest
-adb shell am start -W -n dev.velocity.browser.chromiumtest/dev.velocity.chromium.ChromiumTestActivity
-# Reproduce the crash, then:
-adb logcat -d -b main,system,crash -v threadtime > velocity-cefrium-crash.txt
-adb shell dumpsys activity exit-info dev.velocity.browser.chromiumtest > velocity-cefrium-exit-info.txt
+adb shell am start -W -n dev.velocity.browser.chromiumtest/dev.velocity.chromium.StartupDiagnosticActivity
+# Tap 'Chromiumエンジンを起動', wait for the crash
+adb logcat -d -b main,system,crash -v threadtime > chromium-crash.txt
+adb shell dumpsys activity exit-info dev.velocity.browser.chromiumtest > chromium-exit-info.txt
 ```
 
-Look for `FATAL EXCEPTION`, `AndroidRuntime`, `Fatal signal`, `linker`, `libcef.so`,
-`NoClassDefFoundError`, `ClassNotFoundException`, or `VelocityCefStartup`.
-When sharing logs, redact any personal URLs or account identifiers.
+Look for `AndroidRuntime`, `FATAL EXCEPTION`, `Fatal signal`,
+`UnsatisfiedLinkError`, `libcef.so`, `NoSuchMethodError`,
+`CefriumProvider`, `VelocityCefStartup`.
+The failure may be native and no Java stack will exist.
 
-If the app itself survives but Chromium's renderer crashes, record renderer termination events separately. A successful build/manifest merge is not evidence that an ABI-specific native engine starts.
+## Android emulator
 
-## Compare and release gate
+The x86_64 smoke CI executes the real Chromium activity, not merely
+the safe diagnostic process, waits 12 seconds, records logcat, and checks
+that the **main** process survives. Android emulator passing cannot
+establish ARM64/Pixel 7 Pro success.
 
-Do not claim crash resolved until the Pixel arm64 build actually opens the Yahoo page, scrolls and survives repeated launch cycles. The x86_64 emulator is only a regression detector. This is not a release-ready browser.
+## Security / limitations
+
+The diagnostic screen does not fix the underlying engine crash,
+nor change Chromium binaries. Prototype is for analysis only.
