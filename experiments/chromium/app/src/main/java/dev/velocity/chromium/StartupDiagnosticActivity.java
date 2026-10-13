@@ -4,6 +4,9 @@ import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.ApplicationExitInfo;
 import android.content.Intent;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
@@ -13,6 +16,10 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import java.text.SimpleDateFormat;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -25,6 +32,8 @@ import java.util.Locale;
  */
 public final class StartupDiagnosticActivity extends Activity {
     private TextView status;
+    private TextView crashStack;
+    private String lastCrashText = "";
 
     private int dp(int v) {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
@@ -77,8 +86,26 @@ public final class StartupDiagnosticActivity extends Activity {
         Button refresh = new Button(this);
         refresh.setAllCaps(false);
         refresh.setText("クラッシュ情報を更新");
-        refresh.setOnClickListener(v -> refreshCrashInfo());
+        refresh.setOnClickListener(v -> { refreshCrashInfo(); refreshJavaCrash(); });
         column.addView(refresh, new LinearLayout.LayoutParams(-1, dp(55)));
+        Button copy = new Button(this);
+        copy.setAllCaps(false);
+        copy.setText("Javaクラッシュの詳細をコピー");
+        copy.setOnClickListener(v -> {
+            if (lastCrashText.isEmpty()) {
+                status.setText("Java例外の保存記録なし。PCのadb logcatを確認してください。");
+                return;
+            }
+            ClipboardManager clipboard =
+                (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard != null) {
+                clipboard.setPrimaryClip(ClipData.newPlainText("Cefrium Java crash", lastCrashText));
+                status.setText("スタックトレースをコピーしました。共有前に個人情報がないか確認してください。");
+            }
+        });
+        column.addView(copy, new LinearLayout.LayoutParams(-1, dp(55)));
+        crashStack = text(column, "Java例外の記録: 未取得", 12);
+        crashStack.setTextIsSelectable(true);
         text(column, "Native CrashやContentProvider初期化失敗はこの画面で"
             + "直接修復できません。詳細なスタックトレースにはadb logcatが必要です。"
             + " このAPKはデバッグ専用。重要なアカウントへのログインは避けてください。", 13);
@@ -87,7 +114,7 @@ public final class StartupDiagnosticActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
-        if (status != null) refreshCrashInfo();
+        if (status != null) { refreshCrashInfo(); refreshJavaCrash(); }
     }
 
     private void refreshCrashInfo() {
@@ -110,6 +137,8 @@ public final class StartupDiagnosticActivity extends Activity {
             String when = new SimpleDateFormat("MM/dd HH:mm:ss", Locale.JAPAN)
                 .format(new Date(exit.getTimestamp()));
             result.append(when).append("  reason=").append(exit.getReason())
+                .append(exit.getReason() == ApplicationExitInfo.REASON_CRASH ? " (Java例外)" :
+                    exit.getReason() == ApplicationExitInfo.REASON_CRASH_NATIVE ? " (native)" : "")
                 .append("  status=").append(exit.getStatus()).append('\n');
             if (++count == 5) break;
         }

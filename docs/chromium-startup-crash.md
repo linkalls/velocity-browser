@@ -45,3 +45,22 @@ establish ARM64/Pixel 7 Pro success.
 
 The diagnostic screen does not fix the underlying engine crash,
 nor change Chromium binaries. Prototype is for analysis only.
+
+## Java exception captured without ADB
+
+The official Android exit-reason API reports `REASON_CRASH = 4` for an
+uncaught Java exception, but does not generally provide its full Java stack.
+A new app `ChromiumDiagnosticApplication.attachBaseContext()` handler is
+installed in the primary process **before Cefrium's ContentProvider can run**.
+It saves the most recent Java exception to the app-private file
+`cefrium-last-java-crash.txt` and delegates to the original Android fatal
+exception handler. The separate :diagnostic launcher shows the saved exception
+and allows the user to copy it explicitly. No logs or personal URLs are
+uploaded automatically. A user should review copied stack contents for
+sensitive identifiers before sharing.
+
+The handler cannot catch errors before Application attachment, native process
+crashes, OOM kills, SIGKILL, or all failures in child processes; use adb logcat
+when there is no Java stack. Also the diagnostic APK must be **updated** before
+the next crash for this feature to work retroactively (previous Java crashes
+are not recoverable from this file).
