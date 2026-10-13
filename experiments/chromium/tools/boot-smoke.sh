@@ -2,13 +2,13 @@
 set -euo pipefail
 mkdir -p dist
 APP=dev.velocity.browser.chromiumtest
-COMPONENT="$APP/dev.velocity.chromium.ChromiumTestActivity"
+COMPONENT="$APP/dev.velocity.chromium.StartupDiagnosticActivity"
 APK="experiments/chromium/app/build/outputs/apk/debug/app-debug.apk"
 test -s "$APK"
 adb install -r "$APK"
 adb logcat -c
 adb shell am force-stop "$APP" || true
-adb shell am start -W -n "$COMPONENT" | tee dist/cefrium-activity-start.txt
+adb shell am start -W -n "$COMPONENT" --ez smoke_test true | tee dist/cefrium-activity-start.txt
 sleep 12
 adb shell pidof "$APP" | tee dist/cefrium-pid.txt || true
 adb shell dumpsys activity activities > dist/cefrium-activities.txt || true

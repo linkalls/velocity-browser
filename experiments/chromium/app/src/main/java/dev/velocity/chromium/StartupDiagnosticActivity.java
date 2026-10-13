@@ -67,6 +67,12 @@ public final class StartupDiagnosticActivity extends Activity {
             }
         });
         column.addView(launch, new LinearLayout.LayoutParams(-1, dp(55)));
+        // The shell cannot launch ChromiumTestActivity directly: it is not
+        // exported. CI starts this exported diagnostic Activity instead and
+        // asks it to launch Chromium internally, exercising the real provider.
+        if (getIntent() != null && getIntent().getBooleanExtra("smoke_test", false)) {
+            launch.postDelayed(launch::performClick, 300);
+        }
         status = text(column, "直近のプロセス終了記録: 取得中", 14);
         Button refresh = new Button(this);
         refresh.setAllCaps(false);
