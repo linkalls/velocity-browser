@@ -44,16 +44,21 @@ jobs:
           "$AAPT" dump xmltree --file AndroidManifest.xml "$APK" > dist/chromium-manifest-tree.txt
           echo "### Chromium child services in packaged APK" | tee dist/chromium-service-audit.txt
           grep -E 'NativeOnlySandboxedProcessService0|SandboxedProcessService0|NUM_SANDBOXED_SERVICES|nativeService|externalService|NativeChildProcessService_onCreate|libcef.so' dist/chromium-manifest-tree.txt | head -n 65 | tee -a dist/chromium-service-audit.txt || true
-          if ! grep -q 'org.chromium.content.app.NativeOnlySandboxedProcessService0' dist/chromium-manifest-tree.txt; then
-            echo "ERROR: native-only Chromium renderer service missing in packaged APK" | tee -a dist/chromium-service-audit.txt
+          if ! grep -q 'org.chromium.content.app.SandboxedProcessService0' dist/chromium-manifest-tree.txt; then
+            echo "ERROR: Java isolated renderer service is missing!" | tee -a dist/chromium-service-audit.txt
             exit 1
           fi
-          unzip -p "$APK" lib/arm64-v8a/libcef.so > /tmp/velocity-libcef.so
-          echo "### NativeChildProcessService_onCreate dynamic symbol" | tee -a dist/chromium-service-audit.txt
-          if readelf --dyn-syms -W /tmp/velocity-libcef.so | grep -F 'NativeChildProcessService_onCreate' | tee -a dist/chromium-service-audit.txt; then
-            echo "Native service entry point symbol available" | tee -a dist/chromium-service-audit.txt
+          echo "Java sandboxed renderer service 0 present in packaged APK" | tee -a dist/chromium-service-audit.txt
+          if grep -q 'org.chromium.content.app.NativeOnlySandboxedProcessService0' dist/chromium-manifest-tree.txt; then
+            echo "NOTE: a native-only service is also declared; confirm libcef exports its required entry point." | tee -a dist/chromium-service-audit.txt
           else
-            echo "WARNING: entry point not in libcef dynamic symbol table; manifest fix alone may not work" | tee -a dist/chromium-service-audit.txt
+            echo "Native-only service omitted because Cefrium 0.9.4 does not export its implementation; Android 17 uses --javaless-renderers=disabled" | tee -a dist/chromium-service-audit.txt
+          fi
+          unzip -p "$APK" lib/arm64-v8a/libcef.so > /tmp/velocity-libcef.so
+          if readelf --dyn-syms -W /tmp/velocity-libcef.so | grep -F 'NativeChildProcessService_onCreate' | tee -a dist/chromium-service-audit.txt; then
+            echo "Native-only export detected (not selected by Velocity Java compatibility mode)" | tee -a dist/chromium-service-audit.txt
+          else
+            echo "Native-only entry point is not exported; Java isolated renderer mode required" | tee -a dist/chromium-service-audit.txt
           fi
       - name: Upload Chromium service and symbol audit
         if: always()

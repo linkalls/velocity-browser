@@ -98,3 +98,33 @@ Upstream reference: https://chromium.googlesource.com/chromium/src/+/HEAD/androi
 **Important:** Native-only Android child service is an implementation detail.
 Do not ship the patched APK for sensitive browsing until it has passed
 multi-process isolation and renderer crash-recovery tests.
+
+## Revised solution: use Chromium's existing Java isolated renderer services
+
+The packaged `libcef.so` does **not** export
+`NativeChildProcessService_onCreate`. Merely declaring the native-only
+Service cannot launch an Android 17 native-only renderer and would expose a
+broken Service to binding. The temporary native-only Service manifest entry
+was removed.
+
+Chromium's own `ChildProcessCreationParamsImpl.getSandboxedServicesName()`
+selects `NativeOnlySandboxedProcessService` on Android 17 only when the
+javaless renderer experiment is enabled. Chromium exposes an explicit Java
+command-line switch: `--javaless-renderers=disabled`.
+
+Before creating the Cefrium browser in the Activity on API 37+, Velocity now
+calls `CommandLine.getInstance().appendSwitchWithValue("javaless-renderers",
+"disabled")` and checks that
+`ChildProcessCreationParamsImpl.getSandboxedServicesName()` returns
+`org.chromium.content.app.SandboxedProcessService`, the 40 isolated Java
+renderer services already present in the Cefrium AAR manifest. If this is
+not achieved (e.g. engine initialization cached the feature too early),
+Velocity aborts browser creation with a readable error and log rather than
+continuing into the known native-only child process failure.
+
+This does not disable sandboxing or multiprocessing. Whether the flag takes
+effect in the published SDK must be validated on Pixel 7 Pro / Android 17.
+
+Upstream implementation:
+- https://github.com/chromium/chromium/blob/main/content/public/android/java/src/org/chromium/content/browser/ChildProcessCreationParamsImpl.java
+- https://github.com/chromium/chromium/blob/main/content/public/android/java/src/org/chromium/content_public/browser/JavalessRenderersFeatureList.java
