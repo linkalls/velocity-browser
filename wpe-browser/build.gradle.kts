@@ -6,7 +6,8 @@ android {
     buildToolsVersion = "36.0.0"
     defaultConfig {
         applicationId = "dev.velocity.browser.wpe"
-        minSdk = 26
+        // WPE Android 0.3.3 declares minSdk 31 (Android 12+).
+        minSdk = 31
         targetSdk = 35
         versionCode = 1
         versionName = "0.1-wpe-preview"
