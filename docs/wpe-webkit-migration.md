@@ -10,7 +10,8 @@ The original `:app` GeckoView code remains unchanged for a fair, reversible comp
 * Maven dependency: `org.wpewebkit.wpeview:wpeview:0.3.3` (**WPE WebKit 2.50.6**)
 * Android widget: `org.wpewebkit.wpeview.WPEView`; **never** `android.webkit.WebView`
 * Runtime application: `org.wpewebkit.WPEApplication` (required for WPE's native processes)
-* Native packaging: extracted JNI libraries, arm64-v8a for first Pixel 7 Pro build
+* Minimum OS: Android 12 / API 31 (the WPE 0.3.3 AAR declares this minimum). Pixel 7 Pro qualifies.
+* Native packaging: extracted JNI libraries via Gradle `jniLibs.useLegacyPackaging`, arm64-v8a for first Pixel 7 Pro build
 * Basic functions: navigate/search HTTP(S), back, forward, reload, page title/progress, sample pages
 * Diagnostics: developer extras are enabled in this **experiment**, not in production
 
