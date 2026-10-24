@@ -6,6 +6,33 @@ unbuilt source patch**, not a working native renderer. See
 The Java app, SDK dependency, app ID, Manifest and Java workflow are unchanged.
 Do not install an APK built from the existing project as a native renderer test.
 
+**2026-10-24:** The audit now handles Cefrium's renamed child services and
+compares official 0.9.4 and 0.13.0. The latter removes the inherited no-sandbox
+settings but still exports no native entry and declares no native service.
+See [0.13.0 reassessment](../../../docs/chromium-javaless/cefrium-0.13.0-reassessment.md).
+
+To reproduce the new-version audit:
+
+```bash
+python3 experiments/chromium/native-engine/fetch_sources.py \
+  --lock experiments/chromium/native-engine/upstream-0.13.0-lock.json \
+  --output /tmp/velocity-cefrium013-sources
+curl --fail --location --retry 3 \
+  https://repo.maven.apache.org/maven2/com/cefrium/cefrium-sdk/0.13.0/cefrium-sdk-0.13.0.aar \
+  -o /tmp/cefrium-sdk-0.13.0.aar
+python3 experiments/chromium/native-engine/audit.py /tmp/cefrium-sdk-0.13.0.aar \
+  --sha256 18f52c00e1e6b75e75668042ad56c1e9e58442cce3800fc4d98d427ac7f40f83 \
+  --abi arm64-v8a --abi x86_64 --output /tmp/velocity-cefrium013-audit \
+  --require-java-pool --require-native-export
+```
+
+The Java pool gate passes (40 declared isolated services), while the native
+export gate still exits **2**. `--require-java-pool` validates source XML slot
+counts, uniqueness and isolated attributes; it is not runtime sandbox proof.
+The old-name count is no longer used for newer SDKs: the audit follows
+`SANDBOXED_SERVICES_NAME` metadata with the upstream Chromium default as fallback.
+The commands and source patch below remain specific to **0.9.4**.
+
 From the repository root (Python 3.11+, Git, curl, GNU binutils):
 
 ```bash

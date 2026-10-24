@@ -12,8 +12,10 @@ import urllib.request
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--lock", type=Path,
+                        default=Path(__file__).with_name("upstream-lock.json"))
     args = parser.parse_args()
-    lock = json.loads(Path(__file__).with_name("upstream-lock.json").read_text())
+    lock = json.loads(args.lock.read_text())
 
     def fetch(item):
         with urllib.request.urlopen(item["url"], timeout=60) as response:

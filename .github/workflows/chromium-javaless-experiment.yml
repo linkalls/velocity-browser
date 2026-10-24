@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       require_native_export:
-        description: 'Hard export gate; official 0.9.4 currently FAILS. No native APK is built.'
+        description: 'Hard export gate; official 0.9.4 and 0.13.0 currently FAIL. No native APK is built.'
         type: boolean
         default: false
 permissions:
@@ -26,6 +26,17 @@ jobs:
   source-and-abi-audit:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - sdk: '0.9.4'
+            lock: upstream-lock.json
+          - sdk: '0.13.0'
+            lock: upstream-0.13.0-lock.json
+    env:
+      SDK_VERSION: ${{ matrix.sdk }}
+      SOURCE_LOCK: experiments/chromium/native-engine/${{ matrix.lock }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -39,9 +50,17 @@ jobs:
         run: python3 -m unittest discover -s experiments/chromium/native-engine -p '*_test.py' -v
       - name: Verify pinned upstream source bytes and patch applicability
         run: |
-          python3 experiments/chromium/native-engine/fetch_sources.py --output "$RUNNER_TEMP/javaless-sources"
-          git -C "$RUNNER_TEMP/javaless-sources/cefrium" apply --check \
-            "$GITHUB_WORKSPACE/experiments/chromium/native-engine/patches/0001-android-native-service-export.patch"
+          python3 experiments/chromium/native-engine/fetch_sources.py --lock "$SOURCE_LOCK" \
+            --output "$RUNNER_TEMP/javaless-sources"
+          if [ "$SDK_VERSION" = '0.9.4' ]; then
+            git -C "$RUNNER_TEMP/javaless-sources/cefrium" apply --check \
+              "$GITHUB_WORKSPACE/experiments/chromium/native-engine/patches/0001-android-native-service-export.patch"
+          else
+            # Confirm the upstream service-name transform against its pinned
+            # Chromium source; this is not a native implementation patch.
+            git -C "$RUNNER_TEMP/javaless-sources/chromium" apply -p0 --check \
+              "$RUNNER_TEMP/javaless-sources/cefrium/patch/patches/android/child_service_names.patch"
+          fi
           mkdir -p dist/chromium-javaless
           cp "$RUNNER_TEMP/javaless-sources/verified-sources.json" dist/chromium-javaless/
       - name: Download the official, unchanged AAR and audit both ABIs
@@ -49,13 +68,15 @@ jobs:
           REQUIRE_NATIVE_EXPORT: ${{ inputs.require_native_export || false }}
         run: |
           set -euo pipefail
-          AAR="$RUNNER_TEMP/cefrium-sdk-0.9.4.aar"
+          AAR="$RUNNER_TEMP/cefrium-sdk-$SDK_VERSION.aar"
+          AAR_URL=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["official_aar"]["url"])' "$SOURCE_LOCK")
+          AAR_SHA256=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["official_aar"]["sha256"])' "$SOURCE_LOCK")
           curl --fail --location --retry 3 --max-time 300 \
-            https://repo.maven.apache.org/maven2/com/cefrium/cefrium-sdk/0.9.4/cefrium-sdk-0.9.4.aar -o "$AAR"
+            "$AAR_URL" -o "$AAR"
           EXTRA=()
           if [ "$REQUIRE_NATIVE_EXPORT" = true ]; then EXTRA+=(--require-native-export); fi
           python3 experiments/chromium/native-engine/audit.py "$AAR" \
-            --sha256 4ec9aac59f2ef2663170f684be78463acede1fff8cbc25500a34daa20f5d4623 \
+            --sha256 "$AAR_SHA256" --require-java-pool \
             --abi arm64-v8a --abi x86_64 --output dist/chromium-javaless "${EXTRA[@]}"
       - name: Report native eligibility separately from audit execution
         if: always()
@@ -68,6 +89,10 @@ jobs:
               summary.write('## Phase A only — native APK NOT BUILT; runtime NOT TESTED\n\n')
               if report.exists():
                   data = json.loads(report.read_text())
+                  pool = data['aar_manifest']
+                  summary.write('Cefrium ' + os.environ['SDK_VERSION'] + '\n\n')
+                  summary.write('Declared Java pool: **' + pool['java_service_pool_gate']
+                                + '** (' + str(pool['java_sandboxed_services']) + ' services).\n\n')
                   summary.write('Native export gate: **' + data['export_gate'] + '**.\n\n')
                   summary.write('Audit success means evidence was collected, not that a native renderer works.\n')
               else:
@@ -77,10 +102,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: Chromium-Javaless-Feasibility-NO-APK
+          name: Chromium-Javaless-Feasibility-${{ matrix.sdk }}-NO-APK
           path: |
             dist/chromium-javaless/
             docs/chromium-javaless/
             experiments/chromium/native-engine/upstream-lock.json
+            experiments/chromium/native-engine/upstream-0.13.0-lock.json
             experiments/chromium/native-engine/patches/
           if-no-files-found: error

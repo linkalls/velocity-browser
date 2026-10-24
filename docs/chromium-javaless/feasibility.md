@@ -1,5 +1,9 @@
 # Android 17 Native-only Renderer — Phase A / NO-GO
 
+**2026-10-24追記:** [Cefrium 0.13.0の再監査と監査ツール修正](cefrium-0.13.0-reassessment.md)
+を追加した。新版では旧 `no-sandbox` 設定の除去を確認したが、Native入口のexportと
+Native Service宣言は未対応。本書以下は0.9.4を対象とした履歴であり、新版の状態と区別する。
+
 調査日: 2026-10-13。**Native Rendererは未実装・未ビルド・未起動。実験APKは作成していない。**
 仕様書の「Goできない場合はここで止まり」に従い、Phase B/Cは開始しない。
 ソース入手は成功したが、ビルド資源とCEF固有の初期化対応が未解決。
