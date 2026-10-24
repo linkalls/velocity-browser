@@ -44,9 +44,17 @@ class ManifestAuditTest(unittest.TestCase):
         self.assertEqual(audit_manifest(root)["java_sandboxed_services"], 2)
 
     def test_relative_class_names(self):
-        report = audit_manifest(self.manifest(".ChildServices$Sandboxed"))
+        root = self.manifest("com.cefrium.ChildServices$Sandboxed")
+        for service in root.findall("application/service"):
+            name = service.get(ANDROID + "name")
+            service.set(ANDROID + "name", name.removeprefix("com.cefrium"))
+        report = audit_manifest(root)
         self.assertEqual(report["sandboxed_services_base"], "com.cefrium.ChildServices$Sandboxed")
         self.assertEqual(report["java_service_pool_gate"], "PASS")
+
+    def test_metadata_prefix_is_not_resolved_as_an_android_class_attribute(self):
+        report = audit_manifest(self.manifest(".ChildServices$Sandboxed"))
+        self.assertEqual(report["java_service_pool_gate"], "FAIL")
 
     def test_missing_duplicate_extra_or_nonisolated_slots_fail(self):
         for fault in ("missing", "duplicate", "extra", "nonisolated"):

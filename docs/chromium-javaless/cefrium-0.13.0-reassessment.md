@@ -108,7 +108,7 @@ Native再開には、156で整合したCefrium strong initialization hook、real
 ## 検証範囲
 
 - 修正前の0.13.0の誤検出を再現、修正後に両version・両ABIを監査。
-- 13 unit tests成功。新版名、旧版名、metadataによる選択、欠落/重複/非isolated/不正count、Native属性、空ABI指定とexport拒否を検証。
+- 14 unit tests成功。新版名、旧版名、metadataによる選択、relative service属性、欠落/重複/非isolated/不正count、Native属性、空ABI指定とexport拒否を検証。
 - 0.13.0の固定ソース26ファイルのhash照合と、upstream service-name patchの適用確認が成功。
 - CIは0.9.4/0.13.0のmatrixで独立監査し、監査資料のみを保存する。
 - JDK/Gradle/AGP、Javaアプリ、旧Java CIは変更していない。再ビルド/起動結果はPR #9のChecksに記録。
