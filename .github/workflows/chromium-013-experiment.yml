@@ -105,6 +105,8 @@ jobs:
         with:
           api-level: ${{ matrix.api }}
           arch: x86_64
+          # Chromium APK + extracted libraries + dex need room beyond the image defaults.
+          disk-size: 6G
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 4
           script: bash experiments/chromium-013/tools/boot-smoke.sh
@@ -114,6 +116,9 @@ jobs:
         with:
           name: Chromium-CEF-013-Emulator-Crash-Logs-API${{ matrix.api }}
           path: |
+            dist/cefrium-storage-before-install.txt
+            dist/cefrium-install.txt
+            dist/cefrium-install-logcat.txt
             dist/cefrium-activity-start.txt
             dist/cefrium-pid.txt
             dist/cefrium-activities.txt

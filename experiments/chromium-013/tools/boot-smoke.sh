@@ -5,7 +5,13 @@ APP=dev.velocity.browser.chromium013
 COMPONENT="$APP/dev.velocity.chromium.StartupDiagnosticActivity"
 APK="experiments/chromium-013/app/build/outputs/apk/debug/app-debug.apk"
 test -s "$APK"
-adb install -r "$APK"
+adb shell df -h /data > dist/cefrium-storage-before-install.txt
+if ! adb install -r "$APK" 2>&1 | tee dist/cefrium-install.txt; then
+  # Installation can fail before the Activity/logcat checks below are reached.
+  adb logcat -d -v threadtime > dist/cefrium-install-logcat.txt || true
+  echo "FAIL: APK installation failed; see install and storage artifacts" >&2
+  exit 1
+fi
 adb logcat -c
 adb shell am force-stop "$APP" || true
 adb shell am start -W -n "$COMPONENT" --ez smoke_test true | tee dist/cefrium-activity-start.txt

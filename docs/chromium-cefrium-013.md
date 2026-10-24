@@ -91,3 +91,14 @@ Tabs, private mode, downloads, permission handling, adblock and other Velocity
 features remain unported. Binary redistribution also requires the appropriate
 Cefrium/CEF/Chromium licenses, notices and corresponding-source arrangements;
 this migration does not establish a public release's readiness.
+
+## CI installation failure and correction
+
+The initial PR run [40045878659](https://github.com/linkalls/velocity-browser/actions/runs/40045878659)
+passed APK build/Manifest validation and the API 36 startup smoke gate. API 37.0
+booted, then rejected APK installation with `INSTALL_FAILED_INSUFFICIENT_STORAGE`.
+No Chromium Activity ran in that failed job; it is not renderer crash evidence.
+The AVD now requests a 6G data partition through the runner's `disk-size` input.
+The smoke script saves `/data` capacity and install output, plus logcat on install
+failure, so failures before Activity launch still produce diagnostic artifacts.
+The runtime assertions remain unchanged. The corrected CI result is pending.
