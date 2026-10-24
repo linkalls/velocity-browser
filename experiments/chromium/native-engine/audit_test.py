@@ -53,8 +53,12 @@ class ManifestAuditTest(unittest.TestCase):
         self.assertEqual(report["java_service_pool_gate"], "PASS")
 
     def test_metadata_prefix_is_not_resolved_as_an_android_class_attribute(self):
-        report = audit_manifest(self.manifest(".ChildServices$Sandboxed"))
-        self.assertEqual(report["java_service_pool_gate"], "FAIL")
+        for prefix in (".ChildServices$Sandboxed", ""):
+            with self.subTest(prefix=prefix):
+                # With an empty metadata string the launcher does not use its
+                # default, even if services under the default name exist.
+                report = audit_manifest(self.manifest(prefix))
+                self.assertEqual(report["java_service_pool_gate"], "FAIL")
 
     def test_missing_duplicate_extra_or_nonisolated_slots_fail(self):
         for fault in ("missing", "duplicate", "extra", "nonisolated"):

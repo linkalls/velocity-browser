@@ -39,7 +39,9 @@ def audit_manifest(manifest):
 
     # The launcher uses this metadata string literally. Android resolves
     # relative service android:name attributes, but not arbitrary metadata.
-    prefix = metadata.get(SERVICE_PREFIX_KEY) or DEFAULT_SERVICE_PREFIX
+    prefix = metadata.get(SERVICE_PREFIX_KEY)
+    if prefix is None:
+        prefix = DEFAULT_SERVICE_PREFIX
     count_value = metadata.get(SERVICE_COUNT_KEY, "")
     count = int(count_value) if count_value and count_value.isdecimal() else None
     # Native services are identified by their actual Android attribute, not a
