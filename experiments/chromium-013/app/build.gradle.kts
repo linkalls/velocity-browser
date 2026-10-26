@@ -14,6 +14,13 @@ val previewCanSign = !previewKeystorePath.isNullOrBlank() && !previewSigningPass
 // until renderer isolation, lifecycle and app UX are validated.
 val velocityMinify = providers.gradleProperty("velocityMinify")
     .orElse("false").get().toBooleanStrict()
+// This resource is true ONLY in the disposable x86_64 CI comparison APK.
+// Real signed Preview binaries and default builds always ship with false.
+val benchmarkFastAttach = providers.gradleProperty("velocityBenchmarkFastAttach")
+    .orElse("false").get().toBooleanStrict()
+require(!benchmarkFastAttach || (chromiumAbi == "x86_64" && velocityMinify && !previewCanSign)) {
+    "Early-start benchmark build requires x86_64, R8 release and NO permanent Preview signing key"
+}
 
 android {
     namespace = "dev.velocity.chromium"
@@ -29,6 +36,7 @@ android {
         versionName = providers.gradleProperty("velocityVersionName")
             .orElse("0.14.0-experiment").get()
         ndk { abiFilters += chromiumAbi }
+        resValue("bool", "velocity_benchmark_fast_attach", benchmarkFastAttach.toString())
     }
     signingConfigs {
         if (previewCanSign) {

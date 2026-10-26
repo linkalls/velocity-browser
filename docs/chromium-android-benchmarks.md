@@ -278,3 +278,24 @@ The launcher diagnostic Activity runs in its own process and now includes
 Chromium engine fails to launch. The experiment setting is application
 private, and the imported Gecko main app is unaffected. No claim of Pixel
 hardware improvement has yet been substantiated.
+
+## Direct fast-attach Velocity versus Brave, Chrome and Vivaldi
+
+The comparison workflow builds a **disposable-signed, x86_64, R8-minified
+release APK** with `-PvelocityBenchmarkFastAttach=true`. The Gradle build
+permits this flag only for x86_64 minified binaries **without** permanent
+Preview signing secrets. Default builds and permanently signed arm64 Preview
+remain in the conservative posted startup mode unless the user explicitly
+opts in from the Preview menu. The experimental build-time resource switches
+on `onViewAttachedToWindow` startup in the comparison APK only.
+
+Each Velocity benchmark sample parses the runtime log for
+`CEFStartupStrategy strategy=attach`, in addition to checking native Surface,
+process liveness, phase timing and post-settle PSS. The validation step fails
+if the actual strategy differs; an APK name or build flag alone is not proof.
+
+The four-browser emulator comparison uses the **same** `adb shell am start -W`
+`TotalTime` metric and a rotating sample order on the same image. Thus the
+reported Activity-start numbers can be compared directly *for that metric*.
+They still do not compare the same webpage or measure first contentful paint,
+JavaScript throughput, battery efficiency, and real Pixel hardware.

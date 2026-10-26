@@ -34,9 +34,9 @@ jobs:
           gradle-version: '9.7.1'
       - name: Run parser tests
         run: python3 -m unittest discover -s experiments/chromium-013/tools/bench -p 'test_*.py' -v
-      - name: Build matching x86_64 Velocity release APK
+      - name: Build x86_64 release with fast attach explicitly enabled (benchmark ONLY)
         working-directory: experiments/chromium-013
-        run: gradle --no-daemon --max-workers=2 -PchromiumAbi=x86_64 -PvelocityMinify=true :app:testDebugUnitTest :app:assembleRelease
+        run: gradle --no-daemon --max-workers=2 -PchromiumAbi=x86_64 -PvelocityMinify=true -PvelocityBenchmarkFastAttach=true :app:testDebugUnitTest :app:assembleRelease
       - name: Locally sign benchmark release APK (disposable identity)
         shell: bash
         run: |
@@ -87,16 +87,22 @@ jobs:
           disk-size: 8G
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 4
-          script: VELOCITY_BENCH_VARIANT=release-r8-minified bash experiments/chromium-013/tools/bench/run_on_emulator.sh
+          script: VELOCITY_BENCH_VARIANT=release-r8-fast-attach bash experiments/chromium-013/tools/bench/run_on_emulator.sh
       - name: Require live Chromium native Surface (not just Activity splash)
         run: |
-          python3 experiments/chromium-013/tools/bench/validate_benchmark.py             dist/browser-bench/results.json --variant release-r8-minified
+          python3 experiments/chromium-013/tools/bench/validate_benchmark.py \
+            dist/browser-bench/results.json \
+            --variant release-r8-fast-attach --strategy attach
       - name: Show results in GitHub Actions summary
         if: always()
         shell: bash
         run: |
           if [[ -f dist/browser-bench/summary.md ]]; then
-            cat dist/browser-bench/summary.md >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo '## Experimental fast-attach Velocity vs official Chrome / Brave / Vivaldi'
+              echo 'This comparison APK is NOT the signed Preview. It opts into attach startup at build time; ordinary Preview keeps post by default.'
+              cat dist/browser-bench/summary.md
+            } >> "$GITHUB_STEP_SUMMARY"
             if [[ -f dist/browser-bench/art-crossover/summary.md ]]; then
               {
                 echo

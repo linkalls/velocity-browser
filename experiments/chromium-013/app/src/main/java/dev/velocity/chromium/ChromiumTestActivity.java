@@ -340,8 +340,9 @@ public final class ChromiumTestActivity extends Activity {
         // release defaults to the older, verified root.post() strategy.
         // Debug smoke tests can also request attach without persisting it.
         uiPreparedAtMs = SystemClock.elapsedRealtime();
-        boolean explicitlyEnabled = getSharedPreferences(StartupModePolicy.PREFS,
-            MODE_PRIVATE).getBoolean(StartupModePolicy.KEY_FAST_ATTACH, false);
+        boolean explicitlyEnabled = getResources().getBoolean(R.bool.velocity_benchmark_fast_attach)
+            || getSharedPreferences(StartupModePolicy.PREFS,
+                MODE_PRIVATE).getBoolean(StartupModePolicy.KEY_FAST_ATTACH, false);
         boolean attachRequested = getIntent() != null &&
             "attach".equals(getIntent().getStringExtra("cefrium_start_strategy"));
         if (StartupModePolicy.onAttach(

@@ -35,6 +35,13 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(result['ui_build_ms'], 13)
         self.assertIsNone(bench.parse_velocity_timing('unrelated activity log'))
 
+    def test_ci_logs_prove_actual_early_attach_strategy(self):
+        self.assertEqual("attach", bench.parse_velocity_strategy(
+            "I VelocityCefStartup: CEFStartupStrategy strategy=attach"))
+        self.assertEqual("post", bench.parse_velocity_strategy(
+            "I VelocityCefStartup: CEFStartupStrategy strategy=post"))
+        self.assertIsNone(bench.parse_velocity_strategy("no relevant message"))
+
     def test_native_surface_ready_metric_is_not_content_first_paint(self):
         d = {'browsers': {'Velocity': {
             'status': 'measured', 'version': '0.14',

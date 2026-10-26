@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 
-def validate(report, expected_variant):
+def validate(report, expected_variant, expected_strategy=None):
     problems = []
     if report.get("velocity_build_variant") != expected_variant:
         problems.append("Unexpected Velocity build variant")
@@ -25,6 +25,8 @@ def validate(report, expected_variant):
             problems.append(f"trial {i}: Cefrium startup phase instrumentation missing")
         if sample.get("pss_kib_after_settle") is None:
             problems.append(f"trial {i}: process PSS not measured")
+        if expected_strategy and sample.get("cefrium_start_strategy") != expected_strategy:
+            problems.append(f"trial {i}: startup strategy is not {expected_strategy}")
     return problems
 
 
@@ -32,8 +34,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("file", type=Path)
     parser.add_argument("--variant", required=True)
+    parser.add_argument("--strategy", choices=("post", "attach"))
     args = parser.parse_args()
-    errors = validate(json.loads(args.file.read_text()), args.variant)
+    errors = validate(json.loads(args.file.read_text()), args.variant, args.strategy)
     if errors:
         for error in errors:
             print("FAIL:", error, file=sys.stderr)

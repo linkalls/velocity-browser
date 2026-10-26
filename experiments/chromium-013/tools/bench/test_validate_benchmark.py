@@ -26,6 +26,15 @@ class ValidationTest(unittest.TestCase):
         report["browsers"]["Velocity"]["samples"][0]["cefrium_surface_created"] = False
         self.assertTrue(validate.validate(report, "release-r8-minified"))
 
+    def test_every_fast_attach_trial_must_log_the_actual_strategy(self):
+        report = self.valid_report()
+        report["velocity_build_variant"] = "release-r8-fast-attach"
+        report["browsers"]["Velocity"]["samples"][0]["cefrium_start_strategy"] = "post"
+        errors = validate.validate(report, "release-r8-fast-attach", "attach")
+        self.assertTrue(any("trial 1: startup strategy" in err for err in errors))
+        report["browsers"]["Velocity"]["samples"][0]["cefrium_start_strategy"] = "attach"
+        self.assertEqual([], validate.validate(report, "release-r8-fast-attach", "attach"))
+
     def test_rejects_variant_mismatch(self):
         self.assertTrue(validate.validate(self.valid_report(), "release-unminified"))
 

@@ -86,6 +86,12 @@ def parse_velocity_timing(log):
     )}
 
 
+def parse_velocity_strategy(log):
+    """Read the actual startup path, rather than assuming the build flag worked."""
+    strategies = re.findall(r"CEFStartupStrategy strategy=(post|attach)", log)
+    return strategies[-1] if strategies else None
+
+
 def resolve_launcher(package):
     rc, output = run_adb("shell", "cmd", "package", "resolve-activity", "--brief",
                          "-a", "android.intent.action.MAIN", "-c",
@@ -128,6 +134,7 @@ def sample_browser(package, launcher, repetitions, settle_seconds, output_dir=No
         if package == BROWSERS["Velocity"]:
             _, log = run_adb("logcat", "-d", "-s", "VelocityCefStartup:I", "*:S")
             entry["cefrium_startup_phases_ms"] = parse_velocity_timing(log)
+            entry["cefrium_start_strategy"] = parse_velocity_strategy(log)
             entry["cefrium_surface_created"] = (
                 "CEF surface created and page navigation started" in log)
             _, alive = run_adb("shell", "pidof", package)
@@ -269,6 +276,10 @@ def markdown_report(data):
         native_ready = velocity.get("median_cefrium_surface_ready_ms")
         if native_ready is not None:
             lines.append(f"- end-to-end Cefrium Surface creation: {native_ready:.0f} ms")
+        strategies = sorted({x.get("cefrium_start_strategy") for x in
+                             velocity.get("samples", []) if x.get("cefrium_start_strategy")})
+        lines.append("- Verified startup strategies: " + (
+            ", ".join(strategies) if strategies else "unavailable"))
         for phase in ("provider_ms", "ui_build_ms", "ui_wait_ms", "ui_ms",
                       "pool_ms", "rules_ms", "create_ms", "total_ms"):
             values = [x[phase] for x in phase_samples if x.get(phase, -1) >= 0]
