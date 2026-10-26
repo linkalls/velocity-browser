@@ -5,6 +5,12 @@ plugins {
 // Override with -PchromiumAbi=x86_64 for CI emulator smoke tests.
 val chromiumAbi = providers.gradleProperty("chromiumAbi").orElse("arm64-v8a").get()
 require(chromiumAbi == "arm64-v8a" || chromiumAbi == "x86_64") { "Unsupported ABI: $chromiumAbi" }
+// A signed preview uses the same key across releases. Secrets are supplied
+// via the CI environment; no signing material belongs in source control.
+val previewKeystorePath = providers.environmentVariable("VELOCITY_CEF_KEYSTORE_PATH").orNull
+val previewSigningPassword = providers.environmentVariable("VELOCITY_CEF_SIGNING_PASSWORD").orNull
+val previewCanSign = !previewKeystorePath.isNullOrBlank() && !previewSigningPassword.isNullOrBlank()
+
 android {
     namespace = "dev.velocity.chromium"
     compileSdk { version = release(37) { minorApiLevel = 1 } }
@@ -13,12 +19,29 @@ android {
         applicationId = "dev.velocity.browser.chromium013"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.2-cefrium-013-experiment"
+        // Signed builds use a monotonic CI run number, never a mutable constant.
+        // Legacy diagnostic/debug builds retain versionCode 1 by default.
+        versionCode = providers.gradleProperty("velocityVersionCode").orElse("1").get().toInt()
+        versionName = providers.gradleProperty("velocityVersionName")
+            .orElse("0.13.0-experiment").get()
         ndk { abiFilters += chromiumAbi }
     }
+    signingConfigs {
+        if (previewCanSign) {
+            create("velocityPreview") {
+                storeType = "pkcs12"
+                storeFile = file(requireNotNull(previewKeystorePath))
+                storePassword = previewSigningPassword
+                keyAlias = "velocity-cefrium"
+                keyPassword = previewSigningPassword
+            }
+        }
+    }
     buildTypes {
-        release { isMinifyEnabled = false }
+        release {
+            isMinifyEnabled = false
+            if (previewCanSign) signingConfig = signingConfigs.getByName("velocityPreview")
+        }
         debug { isMinifyEnabled = false }
     }
     packaging {
