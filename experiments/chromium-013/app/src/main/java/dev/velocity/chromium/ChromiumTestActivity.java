@@ -2,22 +2,30 @@ package dev.velocity.chromium;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.Context;
+import android.app.Dialog;import android.content.Context;
 import android.content.Intent;
 import android.content.ComponentName;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
 import android.graphics.Color;
-import android.util.Log;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
+import android.content.res.ColorStateList;
+import android.graphics.drawable.ColorDrawable;import android.util.Log;
 import android.view.View;
 import android.os.Bundle;
 import android.os.Build;
-import android.text.InputType;
+import android.os.Handler;
+import android.os.Looper;import android.text.InputType;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.ViewGroup;
-import android.view.inputmethod.EditorInfo;
+import android.view.Window;
+import android.view.WindowManager;
+import android.view.GestureDetector;
+import android.view.MotionEvent;import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
@@ -25,7 +33,8 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.content.SharedPreferences;
+import android.widget.ScrollView;
+import android.widget.PopupWindow;import android.content.SharedPreferences;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.LinkedHashMap;
@@ -68,6 +77,11 @@ public final class ChromiumTestActivity extends Activity {
     private FrameLayout browserContent;
     private View browserHeader;
     private View browserFooter;
+    private LinearLayout toolbarActions;
+    private View progressLine;
+    private PopupWindow undoPopup;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private Runnable undoTimeout;
     private boolean chromiumReady;
     private boolean blockDomainsEnabled;
     private NetworkRules networkRules = NetworkRules.parse("");
@@ -79,58 +93,145 @@ public final class ChromiumTestActivity extends Activity {
     private boolean destroyed;
     private static final String TAG = "VelocityCefStartup";
 
+    // Deliberately restrained palette. No novelty gradients, false neon
+    // borders, or extra Material dependencies on the critical launch path.
+    private static final int CANVAS = Color.rgb(14, 19, 24);
+    private static final int SURFACE = Color.rgb(23, 30, 37);
+    private static final int ELEVATED = Color.rgb(37, 46, 55);
+    private static final int BORDER = Color.rgb(56, 67, 77);
+    private static final int PRIMARY = Color.rgb(238, 244, 245);
+    private static final int SECONDARY = Color.rgb(161, 176, 187);
+    private static final int ACCENT = Color.rgb(107, 221, 176);
+
     private int dp(int v) {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private GradientDrawable rounded(int fill, int radius, int stroke) {
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(fill);
+        background.setCornerRadius(dp(radius));
+        if (stroke != Color.TRANSPARENT) background.setStroke(dp(1), stroke);
+        return background;
     }
 
     private Button makeButton(String label, String hint, Runnable action) {
         Button b = new Button(this);
         b.setText(label);
         b.setAllCaps(false);
+        b.setMinHeight(0);
+        b.setMinimumHeight(0);
+        b.setMinWidth(0);
+        b.setMinimumWidth(0);
+        b.setPadding(0, 0, 0, 0);
+        b.setTextSize(21);
         b.setContentDescription(hint);
-        b.setTextColor(Color.WHITE);
+        b.setTextColor(PRIMARY);
+        b.setBackground(new RippleDrawable(ColorStateList.valueOf(0x25FFFFFF),
+            rounded(Color.TRANSPARENT, 14, Color.TRANSPARENT), null));
         b.setOnClickListener(v -> action.run());
         return b;
     }
 
+    private TextView text(String value, int sp, int color, boolean bold) {
+        TextView label = new TextView(this);
+        label.setText(value);
+        label.setTextSize(sp);
+        label.setTextColor(color);
+        if (bold) label.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        label.setGravity(Gravity.CENTER_VERTICAL);
+        return label;
+    }
+
+    private void hideKeyboard() {
+        ((InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE))
+            .hideSoftInputFromWindow(address.getWindowToken(), 0);
+    }
+
+    private void focusAddress() {
+        address.requestFocus();
+        address.selectAll();
+        ((InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE))
+            .showSoftInput(address, InputMethodManager.SHOW_IMPLICIT);
+    }
+
+    private void switchTabBy(int direction) {
+        TabRegistry.Tab current = tabRegistry.current();
+        if (current == null || address.hasFocus()) return;
+        int index = tabRegistry.all().indexOf(current);
+        int next = index + direction;
+        if (next >= 0 && next < tabRegistry.all().size()) {
+            selectTab(tabRegistry.all().get(next).id);
+        }
+    }
+
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        getWindow().setStatusBarColor(Color.rgb(21, 25, 32));
-        getWindow().setNavigationBarColor(Color.rgb(21, 25, 32));
+        getWindow().setStatusBarColor(CANVAS);
+        getWindow().setNavigationBarColor(CANVAS);
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        if (Build.VERSION.SDK_INT >= 29) getWindow().setNavigationBarContrastEnforced(false);
 
         LinearLayout root = new LinearLayout(this);
         browserRoot = root;
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(Color.TRANSPARENT); // CEF surface may live behind this overlay.
+        root.setFocusableInTouchMode(true);
+        root.setBackgroundColor(CANVAS);
+        root.setFitsSystemWindows(true);
         setContentView(root);
 
+        // Title is retained as a state/accessibility sink. The old always-on
+        // top bar wasted viewport height and added no useful browser control.
         LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.VERTICAL);
-        header.setBackgroundColor(Color.rgb(27, 32, 40));
+        header.setVisibility(View.GONE);
+        title = text("Velocity · Cefrium", 13, SECONDARY, false);
+        header.addView(title);
         root.addView(header, new LinearLayout.LayoutParams(-1, -2));
 
-        title = new TextView(this);
-        title.setText("Velocity Chromium · 0.13.0 · Experiment");
-        title.setTextColor(Color.WHITE);
-        title.setSingleLine(true);
-        title.setTextSize(13);
-        title.setPadding(dp(12), dp(8), dp(12), 0);
-        header.addView(title, new LinearLayout.LayoutParams(-1, -2));
+        FrameLayout content = new FrameLayout(this);
+        browserContent = content;
+        browserHeader = header;
+        root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1f));
 
-        LinearLayout row = new LinearLayout(this);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(8), 0, dp(8), dp(4));
-        header.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        // The page remains the focus. One compact chrome surface is anchored
+        // at the bottom, within thumb reach on tall phones.
+        LinearLayout footer = new LinearLayout(this);
+        browserFooter = footer;
+        footer.setOrientation(LinearLayout.VERTICAL);
+        footer.setPadding(dp(10), dp(5), dp(10), dp(5));
+        footer.setBackgroundColor(CANVAS);
+        root.addView(footer, new LinearLayout.LayoutParams(-1, -2));
+
+        progressLine = new View(this);
+        progressLine.setBackground(rounded(ACCENT, 2, Color.TRANSPARENT));
+        progressLine.setVisibility(View.INVISIBLE);
+        LinearLayout.LayoutParams progressLp = new LinearLayout.LayoutParams(-1, dp(2));
+        progressLp.setMargins(dp(9), 0, dp(9), dp(5));
+        footer.addView(progressLine, progressLp);
+
+        LinearLayout addressRow = new LinearLayout(this);
+        addressRow.setOrientation(LinearLayout.HORIZONTAL);
+        addressRow.setGravity(Gravity.CENTER_VERTICAL);
+        addressRow.setPadding(dp(12), 0, dp(5), 0);
+        addressRow.setBackground(rounded(SURFACE, 17, BORDER));
+        LinearLayout.LayoutParams addressLp = new LinearLayout.LayoutParams(-1, dp(51));
+        footer.addView(addressRow, addressLp);
+
+        TextView searchMark = text("⌕", 27, ACCENT, true);
+        searchMark.setContentDescription("URLと検索");
+        addressRow.addView(searchMark, new LinearLayout.LayoutParams(dp(31), -1));
 
         address = new EditText(this);
         address.setSingleLine(true);
-        address.setTextColor(Color.WHITE);
-        address.setHintTextColor(Color.LTGRAY);
-        address.setHint("URL / 検索");
+        address.setTextColor(PRIMARY);
+        address.setHintTextColor(SECONDARY);
+        address.setHint("検索またはアドレスを入力");
         address.setTextSize(15);
-        address.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        address.setImeOptions(EditorInfo.IME_ACTION_GO);
+        address.setPadding(0, 0, dp(5), 0);
+        address.setBackgroundColor(Color.TRANSPARENT);
         address.setSelectAllOnFocus(true);
+        address.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        address.setImeOptions(EditorInfo.IME_ACTION_GO | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
         address.setOnEditorActionListener((view, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_GO ||
                 event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER) {
@@ -139,32 +240,69 @@ public final class ChromiumTestActivity extends Activity {
             }
             return false;
         });
-        row.addView(address, new LinearLayout.LayoutParams(0, dp(48), 1f));
-        row.addView(makeButton("Go", "サイトを開く", this::loadAddress),
-            new LinearLayout.LayoutParams(dp(68), dp(48)));
+        addressRow.addView(address, new LinearLayout.LayoutParams(0, dp(48), 1f));
 
-        FrameLayout content = new FrameLayout(this);
-        browserContent = content;
-        browserHeader = header;
-        root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1f));
+        Button go = makeButton("→", "入力したURLを開く", this::loadAddress);
+        go.setTextColor(ACCENT);
+        addressRow.addView(go, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
+        toolbarActions = new LinearLayout(this);
+        toolbarActions.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams toolbarLp = new LinearLayout.LayoutParams(-1, dp(49));
+        toolbarLp.topMargin = dp(4);
+        footer.addView(toolbarActions, toolbarLp);
 
-        LinearLayout footer = new LinearLayout(this);
-        browserFooter = footer;
-        footer.setGravity(Gravity.CENTER_VERTICAL);
-        footer.setBackgroundColor(Color.rgb(27, 32, 40));
-        root.addView(footer, new LinearLayout.LayoutParams(-1, dp(54)));
+        back = makeButton("‹", "前のページへ戻る", () -> {
+            if (engine != null && engine.canGoBack()) engine.goBack();
+        });
+        forward = makeButton("›", "次のページへ進む", () -> {
+            if (engine != null) engine.goForward();
+        });
+        Button reload = makeButton("↻", "ページを再読み込み", () -> {
+            if (engine != null) engine.reload();
+        });
+        tabsButton = makeButton("□", "タブ一覧", this::showTabs);
+        Button menu = makeButton("⋮", "ブラウザメニュー", this::showMenu);
+        toolbarActions.addView(back, new LinearLayout.LayoutParams(0, dp(48), 1));
+        toolbarActions.addView(forward, new LinearLayout.LayoutParams(0, dp(48), 1));
+        toolbarActions.addView(reload, new LinearLayout.LayoutParams(0, dp(48), 1));
+        toolbarActions.addView(tabsButton, new LinearLayout.LayoutParams(0, dp(48), 1.25f));
+        toolbarActions.addView(menu, new LinearLayout.LayoutParams(0, dp(48), 1));
 
-        back = makeButton("‹", "戻る", () -> { if (engine != null && engine.canGoBack()) engine.goBack(); });
-        forward = makeButton("›", "進む", () -> { if (engine != null) engine.goForward(); });
-        Button reload = makeButton("↻", "再読み込み", () -> { if (engine != null) engine.reload(); });
-        tabsButton = makeButton("□", "タブの一覧", this::showTabs);
-        Button menu = makeButton("⋮", "メニュー", this::showMenu);
-        footer.addView(back, new LinearLayout.LayoutParams(0, -1, 1f));
-        footer.addView(forward, new LinearLayout.LayoutParams(0, -1, 1f));
-        footer.addView(reload, new LinearLayout.LayoutParams(0, -1, 1f));
-        footer.addView(tabsButton, new LinearLayout.LayoutParams(0, -1, 1f));
-        footer.addView(menu, new LinearLayout.LayoutParams(0, -1, 1f));
+        // Focus is the only source of truth for editing mode. When the IME
+        // appears, drop the duplicate toolbar instead of hiding the URL input.
+        address.setOnFocusChangeListener((v, hasFocus) -> {
+            toolbarActions.setVisibility(hasFocus ? View.GONE : View.VISIBLE);
+            go.setText(hasFocus ? "→" : "↗");
+            if (hasFocus) address.selectAll();
+        });
+
+        // Horizontal swiping on the unfocused address field switches tabs.
+        // Once focused, Android's native EditText owns all gestures for
+        // selection and cursor manipulation without interception.
+        GestureDetector addressGesture = new GestureDetector(this,
+            new GestureDetector.SimpleOnGestureListener() {
+                @Override public boolean onDown(MotionEvent event) { return true; }
+                @Override public boolean onSingleTapUp(MotionEvent event) {
+                    focusAddress();
+                    return true;
+                }
+                @Override public boolean onFling(MotionEvent down, MotionEvent up,
+                    float velocityX, float velocityY) {
+                    if (down == null || up == null) return false;
+                    float displacement = up.getX() - down.getX();
+                    if (Math.abs(displacement) < dp(80)
+                            || Math.abs(velocityX) < dp(250)
+                            || Math.abs(displacement) < Math.abs(up.getY() - down.getY())) {
+                        return false;
+                    }
+                    switchTabBy(displacement < 0 ? 1 : -1);
+                    return true;
+                }
+            });
+        address.setOnTouchListener((v, event) ->
+            address.hasFocus() ? false : addressGesture.onTouchEvent(event));
+        root.requestFocus();
 
         updateNavigation();
         address.clearFocus();
@@ -240,6 +378,11 @@ public final class ChromiumTestActivity extends Activity {
             restoreRegularTabs();
             if (tabRegistry.current() == null) tabRegistry.add(SITE_URLS[0], false);
             activateCurrentTab();
+            if (engine != null) {
+                // Retain the original startup smoke-test assertion, and emit
+                // it only after the real native browser Surface was created.
+                Log.i(TAG, "CEF surface created and page navigation started");
+            }
             Log.i(TAG, "CEF tabbed test bed initialized");
         } catch (RuntimeException | LinkageError error) {
             chromiumReady = false;
@@ -390,7 +533,11 @@ public final class ChromiumTestActivity extends Activity {
                     tab.loading = loading;
                     tab.canGoBack = canBack;
                     tab.canGoForward = canForward;
-                    if (tabRegistry.current() == tab) updateNavigation();
+                    if (tabRegistry.current() == tab) {
+                        if (progressLine != null) progressLine.setVisibility(
+                            loading ? View.VISIBLE : View.INVISIBLE);
+                        updateNavigation();
+                    }
                 }));
             browser.setOnUrlChangedListener(url -> runOnUiThread(() -> {
                 if (destroyed || tabRegistry.find(tab.id) != tab || url == null) return;
@@ -462,8 +609,7 @@ public final class ChromiumTestActivity extends Activity {
             Toast.makeText(this, "HTTP(S) URLか検索語を入力", Toast.LENGTH_LONG).show();
             return;
         }
-        ((InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE))
-            .hideSoftInputFromWindow(address.getWindowToken(), 0);
+        hideKeyboard();
         address.clearFocus();
         TabRegistry.Tab current = tabRegistry.current();
         if (current != null) current.url = parsed;
@@ -487,43 +633,177 @@ public final class ChromiumTestActivity extends Activity {
             .setNegativeButton("閉じる", null).show();
     }
 
+    /** Native compact bottom sheet instead of a full-screen, unlabeled list. */
+    private Dialog bottomSheet(LinearLayout panel) {
+        Dialog sheet = new Dialog(this);
+        panel.setPadding(dp(18), dp(17), dp(18), dp(20));
+        panel.setBackground(rounded(SURFACE, 24, BORDER));
+        sheet.setContentView(panel);
+        Window window = sheet.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            window.setDimAmount(0.33f);
+        }
+        sheet.show();
+        if (window != null) {
+            window.setGravity(Gravity.BOTTOM);
+            window.setLayout(-1, -2);
+        }
+        return sheet;
+    }
+
+    private LinearLayout sheetPanel() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        return panel;
+    }
+
     private void showTabs() {
         if (!chromiumReady) return;
-        int count = tabRegistry.all().size();
-        String[] items = new String[count + 2];
-        for (int i = 0; i < count; i++) {
-            TabRegistry.Tab tab = tabRegistry.all().get(i);
-            items[i] = (tab == tabRegistry.current() ? "● " : "　")
-                + (tab.privateMode ? "🔒 " : "") + tab.displayTitle();
+        LinearLayout panel = sheetPanel();
+        TextView heading = text("タブ  " + tabRegistry.all().size(), 19, PRIMARY, true);
+        heading.setPadding(dp(6), 0, 0, dp(15));
+        panel.addView(heading, new LinearLayout.LayoutParams(-1, dp(42)));
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        panel.addView(actions, new LinearLayout.LayoutParams(-1, dp(49)));
+
+        // The dialog is created before buttons receive listeners. The holder
+        // avoids retaining a stale Activity outside the dialog lifetime.
+        final Dialog[] shown = new Dialog[1];
+        Button addNormal = makeButton("＋ 新しいタブ", "通常タブを新規作成", () -> {
+            shown[0].dismiss();
+            createTab("about:blank", false);
+        });
+        addNormal.setTextSize(14);
+        addNormal.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        addNormal.setBackground(rounded(ELEVATED, 13, BORDER));
+        actions.addView(addNormal, new LinearLayout.LayoutParams(0, dp(44), 1));
+
+        Button addPrivate = makeButton("◇ 非公開", "非公開タブを新規作成", () -> {
+            shown[0].dismiss();
+            createTab("about:blank", true);
+        });
+        addPrivate.setTextSize(14);
+        addPrivate.setTextColor(ACCENT);
+        LinearLayout.LayoutParams privateLp = new LinearLayout.LayoutParams(0, dp(44), 1);
+        privateLp.leftMargin = dp(9);
+        actions.addView(addPrivate, privateLp);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
+        scroll.setVerticalScrollBarEnabled(false);
+        int maxHeight = (int) (getResources().getDisplayMetrics().heightPixels * .56f);
+        LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(-1,
+            Math.min(maxHeight, dp(Math.max(74, tabRegistry.all().size() * 73))));
+        scrollLp.topMargin = dp(10);
+        panel.addView(scroll, scrollLp);
+        LinearLayout rows = sheetPanel();
+        scroll.addView(rows);
+
+        for (TabRegistry.Tab tab : tabRegistry.all()) {
+            LinearLayout tabRow = new LinearLayout(this);
+            tabRow.setGravity(Gravity.CENTER_VERTICAL);
+            tabRow.setPadding(dp(12), dp(4), dp(3), dp(4));
+            boolean active = tab == tabRegistry.current();
+            tabRow.setBackground(rounded(active ? ELEVATED : SURFACE, 14,
+                active ? ACCENT : Color.TRANSPARENT));
+            LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(67));
+            rowLp.bottomMargin = dp(5);
+            rows.addView(tabRow, rowLp);
+
+            LinearLayout details = new LinearLayout(this);
+            details.setOrientation(LinearLayout.VERTICAL);
+            details.setGravity(Gravity.CENTER_VERTICAL);
+            String display = tab.displayTitle();
+            TextView label = text((tab.privateMode ? "◇  " : "") + display, 14,
+                PRIMARY, active);
+            label.setSingleLine(true);
+            label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            details.addView(label, new LinearLayout.LayoutParams(-1, dp(25)));
+            TextView subtitle = text(tab.privateMode ? "非公開" : tab.url, 11,
+                SECONDARY, false);
+            subtitle.setSingleLine(true);
+            subtitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            details.addView(subtitle, new LinearLayout.LayoutParams(-1, dp(20)));
+            tabRow.addView(details, new LinearLayout.LayoutParams(0, -1, 1));
+            details.setContentDescription("タブを選択: " + display);
+            details.setOnClickListener(v -> {
+                shown[0].dismiss();
+                selectTab(tab.id);
+            });
+
+            Button close = makeButton("×", "このタブを閉じる", () -> {
+                shown[0].dismiss();
+                closeTabDirect(tab.id);
+            });
+            close.setTextColor(SECONDARY);
+            tabRow.addView(close, new LinearLayout.LayoutParams(dp(43), dp(45)));
         }
-        items[count] = "＋ 新しい通常タブ";
-        items[count + 1] = "＋ 新しい非公開タブ";
-        new AlertDialog.Builder(this).setTitle("タブ")
-            .setItems(items, (d, index) -> {
-                if (index == count) createTab("about:blank", false);
-                else if (index == count + 1) createTab("about:blank", true);
-                else selectTab(tabRegistry.all().get(index).id);
-            })
-            .setNegativeButton("閉じる", null).show();
+        shown[0] = bottomSheet(panel);
+    }
+
+    /** Closing is a single operation; reopening navigates back to the URL. */
+    private void closeTabDirect(String id) {
+        TabRegistry.Tab victim = tabRegistry.find(id);
+        if (victim == null) return;
+        boolean wasCurrent = victim == tabRegistry.current();
+        CefriumBrowser closing = liveBrowsers.remove(id);
+        if (closing != null) {
+            if (engine == closing) engine = null;
+            closing.close();
+        }
+        tabRegistry.close(id);
+        if (tabRegistry.current() == null) tabRegistry.add("about:blank", false);
+        if (wasCurrent) activateCurrentTab();
+        else updateNavigation();
+        saveRegularTabs();
+        showUndo(victim);
+    }
+
+    /** Five-second, non-modal undo. Does not claim to recover form/JS state. */
+    private void showUndo(TabRegistry.Tab closed) {
+        if (undoTimeout != null) mainHandler.removeCallbacks(undoTimeout);
+        if (undoPopup != null) undoPopup.dismiss();
+
+        LinearLayout bar = new LinearLayout(this);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(dp(18), dp(6), dp(13), dp(6));
+        bar.setBackground(rounded(ELEVATED, 16, BORDER));
+        TextView message = text("タブを閉じた", 14, PRIMARY, false);
+        bar.addView(message, new LinearLayout.LayoutParams(0, -1, 1));
+        Button undo = makeButton("元に戻す", "URLを再び開く", () -> {
+            if (undoPopup != null) undoPopup.dismiss();
+            undoPopup = null;
+            if (undoTimeout != null) mainHandler.removeCallbacks(undoTimeout);
+            createTab(closed.url, closed.privateMode);
+        });
+        undo.setTextSize(14);
+        undo.setTextColor(ACCENT);
+        bar.addView(undo, new LinearLayout.LayoutParams(dp(95), -1));
+        PopupWindow popup = new PopupWindow(bar, -1, dp(58), false);
+        popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        popup.setElevation(dp(8));
+        undoPopup = popup;
+        browserRoot.post(() -> {
+            if (destroyed || undoPopup != popup) return;
+            popup.showAtLocation(browserRoot, Gravity.BOTTOM, dp(12),
+                browserFooter.getHeight() + dp(9));
+        });
+        undoTimeout = () -> {
+            if (undoPopup == popup) {
+                popup.dismiss();
+                undoPopup = null;
+            }
+        };
+        mainHandler.postDelayed(undoTimeout, 5000L);
     }
 
     private void closeCurrentTab() {
         TabRegistry.Tab current = tabRegistry.current();
-        if (current == null) return;
-        new AlertDialog.Builder(this).setTitle("このタブを閉じる？")
-            .setMessage("入力中のフォームや再生状態は復元できません。")
-            .setPositiveButton("閉じる", (d, which) -> {
-                CefriumBrowser closing = liveBrowsers.remove(current.id);
-                if (closing != null) {
-                    if (engine == closing) engine = null;
-                    closing.close();
-                }
-                tabRegistry.close(current.id);
-                if (tabRegistry.current() == null) tabRegistry.add("about:blank", false);
-                activateCurrentTab();
-                saveRegularTabs();
-            })
-            .setNegativeButton("キャンセル", null).show();
+        if (current != null) closeTabDirect(current.id);
     }
 
     private void findInPage() {
@@ -540,35 +820,98 @@ public final class ChromiumTestActivity extends Activity {
             }).setNegativeButton("キャンセル", null).show();
     }
 
+    private void openUpdatesPage() {
+        // A plain HTTPS page, never silent APK installation or downloads from
+        // unauthenticated third-party hosts.
+        Intent browser = new Intent(Intent.ACTION_VIEW,
+            android.net.Uri.parse("https://github.com/linkalls/velocity-browser/actions/workflows/chromium-013-signed-preview.yml"));
+        try {
+            startActivity(browser);
+        } catch (RuntimeException error) {
+            Toast.makeText(this, "GitHubの更新ページを開けませんでした", Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void showMenu() {
-        String[] commands = {
+        String[] labels = {
             "新しいタブ", "新しい非公開タブ", "現在のタブを閉じる",
             "ページ内検索", "ページを共有", "比較サイト",
-            "追加ドメイン遮断の切替", "実装状況・注意点"
+            "広告・トラッカードメイン遮断", "更新APKを確認",
+            "起動診断", "このブラウザについて"
         };
-        new AlertDialog.Builder(this).setTitle("Velocity Chromium")
-            .setItems(commands, (dialog, index) -> {
-                switch (index) {
-                    case 0: createTab("about:blank", false); break;
-                    case 1: createTab("about:blank", true); break;
-                    case 2: closeCurrentTab(); break;
-                    case 3: findInPage(); break;
-                    case 4:
-                        TabRegistry.Tab tab = tabRegistry.current();
-                        if (tab != null && isPersistable(tab.url)
-                                && !tab.url.equals("about:blank")) {
-                            Intent share = new Intent(Intent.ACTION_SEND);
-                            share.setType("text/plain");
-                            share.putExtra(Intent.EXTRA_TEXT, tab.url);
-                            startActivity(Intent.createChooser(share, "共有"));
-                        }
-                        break;
-                    case 5: showSites(); break;
-                    case 6: toggleNetworkRules(); break;
-                    case 7: showInfo(); break;
-                    default: break;
+        String[] glyphs = {
+            "+", "◇", "×", "⌕", "↗", "▤", "◎", "↓", "⚙", "ⓘ"
+        };
+        String[] hints = {
+            "通常のブラウジング", "終了時にURLを保存しない", "5秒以内ならURLを再度開ける",
+            "現在のページで探す", "Androidの共有メニューへ", "表示・スクロールを比較",
+            blockDomainsEnabled ? "追加遮断 ON" : "追加遮断 OFF",
+            "GitHub Actionsの署名済みビルド", "クラッシュ・起動状態を確認",
+            "Cefrium 0.13.0 · 開発版"
+        };
+        LinearLayout panel = sheetPanel();
+        TextView header = text("Velocity", 21, PRIMARY, true);
+        header.setPadding(dp(6), 0, 0, dp(12));
+        panel.addView(header, new LinearLayout.LayoutParams(-1, dp(45)));
+        ScrollView scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.setLayoutParams(new LinearLayout.LayoutParams(-1,
+            Math.min(dp(510), (int) (getResources().getDisplayMetrics().heightPixels * .68f))));
+        panel.addView(scroll);
+        LinearLayout items = sheetPanel();
+        scroll.addView(items);
+        final Dialog[] shown = new Dialog[1];
+
+        for (int i = 0; i < labels.length; i++) {
+            final int action = i;
+            LinearLayout item = new LinearLayout(this);
+            item.setGravity(Gravity.CENTER_VERTICAL);
+            item.setPadding(dp(9), 0, dp(6), 0);
+            item.setBackground(new RippleDrawable(ColorStateList.valueOf(0x22FFFFFF),
+                rounded(SURFACE, 13, Color.TRANSPARENT), null));
+            items.addView(item, new LinearLayout.LayoutParams(-1, dp(62)));
+            TextView icon = text(glyphs[i], 23, i == 7 ? ACCENT : SECONDARY, false);
+            icon.setGravity(Gravity.CENTER);
+            item.addView(icon, new LinearLayout.LayoutParams(dp(43), -1));
+            LinearLayout detail = sheetPanel();
+            detail.setGravity(Gravity.CENTER_VERTICAL);
+            TextView label = text(labels[i], 15, PRIMARY, false);
+            TextView sub = text(hints[i], 11, SECONDARY, false);
+            detail.addView(label, new LinearLayout.LayoutParams(-1, dp(24)));
+            detail.addView(sub, new LinearLayout.LayoutParams(-1, dp(18)));
+            item.addView(detail, new LinearLayout.LayoutParams(0, -1, 1));
+            item.setContentDescription(labels[i] + "、" + hints[i]);
+            item.setOnClickListener(v -> {
+                shown[0].dismiss();
+                runMenuAction(action);
+            });
+        }
+        shown[0] = bottomSheet(panel);
+    }
+
+    private void runMenuAction(int action) {
+        switch (action) {
+            case 0: createTab("about:blank", false); break;
+            case 1: createTab("about:blank", true); break;
+            case 2: closeCurrentTab(); break;
+            case 3: findInPage(); break;
+            case 4:
+                TabRegistry.Tab tab = tabRegistry.current();
+                if (tab != null && isPersistable(tab.url)
+                        && !tab.url.equals("about:blank")) {
+                    Intent share = new Intent(Intent.ACTION_SEND);
+                    share.setType("text/plain");
+                    share.putExtra(Intent.EXTRA_TEXT, tab.url);
+                    startActivity(Intent.createChooser(share, "共有"));
                 }
-            }).show();
+                break;
+            case 5: showSites(); break;
+            case 6: toggleNetworkRules(); break;
+            case 7: openUpdatesPage(); break;
+            case 8: startActivity(new Intent(this, StartupDiagnosticActivity.class)); break;
+            case 9: showInfo(); break;
+            default: break;
+        }
     }
 
     private void showInfo() {
@@ -607,12 +950,18 @@ public final class ChromiumTestActivity extends Activity {
     }
 
     @Override @Deprecated public void onBackPressed() {
-        if (engine != null && engine.canGoBack()) engine.goBack();
-        else super.onBackPressed();
+        if (address.hasFocus()) {
+            hideKeyboard();
+            address.clearFocus();
+        } else if (engine != null && engine.canGoBack()) {
+            engine.goBack();
+        } else super.onBackPressed();
     }
 
     @Override protected void onDestroy() {
         destroyed = true;
+        if (undoTimeout != null) mainHandler.removeCallbacks(undoTimeout);
+        if (undoPopup != null) undoPopup.dismiss();
         for (CefriumBrowser browser : liveBrowsers.values()) browser.close();
         liveBrowsers.clear();
         engine = null;

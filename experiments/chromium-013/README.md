@@ -13,3 +13,8 @@ Network-only Velocity Block Lite uses its original domain-rule subset, the
 snapshot from 2026-10-10, and the retained attribution in assets/licenses.
 This is not cosmetic blocking or Gecko XPI compatibility. The separate
 Cefrium built-in EasyList behavior is not controlled by this switch.
+
+The Preview browser now has a compact bottom address bar and native tab
+management. See the [UX plan](../../docs/velocity-cefrium-preview-ux.md)
+and [signed APK update guide](../../docs/velocity-cefrium-signing.md).
+The fixed-key APK is not upgrade-compatible with older debug-signed builds.
