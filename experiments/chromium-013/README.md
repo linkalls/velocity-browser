@@ -4,3 +4,7 @@ Independent Java-renderer experiment; applicationId `dev.velocity.browser.chromi
 
 See [migration, build instructions and verification](../../docs/chromium-cefrium-013.md).
 The 0.9.4 baseline is in `../chromium/`; this root uses only 0.13.0 artifacts.
+
+The tabbed/private Cefrium migration is tracked in
+[the migration tracker](../../docs/chromium-cefrium-013-migration.md).
+This is not the default Velocity browser until device verification.

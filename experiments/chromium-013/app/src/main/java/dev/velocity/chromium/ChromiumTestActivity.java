@@ -25,6 +25,11 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.content.SharedPreferences;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import com.cefrium.Cefrium;
 import com.cefrium.CefriumBrowser;
@@ -32,13 +37,12 @@ import org.chromium.base.CommandLine;
 import org.chromium.content.browser.ChildProcessCreationParamsImpl;
 
 /**
- * A strictly separate, single-tab Chromium/CEF prototype to evaluate engine
- * behavior, rather than a hidden Android WebView replacement.
+ * A separate Cefrium browser test bed with persistent regular tab metadata,
+ * isolated private tabs, navigation, and native Surface rendering.
  *
- * There is deliberately no moving toolbar, URL logging, automatic profile
- * recording or page JavaScript instrumentation. This is not a secure general
- * browser yet: downloads, Passkeys, tabs, permissions and extensions need
- * separate architecture / testing before any migration.
+ * No moving toolbar or page JavaScript instrumentation is introduced.
+ * This is not ready as a default browser: permission/download policies,
+ * extensions, and physical device validation remain open.
  */
 public final class ChromiumTestActivity extends Activity {
     private static final String[] SITE_NAMES = {
@@ -53,13 +57,21 @@ public final class ChromiumTestActivity extends Activity {
         "https://www.amazon.co.jp/"
     };
 
+    private final TabRegistry tabRegistry = new TabRegistry();
+    private final Map<String, CefriumBrowser> liveBrowsers = new LinkedHashMap<>();
+    private static final String TAB_PREFS = "cefrium_tabs_v1";
     private CefriumBrowser engine;
+    private LinearLayout browserRoot;
+    private FrameLayout browserContent;
+    private View browserHeader;
+    private View browserFooter;
+    private boolean chromiumReady;
+    private Button tabsButton;
     private EditText address;
     private TextView title;
     private Button back;
     private Button forward;
     private boolean destroyed;
-    private boolean canNavigateForward;
     private static final String TAG = "VelocityCefStartup";
 
     private int dp(int v) {
@@ -82,6 +94,7 @@ public final class ChromiumTestActivity extends Activity {
         getWindow().setNavigationBarColor(Color.rgb(21, 25, 32));
 
         LinearLayout root = new LinearLayout(this);
+        browserRoot = root;
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.TRANSPARENT); // CEF surface may live behind this overlay.
         setContentView(root);
@@ -126,10 +139,13 @@ public final class ChromiumTestActivity extends Activity {
             new LinearLayout.LayoutParams(dp(68), dp(48)));
 
         FrameLayout content = new FrameLayout(this);
+        browserContent = content;
+        browserHeader = header;
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1f));
 
 
         LinearLayout footer = new LinearLayout(this);
+        browserFooter = footer;
         footer.setGravity(Gravity.CENTER_VERTICAL);
         footer.setBackgroundColor(Color.rgb(27, 32, 40));
         root.addView(footer, new LinearLayout.LayoutParams(-1, dp(54)));
@@ -137,20 +153,18 @@ public final class ChromiumTestActivity extends Activity {
         back = makeButton("‹", "戻る", () -> { if (engine != null && engine.canGoBack()) engine.goBack(); });
         forward = makeButton("›", "進む", () -> { if (engine != null) engine.goForward(); });
         Button reload = makeButton("↻", "再読み込み", () -> { if (engine != null) engine.reload(); });
-        Button sites = makeButton("Sites", "比較用サイト", this::showSites);
-        Button info = makeButton("ⓘ", "Chromium実験版の注意", this::showInfo);
+        tabsButton = makeButton("□", "タブの一覧", this::showTabs);
+        Button menu = makeButton("⋮", "メニュー", this::showMenu);
         footer.addView(back, new LinearLayout.LayoutParams(0, -1, 1f));
         footer.addView(forward, new LinearLayout.LayoutParams(0, -1, 1f));
         footer.addView(reload, new LinearLayout.LayoutParams(0, -1, 1f));
-        footer.addView(sites, new LinearLayout.LayoutParams(0, -1, 1.6f));
-        footer.addView(info, new LinearLayout.LayoutParams(0, -1, 1f));
+        footer.addView(tabsButton, new LinearLayout.LayoutParams(0, -1, 1f));
+        footer.addView(menu, new LinearLayout.LayoutParams(0, -1, 1f));
 
-        String initial = SITE_URLS[0];
-        address.setText(initial);
         updateNavigation();
         address.clearFocus();
-        // Create the Chromium surface after Android has attached the window.
-        root.post(() -> startChromium(root, content, header, footer, initial));
+        // The SDK creates WindowAndroid and surfaces only after attachment.
+        root.post(this::startChromium);
     }
 
     private void positionChromiumSurface(FrameLayout surface, View header, View footer) {
@@ -211,64 +225,188 @@ public final class ChromiumTestActivity extends Activity {
         }
     }
 
-    private void startChromium(LinearLayout root, FrameLayout content, View header, View footer,
-                               String initialUrl) {
+    /** The launcher must be verified once before the first Cefrium browser. */
+    private void startChromium() {
         if (destroyed || isFinishing()) return;
         try {
-            // Preserve Chromium's native Surface attachment to WindowAndroid.
-            // Reparenting the SDK-owned surface can break native lifecycle.
             configureRendererLauncher();
-            engine = CefriumBrowser.createWithSurface(this);
-            FrameLayout surface = engine.getSurfaceContainer();
-            if (surface.getParent() == null) {
-                content.addView(surface, new FrameLayout.LayoutParams(-1, -1));
-            } else if (surface.getParent() != content) {
-                root.bringToFront();
-                root.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, orr, ob) ->
-                    positionChromiumSurface(surface, header, footer));
-                surface.post(() -> positionChromiumSurface(surface, header, footer));
-            }
-
-            engine.setOnLoadingStateChangedListener((loading, canBack, canForward) ->
-                runOnUiThread(() -> {
-                    if (destroyed) return;
-                    canNavigateForward = canForward;
-                    updateNavigation();
-                    if (!loading) Log.i(TAG, "CEF page load completed");
-                }));
-            engine.setOnUrlChangedListener(url -> runOnUiThread(() -> {
-                if (destroyed) return;
-                if (!address.hasFocus() && url != null) address.setText(url);
-                updateNavigation();
-            }));
-            engine.setOnTitleChangedListener(name -> runOnUiThread(() -> {
-                if (destroyed) return;
-                title.setText("Chromium · " + (name == null || name.isBlank() ? "Loading" : name));
-                updateNavigation();
-            }));
-
-            engine.loadUrl(initialUrl);
-            updateNavigation();
-            Log.i(TAG, "CEF surface created and page navigation started");
+            chromiumReady = true;
+            restoreRegularTabs();
+            if (tabRegistry.current() == null) tabRegistry.add(SITE_URLS[0], false);
+            activateCurrentTab();
+            Log.i(TAG, "CEF tabbed test bed initialized");
         } catch (RuntimeException | LinkageError error) {
-            Log.e(TAG, "CEF Surface startup failure", error);
-            if (engine != null) {
-                try { engine.close(); } catch (RuntimeException ignored) { }
-                engine = null;
-            }
+            chromiumReady = false;
+            Log.e(TAG, "CEF startup failure", error);
             title.setText("Chromium初期化失敗");
-            new AlertDialog.Builder(this)
-                .setTitle("Chromium起動エラー")
-                .setMessage(error.getClass().getSimpleName() + ": " + error.getMessage() +
-                    "\\n\\nlogcat: VelocityCefStartup / AndroidRuntime")
+            new AlertDialog.Builder(this).setTitle("Chromium起動エラー")
+                .setMessage(error.getClass().getSimpleName() + ": " + error.getMessage())
                 .setPositiveButton("閉じる", null).show();
+        }
+    }
+
+    /** Preserve normal tab URLs only. A private session is never serialized. */
+    private void restoreRegularTabs() {
+        SharedPreferences prefs = getSharedPreferences(TAB_PREFS, MODE_PRIVATE);
+        try {
+            JSONObject state = new JSONObject(prefs.getString("state", "{}"));
+            JSONArray normal = state.optJSONArray("normal");
+            if (normal == null) return;
+            int selected = state.optInt("selected", 0);
+            String selectedId = null;
+            for (int i = 0; i < normal.length() && i < TabRegistry.MAX_TABS; i++) {
+                JSONObject item = normal.optJSONObject(i);
+                if (item == null) continue;
+                String url = item.optString("url", "");
+                if (!isPersistable(url)) continue;
+                TabRegistry.Tab tab = tabRegistry.add(url, false);
+                if (tab == null) break;
+                tab.title = item.optString("title", "");
+                if (i == selected) selectedId = tab.id;
+            }
+            if (selectedId != null) tabRegistry.select(selectedId);
+        } catch (Exception error) {
+            Log.w(TAG, "Saved regular-tab metadata is invalid; ignoring", error);
+        }
+    }
+
+    private static boolean isPersistable(String url) {
+        if (url == null || url.length() > 2048) return false;
+        if (url.equals("about:blank")) return true;
+        String parsed = NavigationPolicy.parse(url);
+        return parsed != null && parsed.equals(url)
+            && (url.startsWith("https://") || url.startsWith("http://"));
+    }
+
+    private void saveRegularTabs() {
+        JSONArray normal = new JSONArray();
+        int selected = 0;
+        int regularIndex = 0;
+        TabRegistry.Tab current = tabRegistry.current();
+        try {
+            for (TabRegistry.Tab tab : tabRegistry.regularTabs()) {
+                if (!isPersistable(tab.url)) continue;
+                if (tab == current) selected = regularIndex;
+                normal.put(new JSONObject()
+                    .put("url", tab.url)
+                    .put("title", tab.title == null ? "" : tab.title.substring(
+                        0, Math.min(tab.title.length(), 120))));
+                regularIndex++;
+            }
+            getSharedPreferences(TAB_PREFS, MODE_PRIVATE).edit()
+                .putString("state", new JSONObject()
+                    .put("normal", normal)
+                    .put("selected", selected).toString()).apply();
+        } catch (Exception error) {
+            Log.w(TAG, "Could not save regular-tab metadata", error);
+        }
+    }
+
+    private void createTab(String url, boolean privateMode) {
+        if (!chromiumReady) return;
+        TabRegistry.Tab tab = tabRegistry.add(url, privateMode);
+        if (tab == null) {
+            Toast.makeText(this, "タブ上限に達しました", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        activateCurrentTab();
+        saveRegularTabs();
+    }
+
+    private void selectTab(String id) {
+        if (tabRegistry.select(id)) {
+            activateCurrentTab();
+            saveRegularTabs();
+        }
+    }
+
+    private void attachSurface(CefriumBrowser browser) {
+        FrameLayout surface = browser.getSurfaceContainer();
+        // Cefrium sometimes parents its Surface itself; never detach a native
+        // SurfaceView from its WindowAndroid to force it into our hierarchy.
+        if (surface.getParent() == null) {
+            browserContent.addView(surface, new FrameLayout.LayoutParams(-1, -1));
+        } else if (surface.getParent() != browserContent) {
+            browserRoot.bringToFront();
+            browserRoot.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, orr, ob) ->
+                positionChromiumSurface(surface, browserHeader, browserFooter));
+            surface.post(() -> positionChromiumSurface(surface, browserHeader, browserFooter));
+        }
+    }
+
+    private CefriumBrowser createEngineFor(TabRegistry.Tab tab) {
+        CefriumBrowser browser = CefriumBrowser.createWithSurface(this, tab.privateMode);
+        try {
+            attachSurface(browser);
+            browser.setOnLoadingStateChangedListener((loading, canBack, canForward) ->
+                runOnUiThread(() -> {
+                    if (destroyed || tabRegistry.find(tab.id) != tab) return;
+                    tab.loading = loading;
+                    tab.canGoBack = canBack;
+                    tab.canGoForward = canForward;
+                    if (tabRegistry.current() == tab) updateNavigation();
+                }));
+            browser.setOnUrlChangedListener(url -> runOnUiThread(() -> {
+                if (destroyed || tabRegistry.find(tab.id) != tab || url == null) return;
+                tab.url = url;
+                if (tabRegistry.current() == tab && !address.hasFocus()) address.setText(url);
+                if (!tab.privateMode) saveRegularTabs();
+            }));
+            browser.setOnTitleChangedListener(name -> runOnUiThread(() -> {
+                if (destroyed || tabRegistry.find(tab.id) != tab) return;
+                tab.title = name == null ? "" : name;
+                if (tabRegistry.current() == tab) updateNavigation();
+                if (!tab.privateMode) saveRegularTabs();
+            }));
+            browser.loadUrl(tab.url);
+            return browser;
+        } catch (RuntimeException | LinkageError error) {
+            browser.close();
+            throw error;
+        }
+    }
+
+    private void activateCurrentTab() {
+        if (!chromiumReady || destroyed) return;
+        TabRegistry.Tab current = tabRegistry.current();
+        if (current == null) return;
+        if (engine != null) {
+            engine.setPageVisible(false);
+            engine.getSurfaceContainer().setVisibility(View.GONE);
+        }
+        CefriumBrowser active = liveBrowsers.get(current.id);
+        try {
+            if (active == null) {
+                active = createEngineFor(current);
+                liveBrowsers.put(current.id, active);
+            }
+            engine = active;
+            engine.getSurfaceContainer().setVisibility(View.VISIBLE);
+            engine.setPageVisible(true);
+            engine.getSurfaceContainer().bringToFront();
+            browserRoot.bringToFront();
+            updateNavigation();
+        } catch (RuntimeException | LinkageError error) {
+            Log.e(TAG, "Tab engine failed to open", error);
+            engine = null;
+            title.setText("タブの起動に失敗");
+            Toast.makeText(this, "このタブを開けませんでした", Toast.LENGTH_LONG).show();
         }
     }
 
     private void updateNavigation() {
         if (back == null || forward == null) return;
-        back.setEnabled(engine != null && engine.canGoBack());
-        forward.setEnabled(canNavigateForward);
+        TabRegistry.Tab tab = tabRegistry.current();
+        boolean ready = tab != null && engine != null;
+        back.setEnabled(ready && tab.canGoBack);
+        forward.setEnabled(ready && tab.canGoForward);
+        if (tabsButton != null) tabsButton.setText("□ " + tabRegistry.all().size());
+        if (tab != null) {
+            title.setText((tab.privateMode ? "非公開 · " : "") + tab.displayTitle());
+            if (!address.hasFocus()) {
+                address.setText(tab.url.equals("about:blank") ? "" : tab.url);
+            }
+        }
     }
 
     private void loadAddress() {
@@ -281,7 +419,10 @@ public final class ChromiumTestActivity extends Activity {
         ((InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE))
             .hideSoftInputFromWindow(address.getWindowToken(), 0);
         address.clearFocus();
+        TabRegistry.Tab current = tabRegistry.current();
+        if (current != null) current.url = parsed;
         engine.loadUrl(parsed);
+        saveRegularTabs();
     }
 
     private void showSites() {
@@ -290,9 +431,96 @@ public final class ChromiumTestActivity extends Activity {
             .setItems(SITE_NAMES, (dialog, item) -> {
                 address.clearFocus();
                 address.setText(SITE_URLS[item]);
-                if (engine != null) engine.loadUrl(SITE_URLS[item]);
+                if (engine != null) {
+                    TabRegistry.Tab current = tabRegistry.current();
+                    if (current != null) current.url = SITE_URLS[item];
+                    engine.loadUrl(SITE_URLS[item]);
+                    saveRegularTabs();
+                }
             })
             .setNegativeButton("閉じる", null).show();
+    }
+
+    private void showTabs() {
+        if (!chromiumReady) return;
+        int count = tabRegistry.all().size();
+        String[] items = new String[count + 2];
+        for (int i = 0; i < count; i++) {
+            TabRegistry.Tab tab = tabRegistry.all().get(i);
+            items[i] = (tab == tabRegistry.current() ? "● " : "　")
+                + (tab.privateMode ? "🔒 " : "") + tab.displayTitle();
+        }
+        items[count] = "＋ 新しい通常タブ";
+        items[count + 1] = "＋ 新しい非公開タブ";
+        new AlertDialog.Builder(this).setTitle("タブ")
+            .setItems(items, (d, index) -> {
+                if (index == count) createTab("about:blank", false);
+                else if (index == count + 1) createTab("about:blank", true);
+                else selectTab(tabRegistry.all().get(index).id);
+            })
+            .setNegativeButton("閉じる", null).show();
+    }
+
+    private void closeCurrentTab() {
+        TabRegistry.Tab current = tabRegistry.current();
+        if (current == null) return;
+        new AlertDialog.Builder(this).setTitle("このタブを閉じる？")
+            .setMessage("入力中のフォームや再生状態は復元できません。")
+            .setPositiveButton("閉じる", (d, which) -> {
+                CefriumBrowser closing = liveBrowsers.remove(current.id);
+                if (closing != null) {
+                    if (engine == closing) engine = null;
+                    closing.close();
+                }
+                tabRegistry.close(current.id);
+                if (tabRegistry.current() == null) tabRegistry.add("about:blank", false);
+                activateCurrentTab();
+                saveRegularTabs();
+            })
+            .setNegativeButton("キャンセル", null).show();
+    }
+
+    private void findInPage() {
+        if (engine == null) return;
+        EditText query = new EditText(this);
+        query.setSingleLine(true);
+        query.setHint("ページ内検索");
+        new AlertDialog.Builder(this).setTitle("ページ内検索")
+            .setView(query).setPositiveButton("検索", (dialog, which) -> {
+                CefriumBrowser browser = engine;
+                if (browser != null && !query.getText().toString().isEmpty()) {
+                    browser.find(query.getText().toString(), true, false, false);
+                }
+            }).setNegativeButton("キャンセル", null).show();
+    }
+
+    private void showMenu() {
+        String[] commands = {
+            "新しいタブ", "新しい非公開タブ", "現在のタブを閉じる",
+            "ページ内検索", "ページを共有", "比較サイト", "実装状況・注意点"
+        };
+        new AlertDialog.Builder(this).setTitle("Velocity Chromium")
+            .setItems(commands, (dialog, index) -> {
+                switch (index) {
+                    case 0: createTab("about:blank", false); break;
+                    case 1: createTab("about:blank", true); break;
+                    case 2: closeCurrentTab(); break;
+                    case 3: findInPage(); break;
+                    case 4:
+                        TabRegistry.Tab tab = tabRegistry.current();
+                        if (tab != null && isPersistable(tab.url)
+                                && !tab.url.equals("about:blank")) {
+                            Intent share = new Intent(Intent.ACTION_SEND);
+                            share.setType("text/plain");
+                            share.putExtra(Intent.EXTRA_TEXT, tab.url);
+                            startActivity(Intent.createChooser(share, "共有"));
+                        }
+                        break;
+                    case 5: showSites(); break;
+                    case 6: showInfo(); break;
+                    default: break;
+                }
+            }).show();
     }
 
     private void showInfo() {
@@ -300,28 +528,34 @@ public final class ChromiumTestActivity extends Activity {
             .setMessage("エンジン：Chromium（Cefrium 0.13.0）\n\n" +
                 "これはAndroid標準WebViewではありません。\n\n" +
                 "Gecko/WPE版とは別アプリとしてインストールできます。\n\n" +
-                "固定ツールバーでエンジンのスクロールを比較する初期実験です。" +
-                "拡張機能、Passkey、タブ、ダウンロード・権限管理、保存、" +
-                "完全なセキュリティ検証は未移植。重要なアカウントにはログインしないでください。")
+                "通常・非公開タブ、URL復元、戻る・進む、検索と共有を追加しました。\n\n" +
+                "Gecko拡張、Velocity Block、ダウンロードUI、権限UI、" +
+                "実機セキュリティ検証は未移植です。重要なアカウントにはログインしないでください。")
             .setPositiveButton("OK", null).show();
     }
 
     @Override protected void onPause() {
-        if (engine != null) engine.onPause();
+        for (CefriumBrowser browser : liveBrowsers.values()) browser.onPause();
         super.onPause();
     }
 
     @Override protected void onResume() {
         super.onResume();
-        if (engine != null) engine.onResume();
+        for (CefriumBrowser browser : liveBrowsers.values()) browser.onResume();
+    }
+
+    @Override protected void onStop() {
+        saveRegularTabs();
+        super.onStop();
     }
 
     @Override @Deprecated protected void onActivityResult(
         int requestCode, int resultCode, Intent data
     ) {
-        if (engine == null || !engine.onActivityResult(requestCode, resultCode, data)) {
-            super.onActivityResult(requestCode, resultCode, data);
+        for (CefriumBrowser browser : liveBrowsers.values()) {
+            if (browser.onActivityResult(requestCode, resultCode, data)) return;
         }
+        super.onActivityResult(requestCode, resultCode, data);
     }
 
     @Override @Deprecated public void onBackPressed() {
@@ -331,10 +565,9 @@ public final class ChromiumTestActivity extends Activity {
 
     @Override protected void onDestroy() {
         destroyed = true;
-        if (engine != null) {
-            engine.close();
-            engine = null;
-        }
+        for (CefriumBrowser browser : liveBrowsers.values()) browser.close();
+        liveBrowsers.clear();
+        engine = null;
         super.onDestroy();
     }
 }
