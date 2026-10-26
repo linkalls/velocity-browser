@@ -58,3 +58,12 @@ The runner does not install Chrome from unverified APK sites. If the requested
 emulator image doesn't include Chrome, the result is `unavailable` with an
 explicit reason. This is a truthful partial comparison and a signal to provision
 a verified Chrome installation or install an official, version-pinned image.
+
+## Per-phase Velocity diagnostics
+
+From the version with `CEFStartupTiming` logging, each Velocity trial also
+records numeric-only milliseconds spent constructing the UI, validating the
+renderer pool, parsing bundled blocklists and creating the initial Cefrium
+Surface-backed browser. Each phase is stored in the JSON and reported as an
+optional median in the summary. No URLs, login data or private browsing
+content is logged. These are **not page-paint timestamps**.

@@ -87,6 +87,7 @@ public final class ChromiumTestActivity extends Activity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private Runnable undoTimeout;
     private boolean chromiumReady;
+    private long activityCreateStartedAtMs;
     private volatile boolean blockDomainsEnabled;
     private boolean cosmeticEnabled;
     private volatile Set<String> normalSiteExemptions = Collections.emptySet();
@@ -173,6 +174,7 @@ public final class ChromiumTestActivity extends Activity {
     }
 
     @Override public void onCreate(Bundle state) {
+        activityCreateStartedAtMs = SystemClock.elapsedRealtime();
         super.onCreate(state);
         getWindow().setStatusBarColor(CANVAS);
         getWindow().setNavigationBarColor(CANVAS);
@@ -379,12 +381,23 @@ public final class ChromiumTestActivity extends Activity {
     private void startChromium() {
         if (destroyed || isFinishing()) return;
         try {
+            long layoutReadyAt = SystemClock.elapsedRealtime();
             configureRendererLauncher();
+            long launcherReadyAt = SystemClock.elapsedRealtime();
             loadNetworkRules();
+            long rulesReadyAt = SystemClock.elapsedRealtime();
             chromiumReady = true;
             restoreRegularTabs();
             if (tabRegistry.current() == null) tabRegistry.add(SITE_URLS[0], false);
             activateCurrentTab();
+            long engineReadyAt = SystemClock.elapsedRealtime();
+            // Timings are numeric only: never collect private URLs or profile data.
+            // Native Surface creation != first page paint.
+            Log.i(TAG, "CEFStartupTiming ui_ms=" + (layoutReadyAt - activityCreateStartedAtMs)
+                + " pool_ms=" + (launcherReadyAt - layoutReadyAt)
+                + " rules_ms=" + (rulesReadyAt - launcherReadyAt)
+                + " create_ms=" + (engineReadyAt - rulesReadyAt)
+                + " total_ms=" + (engineReadyAt - activityCreateStartedAtMs));
             if (engine != null) {
                 // Retain the original startup smoke-test assertion, and emit
                 // it only after the real native browser Surface was created.

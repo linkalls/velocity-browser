@@ -22,6 +22,13 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(98765, bench.parse_pss(' TOTAL   98765    0    0\n'))
         self.assertIsNone(bench.parse_pss('Java Heap: 64 MB\n'))
 
+    def test_cefrium_phase_log_is_numeric_and_optional(self):
+        result = bench.parse_velocity_timing(
+            'I/VelocityCefStartup: CEFStartupTiming ui_ms=20 pool_ms=15 '
+            'rules_ms=5 create_ms=1200 total_ms=1240')
+        self.assertEqual(result['create_ms'], 1200)
+        self.assertIsNone(bench.parse_velocity_timing('unrelated activity log'))
+
     def test_report_preserves_missing_results(self):
         data = {'browsers': {'Velocity': {'status': 'unavailable', 'reason': 'not installed'},
                              'Chrome': {'status': 'measured', 'version': '1',

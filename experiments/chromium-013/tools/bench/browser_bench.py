@@ -52,6 +52,20 @@ def parse_pss(output):
     return None
 
 
+def parse_velocity_timing(log):
+    """Parse numeric-only phase timings emitted by the Cefrium startup path."""
+    match = re.search(
+        r"CEFStartupTiming ui_ms=(\d+) pool_ms=(\d+) rules_ms=(\d+) "
+        r"create_ms=(\d+) total_ms=(\d+)", log
+    )
+    if match is None:
+        return None
+    return {key: int(value) for key, value in zip(
+        ("ui_ms", "pool_ms", "rules_ms", "create_ms", "total_ms"),
+        match.groups()
+    )}
+
+
 def resolve_launcher(package):
     rc, output = run_adb("shell", "cmd", "package", "resolve-activity", "--brief",
                          "-a", "android.intent.action.MAIN", "-c",
@@ -77,6 +91,8 @@ def sample_browser(package, launcher, repetitions, settle_seconds):
     samples = []
     for idx in range(repetitions):
         run_adb("shell", "am", "force-stop", package)
+        if package == BROWSERS["Velocity"]:
+            run_adb("logcat", "-c")
         time.sleep(1.0)
         rc, launch = run_adb("shell", "am", "start", "-W", "-n", launcher)
         launch_ms = parse_launch(launch, package) if rc == 0 else None
@@ -86,8 +102,12 @@ def sample_browser(package, launcher, repetitions, settle_seconds):
         time.sleep(settle_seconds)
         _, meminfo = run_adb("shell", "dumpsys", "meminfo", package)
         pss = parse_pss(meminfo)
-        samples.append({"iteration": idx + 1, "activity_launch_ms": launch_ms,
-                        "pss_kib_after_settle": pss})
+        entry = {"iteration": idx + 1, "activity_launch_ms": launch_ms,
+                 "pss_kib_after_settle": pss}
+        if package == BROWSERS["Velocity"]:
+            _, log = run_adb("logcat", "-d", "-s", "VelocityCefStartup:I", "*:S")
+            entry["cefrium_startup_phases_ms"] = parse_velocity_timing(log)
+        samples.append(entry)
     pss_samples = [x["pss_kib_after_settle"] for x in samples if x["pss_kib_after_settle"] is not None]
     return {
         "status": "measured", "samples": samples,
@@ -109,6 +129,17 @@ def markdown_report(data):
         lines.append(f"| {name} | {record.get('version') or '—'} | "
                      f"{num('median_activity_launch_ms')} | {num('median_pss_kib', 1024)} | "
                      f"{len(record.get('samples', []))} | {record['status']} |")
+    velocity = data["browsers"].get("Velocity", {})
+    phase_samples = [x.get("cefrium_startup_phases_ms")
+                     for x in velocity.get("samples", [])
+                     if x.get("cefrium_startup_phases_ms")]
+    if phase_samples:
+        lines += ["", "## Velocity native startup breakdown (median, ms)", "",
+                  "These phase times are instrumented inside Velocity only; "
+                  "they do not represent first paint.", ""]
+        for phase in ("ui_ms", "pool_ms", "rules_ms", "create_ms", "total_ms"):
+            values = [x[phase] for x in phase_samples]
+            lines.append(f"- {phase}: {statistics.median(values):.0f} ms")
     lines += ["", "## Measurement limitations", "",
         "- Same x86_64 Android emulator instance, one foreground browser at a time, forced stop before each start.",
         "- Startup time is Android Activity TotalTime; it **does not** ensure a rendered web page.",
