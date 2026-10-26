@@ -41,6 +41,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
+import java.util.Collections;
+import java.util.concurrent.atomic.AtomicReference;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -87,8 +89,8 @@ public final class ChromiumTestActivity extends Activity {
     private boolean chromiumReady;
     private volatile boolean blockDomainsEnabled;
     private boolean cosmeticEnabled;
-    private volatile Set<String> normalSiteExemptions = Set.of();
-    private volatile Set<String> privateSiteExemptions = Set.of();
+    private volatile Set<String> normalSiteExemptions = Collections.emptySet();
+    private volatile Set<String> privateSiteExemptions = Collections.emptySet();
     private NetworkRules networkRules = NetworkRules.parse("");
     private Button tabsButton;
     private EditText address;
@@ -416,9 +418,9 @@ public final class ChromiumTestActivity extends Activity {
             blockDomainsEnabled = blocking.getBoolean("block_domains", true);
             cosmeticEnabled = blocking.getBoolean("cosmetic_elements", true);
             normalSiteExemptions = SiteBlockPolicy.normalize(
-                blocking.getStringSet("block_site_exceptions", Set.of()));
+                blocking.getStringSet("block_site_exceptions", Collections.emptySet()));
             // Private exceptions are deliberately not saved on disk.
-            privateSiteExemptions = Set.of();
+            privateSiteExemptions = Collections.emptySet();
             Log.i(TAG, "Velocity network-only rules loaded: " + networkRules.blockedDomains());
         } catch (Exception error) {
             // Fail open for content but leave the feature visibly disabled.
@@ -427,26 +429,12 @@ public final class ChromiumTestActivity extends Activity {
         }
     }
 
-    private void applyNetworkRules(CefriumBrowser browser, TabRegistry.Tab tab) {
-        // Cefrium calls RequestInterceptor on a background network thread.
-        // `tab.url` is volatile, while exception sets are immutable snapshots.
-        browser.setRequestInterceptor((url, method, isMainFrame) ->
-            blockDomainsEnabled && SiteBlockPolicy.shouldBlock(
-                networkRules, url, isMainFrame, tab.url,
-                tab.privateMode ? privateSiteExemptions : normalSiteExemptions));
-    }
-
     private void toggleNetworkRules() {
         blockDomainsEnabled = !blockDomainsEnabled;
         getSharedPreferences(TAB_PREFS, MODE_PRIVATE).edit()
             .putBoolean("block_domains", blockDomainsEnabled).apply();
-        for (TabRegistry.Tab tab : tabRegistry.all()) {
-            CefriumBrowser browser = liveBrowsers.get(tab.id);
-            if (browser != null) {
-                applyNetworkRules(browser, tab);
-                refreshCosmetics(browser, tab);
-            }
-        }
+        // Existing per-browser interceptors read the volatile global flag;
+        // toggling does not require replacing callback registrations.
         Toast.makeText(this,
             "追加ドメイン遮断: " + (blockDomainsEnabled ? "ON" : "OFF")
                 + "（内蔵EasyListとは別）", Toast.LENGTH_LONG).show();
@@ -455,8 +443,8 @@ public final class ChromiumTestActivity extends Activity {
     private boolean cosmeticAllowed(TabRegistry.Tab tab) {
         String host = SiteBlockPolicy.hostOf(tab.url);
         Set<String> exemptions = tab.privateMode ? privateSiteExemptions : normalSiteExemptions;
-        return blockDomainsEnabled && cosmeticEnabled &&
-            (host == null || !exemptions.contains(host));
+        // Network blocking and cosmetic hiding can be toggled independently.
+        return cosmeticEnabled && (host == null || !exemptions.contains(host));
     }
 
     private void refreshCosmetics(CefriumBrowser browser, TabRegistry.Tab tab) {
@@ -596,7 +584,15 @@ public final class ChromiumTestActivity extends Activity {
         CefriumBrowser browser = CefriumBrowser.createWithSurface(this, tab.privateMode);
         try {
             attachSurface(browser);
-            applyNetworkRules(browser, tab);
+            // Per-browser origin snapshot avoids carrying a site's exemption
+            // across the earliest subrequests of a top-level navigation.
+            final AtomicReference<String> currentOrigin = new AtomicReference<>(tab.url);
+            browser.setRequestInterceptor((url, method, isMainFrame) -> {
+                if (isMainFrame) currentOrigin.set(url);
+                return blockDomainsEnabled && SiteBlockPolicy.shouldBlock(
+                    networkRules, url, isMainFrame, currentOrigin.get(),
+                    tab.privateMode ? privateSiteExemptions : normalSiteExemptions);
+            });
             browser.setOnLoadingStateChangedListener((loading, canBack, canForward) ->
                 runOnUiThread(() -> {
                     if (destroyed || tabRegistry.find(tab.id) != tab) return;
@@ -613,6 +609,7 @@ public final class ChromiumTestActivity extends Activity {
             browser.setOnUrlChangedListener(url -> runOnUiThread(() -> {
                 if (destroyed || tabRegistry.find(tab.id) != tab || url == null) return;
                 tab.url = url;
+                currentOrigin.set(url);
                 if (tabRegistry.current() == tab && !address.hasFocus()) address.setText(url);
                 if (!tab.privateMode) saveRegularTabs();
             }));
