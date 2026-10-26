@@ -29,3 +29,14 @@ first-party/inline ads remain unimplemented. Do not claim full uBlock Origin
 parity. Test known breakage examples and site exceptions before enabling more
 aggressive lists. Adding unreviewed remote JavaScript to page context is a
 security regression, not an adblock feature.
+
+## Experimental cosmetic blocking
+
+`CosmeticRules` adds a **static, reviewed** CSS stylesheet for a handful of
+specific ad-slot selectors after the top-level page finishes loading. No
+remote scriptlets, arbitrary CSS input, content-script privileges or native
+JavaScript bridge are used. The style is reversible by removing the single
+Velocity-owned element. Users can turn off cosmetic hiding independently and
+exempt troublesome sites. This has a much smaller scope than uBlock Origin
+or AdGuard cosmetic/scriptlet support, and iframe hiding still requires a
+separate design and device tests.

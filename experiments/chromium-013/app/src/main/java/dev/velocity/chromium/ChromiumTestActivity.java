@@ -86,6 +86,7 @@ public final class ChromiumTestActivity extends Activity {
     private Runnable undoTimeout;
     private boolean chromiumReady;
     private volatile boolean blockDomainsEnabled;
+    private boolean cosmeticEnabled;
     private volatile Set<String> normalSiteExemptions = Set.of();
     private volatile Set<String> privateSiteExemptions = Set.of();
     private NetworkRules networkRules = NetworkRules.parse("");
@@ -413,6 +414,7 @@ public final class ChromiumTestActivity extends Activity {
             networkRules = NetworkRules.parse(all.toString());
             SharedPreferences blocking = getSharedPreferences(TAB_PREFS, MODE_PRIVATE);
             blockDomainsEnabled = blocking.getBoolean("block_domains", true);
+            cosmeticEnabled = blocking.getBoolean("cosmetic_elements", true);
             normalSiteExemptions = SiteBlockPolicy.normalize(
                 blocking.getStringSet("block_site_exceptions", Set.of()));
             // Private exceptions are deliberately not saved on disk.
@@ -440,11 +442,40 @@ public final class ChromiumTestActivity extends Activity {
             .putBoolean("block_domains", blockDomainsEnabled).apply();
         for (TabRegistry.Tab tab : tabRegistry.all()) {
             CefriumBrowser browser = liveBrowsers.get(tab.id);
-            if (browser != null) applyNetworkRules(browser, tab);
+            if (browser != null) {
+                applyNetworkRules(browser, tab);
+                refreshCosmetics(browser, tab);
+            }
         }
         Toast.makeText(this,
             "追加ドメイン遮断: " + (blockDomainsEnabled ? "ON" : "OFF")
                 + "（内蔵EasyListとは別）", Toast.LENGTH_LONG).show();
+    }
+
+    private boolean cosmeticAllowed(TabRegistry.Tab tab) {
+        String host = SiteBlockPolicy.hostOf(tab.url);
+        Set<String> exemptions = tab.privateMode ? privateSiteExemptions : normalSiteExemptions;
+        return blockDomainsEnabled && cosmeticEnabled &&
+            (host == null || !exemptions.contains(host));
+    }
+
+    private void refreshCosmetics(CefriumBrowser browser, TabRegistry.Tab tab) {
+        // JS is a reviewed, constant stylesheet injection. No network code,
+        // remote filter scriptlets or native bridge calls are accepted.
+        if (cosmeticAllowed(tab)) browser.evaluateJavaScript(CosmeticRules.injectScript());
+        else browser.evaluateJavaScript(CosmeticRules.removeScript());
+    }
+
+    private void toggleCosmetics() {
+        cosmeticEnabled = !cosmeticEnabled;
+        getSharedPreferences(TAB_PREFS, MODE_PRIVATE).edit()
+            .putBoolean("cosmetic_elements", cosmeticEnabled).apply();
+        for (TabRegistry.Tab tab : tabRegistry.all()) {
+            CefriumBrowser browser = liveBrowsers.get(tab.id);
+            if (browser != null) refreshCosmetics(browser, tab);
+        }
+        Toast.makeText(this, cosmeticEnabled ? "広告枠の非表示 ON" : "広告枠の非表示 OFF",
+            Toast.LENGTH_SHORT).show();
     }
 
     private void toggleCurrentSiteException() {
@@ -465,6 +496,8 @@ public final class ChromiumTestActivity extends Activity {
             getSharedPreferences(TAB_PREFS, MODE_PRIVATE).edit()
                 .putStringSet("block_site_exceptions", new HashSet<>(next)).apply();
         }
+        CefriumBrowser currentBrowser = liveBrowsers.get(tab.id);
+        if (currentBrowser != null) refreshCosmetics(currentBrowser, tab);
         Toast.makeText(this, host + (next.contains(host)
                 ? " では追加ブロックを停止" : " で追加ブロックを再開")
                 + "（次の通信から適用）", Toast.LENGTH_LONG).show();
@@ -570,6 +603,7 @@ public final class ChromiumTestActivity extends Activity {
                     tab.loading = loading;
                     tab.canGoBack = canBack;
                     tab.canGoForward = canForward;
+                    if (!loading) refreshCosmetics(browser, tab);
                     if (tabRegistry.current() == tab) {
                         if (progressLine != null) progressLine.setVisibility(
                             loading ? View.VISIBLE : View.INVISIBLE);
@@ -873,16 +907,17 @@ public final class ChromiumTestActivity extends Activity {
         String[] labels = {
             "新しいタブ", "新しい非公開タブ", "現在のタブを閉じる",
             "ページ内検索", "ページを共有", "比較サイト",
-            "広告・トラッカードメイン遮断", "このサイトの追加遮断を切替",
-            "更新APKを確認", "起動診断", "このブラウザについて"
+            "広告・トラッカードメイン遮断", "広告枠の非表示を切替",
+            "このサイトの追加遮断を切替", "更新APKを確認", "起動診断", "このブラウザについて"
         };
         String[] glyphs = {
-            "+", "◇", "×", "⌕", "↗", "▤", "◎", "◉", "↓", "⚙", "ⓘ"
+            "+", "◇", "×", "⌕", "↗", "▤", "◎", "▧", "◉", "↓", "⚙", "ⓘ"
         };
         String[] hints = {
             "通常のブラウジング", "終了時にURLを保存しない", "5秒以内ならURLを再度開ける",
             "現在のページで探す", "Androidの共有メニューへ", "表示・スクロールを比較",
             blockDomainsEnabled ? "追加遮断 ON" : "追加遮断 OFF",
+            cosmeticEnabled ? "要素非表示 ON" : "要素非表示 OFF",
             "サイト別の例外設定（非公開モードは保存しない）",
             "GitHub Actionsの署名済みビルド", "クラッシュ・起動状態を確認",
             "Cefrium 0.13.0 · 開発版"
@@ -945,10 +980,11 @@ public final class ChromiumTestActivity extends Activity {
                 break;
             case 5: showSites(); break;
             case 6: toggleNetworkRules(); break;
-            case 7: toggleCurrentSiteException(); break;
-            case 8: openUpdatesPage(); break;
-            case 9: startActivity(new Intent(this, StartupDiagnosticActivity.class)); break;
-            case 10: showInfo(); break;
+            case 7: toggleCosmetics(); break;
+            case 8: toggleCurrentSiteException(); break;
+            case 9: openUpdatesPage(); break;
+            case 10: startActivity(new Intent(this, StartupDiagnosticActivity.class)); break;
+            case 11: showInfo(); break;
             default: break;
         }
     }
