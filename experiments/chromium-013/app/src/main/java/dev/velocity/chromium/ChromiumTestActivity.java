@@ -39,6 +39,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.HashSet;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -83,7 +85,9 @@ public final class ChromiumTestActivity extends Activity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private Runnable undoTimeout;
     private boolean chromiumReady;
-    private boolean blockDomainsEnabled;
+    private volatile boolean blockDomainsEnabled;
+    private volatile Set<String> normalSiteExemptions = Set.of();
+    private volatile Set<String> privateSiteExemptions = Set.of();
     private NetworkRules networkRules = NetworkRules.parse("");
     private Button tabsButton;
     private EditText address;
@@ -407,8 +411,12 @@ public final class ChromiumTestActivity extends Activity {
                 }
             }
             networkRules = NetworkRules.parse(all.toString());
-            blockDomainsEnabled = getSharedPreferences(TAB_PREFS, MODE_PRIVATE)
-                .getBoolean("block_domains", true);
+            SharedPreferences blocking = getSharedPreferences(TAB_PREFS, MODE_PRIVATE);
+            blockDomainsEnabled = blocking.getBoolean("block_domains", true);
+            normalSiteExemptions = SiteBlockPolicy.normalize(
+                blocking.getStringSet("block_site_exceptions", Set.of()));
+            // Private exceptions are deliberately not saved on disk.
+            privateSiteExemptions = Set.of();
             Log.i(TAG, "Velocity network-only rules loaded: " + networkRules.blockedDomains());
         } catch (Exception error) {
             // Fail open for content but leave the feature visibly disabled.
@@ -417,20 +425,49 @@ public final class ChromiumTestActivity extends Activity {
         }
     }
 
-    private void applyNetworkRules(CefriumBrowser browser) {
-        browser.setRequestInterceptor(blockDomainsEnabled
-            ? (url, method, isMainFrame) -> networkRules.shouldBlock(url, isMainFrame)
-            : null);
+    private void applyNetworkRules(CefriumBrowser browser, TabRegistry.Tab tab) {
+        // Cefrium calls RequestInterceptor on a background network thread.
+        // `tab.url` is volatile, while exception sets are immutable snapshots.
+        browser.setRequestInterceptor((url, method, isMainFrame) ->
+            blockDomainsEnabled && SiteBlockPolicy.shouldBlock(
+                networkRules, url, isMainFrame, tab.url,
+                tab.privateMode ? privateSiteExemptions : normalSiteExemptions));
     }
 
     private void toggleNetworkRules() {
         blockDomainsEnabled = !blockDomainsEnabled;
         getSharedPreferences(TAB_PREFS, MODE_PRIVATE).edit()
             .putBoolean("block_domains", blockDomainsEnabled).apply();
-        for (CefriumBrowser browser : liveBrowsers.values()) applyNetworkRules(browser);
+        for (TabRegistry.Tab tab : tabRegistry.all()) {
+            CefriumBrowser browser = liveBrowsers.get(tab.id);
+            if (browser != null) applyNetworkRules(browser, tab);
+        }
         Toast.makeText(this,
             "追加ドメイン遮断: " + (blockDomainsEnabled ? "ON" : "OFF")
                 + "（内蔵EasyListとは別）", Toast.LENGTH_LONG).show();
+    }
+
+    private void toggleCurrentSiteException() {
+        TabRegistry.Tab tab = tabRegistry.current();
+        if (tab == null) return;
+        String host = SiteBlockPolicy.hostOf(tab.url);
+        if (host == null) {
+            Toast.makeText(this, "HTTP(S)ページでのみ設定できるよ", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Set<String> next;
+        if (tab.privateMode) {
+            next = SiteBlockPolicy.toggle(privateSiteExemptions, host);
+            privateSiteExemptions = next;
+        } else {
+            next = SiteBlockPolicy.toggle(normalSiteExemptions, host);
+            normalSiteExemptions = next;
+            getSharedPreferences(TAB_PREFS, MODE_PRIVATE).edit()
+                .putStringSet("block_site_exceptions", new HashSet<>(next)).apply();
+        }
+        Toast.makeText(this, host + (next.contains(host)
+                ? " では追加ブロックを停止" : " で追加ブロックを再開")
+                + "（次の通信から適用）", Toast.LENGTH_LONG).show();
     }
 
     /** Preserve normal tab URLs only. A private session is never serialized. */
@@ -526,7 +563,7 @@ public final class ChromiumTestActivity extends Activity {
         CefriumBrowser browser = CefriumBrowser.createWithSurface(this, tab.privateMode);
         try {
             attachSurface(browser);
-            applyNetworkRules(browser);
+            applyNetworkRules(browser, tab);
             browser.setOnLoadingStateChangedListener((loading, canBack, canForward) ->
                 runOnUiThread(() -> {
                     if (destroyed || tabRegistry.find(tab.id) != tab) return;
@@ -836,16 +873,17 @@ public final class ChromiumTestActivity extends Activity {
         String[] labels = {
             "新しいタブ", "新しい非公開タブ", "現在のタブを閉じる",
             "ページ内検索", "ページを共有", "比較サイト",
-            "広告・トラッカードメイン遮断", "更新APKを確認",
-            "起動診断", "このブラウザについて"
+            "広告・トラッカードメイン遮断", "このサイトの追加遮断を切替",
+            "更新APKを確認", "起動診断", "このブラウザについて"
         };
         String[] glyphs = {
-            "+", "◇", "×", "⌕", "↗", "▤", "◎", "↓", "⚙", "ⓘ"
+            "+", "◇", "×", "⌕", "↗", "▤", "◎", "◉", "↓", "⚙", "ⓘ"
         };
         String[] hints = {
             "通常のブラウジング", "終了時にURLを保存しない", "5秒以内ならURLを再度開ける",
             "現在のページで探す", "Androidの共有メニューへ", "表示・スクロールを比較",
             blockDomainsEnabled ? "追加遮断 ON" : "追加遮断 OFF",
+            "サイト別の例外設定（非公開モードは保存しない）",
             "GitHub Actionsの署名済みビルド", "クラッシュ・起動状態を確認",
             "Cefrium 0.13.0 · 開発版"
         };
@@ -907,9 +945,10 @@ public final class ChromiumTestActivity extends Activity {
                 break;
             case 5: showSites(); break;
             case 6: toggleNetworkRules(); break;
-            case 7: openUpdatesPage(); break;
-            case 8: startActivity(new Intent(this, StartupDiagnosticActivity.class)); break;
-            case 9: showInfo(); break;
+            case 7: toggleCurrentSiteException(); break;
+            case 8: openUpdatesPage(); break;
+            case 9: startActivity(new Intent(this, StartupDiagnosticActivity.class)); break;
+            case 10: showInfo(); break;
             default: break;
         }
     }

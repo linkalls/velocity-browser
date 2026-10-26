@@ -12,7 +12,7 @@ public final class TabRegistry {
     public static final class Tab {
         public final String id;
         public final boolean privateMode;
-        public String url;
+        public volatile String url;
         public String title;
         public boolean loading;
         public boolean canGoBack;
