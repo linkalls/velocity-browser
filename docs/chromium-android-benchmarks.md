@@ -299,3 +299,20 @@ The four-browser emulator comparison uses the **same** `adb shell am start -W`
 reported Activity-start numbers can be compared directly *for that metric*.
 They still do not compare the same webpage or measure first contentful paint,
 JavaScript throughput, battery efficiency, and real Pixel hardware.
+
+## Experimental JNI library mmap versus extraction
+
+The separate manual native-packaging workflow builds two x86_64 R8 release
+APKs from identical source, both with fast attach, both signed by the same
+disposable CI key. The legacy build extracts native libraries; the mmap build
+sets jniLibs.useLegacyPackaging=false to store libcef.so page-aligned in
+the APK. Both must run a real Cefrium Surface and execute a local JS/DOM
+fixture. A failed or incompatible mode is reported unavailable, not faster.
+
+An ABBA legacy/mmap/mmap/legacy crossover tests cold Activity and provider
+times with two warm-then-force-stopped samples per block on one Android 16
+emulator. Reinstall, page cache and temperature effects remain confounders.
+The permanent-key arm64 Preview always stays on legacy native packaging.
+This experiment never disables renderer sandboxing, browser security updates
+or native initialization. Replicate positive results on Android 17 and Pixel
+hardware before changing the release default.

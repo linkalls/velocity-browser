@@ -1,0 +1,118 @@
+name: Chromium native JNI packaging A-B startup experiment
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-packaging-abba:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: android-actions/setup-android@v4.0.4
+        with:
+          packages: platform-tools
+      - run: sdkmanager 'platforms;android-37.1' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v6.4.0
+        with:
+          gradle-version: '9.7.1'
+      - name: Unit tests
+        run: python3 -m unittest discover -s experiments/chromium-013/tools/bench -p 'test_*.py' -v
+      - name: Build both APKs with identical ABI R8 and startup options
+        shell: bash
+        working-directory: experiments/chromium-013
+        run: |
+          set -euo pipefail
+          mkdir -p ../../dist/native-packaging
+          for variant in legacy mmap; do
+            flag=false
+            if [[ "$variant" == mmap ]]; then flag=true; fi
+            gradle --no-daemon --max-workers=2 \
+              -PchromiumAbi=x86_64 -PvelocityMinify=true \
+              -PvelocityBenchmarkFastAttach=true -PvelocityMmapNative="$flag" \
+              :app:assembleRelease
+            original='app/build/outputs/apk/release/app-release-unsigned.apk'
+            test -s "$original"
+            cp "$original" "../../dist/native-packaging/$variant-unsigned.apk"
+            sha256sum "$original" | cut -d' ' -f1 > "../../dist/native-packaging/$variant-unsigned.sha256"
+          done
+      - name: Sign both variants with the same disposable CI key
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -keystore "$RUNNER_TEMP/native-packaging-only.jks" \
+            -storetype JKS -alias experiment -storepass android -keypass android \
+            -keyalg RSA -keysize 2048 -validity 1 \
+            -dname 'CN=Velocity Native Packaging Experiment ONLY,O=CI,C=JP' \
+            -noprompt >/dev/null 2>&1
+          sdk="$ANDROID_HOME/build-tools/36.0.0"
+          for variant in legacy mmap; do
+            input="dist/native-packaging/$variant-unsigned.apk"
+            aligned="$RUNNER_TEMP/native-$variant-aligned.apk"
+            output="dist/native-packaging/$variant.apk"
+            "$sdk/zipalign" -f -P 16 4 "$input" "$aligned"
+            "$sdk/apksigner" sign \
+              --ks "$RUNNER_TEMP/native-packaging-only.jks" \
+              --ks-pass pass:android --key-pass pass:android \
+              --ks-key-alias experiment --out "$output" "$aligned"
+            "$sdk/apksigner" verify --verbose "$output"
+            "$sdk/zipalign" -c -P 16 4 "$output"
+            sha256sum "$output"
+          done
+      - name: Verify actual JNI packaging difference
+        run: |
+          python3 - <<'PY'
+          import zipfile
+          path = 'lib/x86_64/libcef.so'
+          for mode in ('legacy', 'mmap'):
+              with zipfile.ZipFile(f'dist/native-packaging/{mode}.apk') as archive:
+                  lib = archive.getinfo(path)
+                  print(mode, 'compression=', lib.compress_type, 'size=', lib.file_size)
+                  if mode == 'mmap' and lib.compress_type != zipfile.ZIP_STORED:
+                      raise SystemExit('Mmap JNI build unexpectedly compressed libcef.so')
+          PY
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Compare legacy and mmap JNI on Android 16 emulator
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 36
+          target: google_apis_playstore
+          arch: x86_64
+          disk-size: 8G
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 4
+          script: >-
+            python3 experiments/chromium-013/tools/bench/native_packaging_bench.py
+            --legacy dist/native-packaging/legacy.apk
+            --mmap dist/native-packaging/mmap.apk
+            --out dist/native-packaging/results
+            --repetitions 2 --settle-seconds 4
+      - name: Results and limitations
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f dist/native-packaging/results/summary.md ]]; then
+            cat dist/native-packaging/results/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'No validated native packaging trial results.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload lightweight evidence, not unsigned APKs
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: Cefrium-Native-JNI-Packaging-ABBA-Results
+          path: |
+            dist/native-packaging/results/**
+            dist/native-packaging/*-unsigned.sha256
+          if-no-files-found: warn

@@ -18,6 +18,14 @@ val velocityMinify = providers.gradleProperty("velocityMinify")
 // Real signed Preview binaries and default builds always ship with false.
 val benchmarkFastAttach = providers.gradleProperty("velocityBenchmarkFastAttach")
     .orElse("false").get().toBooleanStrict()
+// Experimental APK-only load path: ELF bytes are directly mapped from the
+// zip instead of extracted to nativeLibraryDir. Never change signed Preview
+// defaults before proving CEF can bootstrap and load pages on-device.
+val velocityMmapNative = providers.gradleProperty("velocityMmapNative")
+    .orElse("false").get().toBooleanStrict()
+require(!velocityMmapNative || (chromiumAbi == "x86_64" && velocityMinify && !previewCanSign)) {
+    "Native-mmap experiment is limited to unsigned x86_64 R8 CI builds"
+}
 require(!benchmarkFastAttach || (chromiumAbi == "x86_64" && velocityMinify && !previewCanSign)) {
     "Early-start benchmark build requires x86_64, R8 release and NO permanent Preview signing key"
 }
@@ -65,7 +73,7 @@ android {
     }
     packaging {
         // CEF native shared libraries must be extracted for Android loading.
-        jniLibs.useLegacyPackaging = true
+        jniLibs.useLegacyPackaging = !velocityMmapNative
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
