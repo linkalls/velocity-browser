@@ -17,6 +17,7 @@ Do not merge into main or migrate user profiles until release gates pass.
 | Tab visibility | GONE surface and setPageVisible(false) | Multi-surface stacking must be validated |
 | Sharing | Android ACTION_SEND for HTTP(S) page | No blank-page sharing |
 | Find in page | Cefrium find API | No next/previous controls |
+| Network domain blocking | Native Cefrium request interceptor + bundled Velocity Lite and Peter Lowe domain lists | No CSS picker/cosmetic hide or custom per-site exceptions; built-in SDK EasyList is separate |
 | Startup audit | Existing PR #10 service checks | Not sandbox runtime proof |
 
 No cross-engine cookie/database migration is attempted. GeckoView and Cefrium
@@ -27,9 +28,12 @@ metadata. Private data must never be exported.
 
 1. Port Velocity's bottom toolbar, home shortcuts, accessible tab switcher,
    themes, search settings, downloads, site permissions and prompt UX.
-2. Replace Gecko's Velocity Block Lite WebExtension with Cefrium network
-   request interception, then separately implement and verify CSS/picker
-   rules. Gecko AdGuard XPI cannot execute inside Chromium/CEF.
+2. Expand the implemented Cefrium network-only Velocity Block Lite
+   port to reviewed site exceptions, user rules, cosmetic CSS and picker.
+   Gecko AdGuard XPI cannot execute inside Chromium/CEF.
+   The bundled Peter Lowe list is a dated snapshot, not an update service.
+   The extra domain blocker defaults ON for normal/private; users can toggle
+   it independently of Cefrium's built-in EasyList blocker.
 3. Validate scoped file input, downloads, geolocation/camera/mic prompts,
    HTTP auth, Passkeys, WebRTC, media playback, popups, and external intents.
 4. Verify renderer recovery, Surface lifecycle, orientation/IME,

@@ -8,3 +8,8 @@ The 0.9.4 baseline is in `../chromium/`; this root uses only 0.13.0 artifacts.
 The tabbed/private Cefrium migration is tracked in
 [the migration tracker](../../docs/chromium-cefrium-013-migration.md).
 This is not the default Velocity browser until device verification.
+
+Network-only Velocity Block Lite uses its original domain-rule subset, the
+snapshot from 2026-10-10, and the retained attribution in assets/licenses.
+This is not cosmetic blocking or Gecko XPI compatibility. The separate
+Cefrium built-in EasyList behavior is not controlled by this switch.

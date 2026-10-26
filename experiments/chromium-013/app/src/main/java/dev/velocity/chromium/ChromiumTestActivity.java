@@ -30,6 +30,9 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 
 import com.cefrium.Cefrium;
 import com.cefrium.CefriumBrowser;
@@ -66,6 +69,8 @@ public final class ChromiumTestActivity extends Activity {
     private View browserHeader;
     private View browserFooter;
     private boolean chromiumReady;
+    private boolean blockDomainsEnabled;
+    private NetworkRules networkRules = NetworkRules.parse("");
     private Button tabsButton;
     private EditText address;
     private TextView title;
@@ -230,6 +235,7 @@ public final class ChromiumTestActivity extends Activity {
         if (destroyed || isFinishing()) return;
         try {
             configureRendererLauncher();
+            loadNetworkRules();
             chromiumReady = true;
             restoreRegularTabs();
             if (tabRegistry.current() == null) tabRegistry.add(SITE_URLS[0], false);
@@ -243,6 +249,45 @@ public final class ChromiumTestActivity extends Activity {
                 .setMessage(error.getClass().getSimpleName() + ": " + error.getMessage())
                 .setPositiveButton("閉じる", null).show();
         }
+    }
+
+    private void loadNetworkRules() {
+        StringBuilder all = new StringBuilder();
+        try {
+            for (String file : new String[] {
+                "velocity-block/rules.txt", "velocity-block/pgl.txt"
+            }) {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                        getAssets().open(file), StandardCharsets.UTF_8))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) all.append(line).append('\n');
+                }
+            }
+            networkRules = NetworkRules.parse(all.toString());
+            blockDomainsEnabled = getSharedPreferences(TAB_PREFS, MODE_PRIVATE)
+                .getBoolean("block_domains", true);
+            Log.i(TAG, "Velocity network-only rules loaded: " + networkRules.blockedDomains());
+        } catch (Exception error) {
+            // Fail open for content but leave the feature visibly disabled.
+            blockDomainsEnabled = false;
+            Log.w(TAG, "Cefrium domain rules unavailable", error);
+        }
+    }
+
+    private void applyNetworkRules(CefriumBrowser browser) {
+        browser.setRequestInterceptor(blockDomainsEnabled
+            ? (url, method, isMainFrame) -> networkRules.shouldBlock(url, isMainFrame)
+            : null);
+    }
+
+    private void toggleNetworkRules() {
+        blockDomainsEnabled = !blockDomainsEnabled;
+        getSharedPreferences(TAB_PREFS, MODE_PRIVATE).edit()
+            .putBoolean("block_domains", blockDomainsEnabled).apply();
+        for (CefriumBrowser browser : liveBrowsers.values()) applyNetworkRules(browser);
+        Toast.makeText(this,
+            "追加ドメイン遮断: " + (blockDomainsEnabled ? "ON" : "OFF")
+                + "（内蔵EasyListとは別）", Toast.LENGTH_LONG).show();
     }
 
     /** Preserve normal tab URLs only. A private session is never serialized. */
@@ -338,6 +383,7 @@ public final class ChromiumTestActivity extends Activity {
         CefriumBrowser browser = CefriumBrowser.createWithSurface(this, tab.privateMode);
         try {
             attachSurface(browser);
+            applyNetworkRules(browser);
             browser.setOnLoadingStateChangedListener((loading, canBack, canForward) ->
                 runOnUiThread(() -> {
                     if (destroyed || tabRegistry.find(tab.id) != tab) return;
@@ -497,7 +543,8 @@ public final class ChromiumTestActivity extends Activity {
     private void showMenu() {
         String[] commands = {
             "新しいタブ", "新しい非公開タブ", "現在のタブを閉じる",
-            "ページ内検索", "ページを共有", "比較サイト", "実装状況・注意点"
+            "ページ内検索", "ページを共有", "比較サイト",
+            "追加ドメイン遮断の切替", "実装状況・注意点"
         };
         new AlertDialog.Builder(this).setTitle("Velocity Chromium")
             .setItems(commands, (dialog, index) -> {
@@ -517,7 +564,8 @@ public final class ChromiumTestActivity extends Activity {
                         }
                         break;
                     case 5: showSites(); break;
-                    case 6: showInfo(); break;
+                    case 6: toggleNetworkRules(); break;
+                    case 7: showInfo(); break;
                     default: break;
                 }
             }).show();
@@ -529,7 +577,7 @@ public final class ChromiumTestActivity extends Activity {
                 "これはAndroid標準WebViewではありません。\n\n" +
                 "Gecko/WPE版とは別アプリとしてインストールできます。\n\n" +
                 "通常・非公開タブ、URL復元、戻る・進む、検索と共有を追加しました。\n\n" +
-                "Gecko拡張、Velocity Block、ダウンロードUI、権限UI、" +
+                "ドメイン遮断のみ移植。Gecko拡張・CSS要素ブロック・ダウンロードUI・権限UI、" +
                 "実機セキュリティ検証は未移植です。重要なアカウントにはログインしないでください。")
             .setPositiveButton("OK", null).show();
     }
