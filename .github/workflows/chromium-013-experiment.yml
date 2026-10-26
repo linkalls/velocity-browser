@@ -132,7 +132,7 @@ jobs:
           disk-size: 6G
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 4
-          script: bash experiments/chromium-013/tools/boot-smoke.sh
+          script: VELOCITY_STARTUP_EXPERIMENT=1 bash experiments/chromium-013/tools/boot-smoke.sh
       - name: Report actual DOM+JS readiness (not visual paint)
         if: always()
         shell: bash
@@ -144,6 +144,15 @@ jobs:
             else
               echo "DOM and JS readiness not observed." >> "$GITHUB_STEP_SUMMARY"
             fi
+          fi
+      - name: Summarize experimental startup scheduling
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f dist/cefrium-startup-strategy/summary.md ]]; then
+            cat dist/cefrium-startup-strategy/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Optional startup strategy experiment unavailable." >> "$GITHUB_STEP_SUMMARY"
           fi
       - name: Upload logcat and Activity results even when failed
         if: always()
@@ -162,4 +171,5 @@ jobs:
             dist/cefrium-window.txt
             dist/cefrium-ui-dump-command.txt
             dist/cefrium-ui-hierarchy.xml
+            dist/cefrium-startup-strategy/**
           if-no-files-found: warn

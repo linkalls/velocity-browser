@@ -226,3 +226,20 @@ creation alone is insufficient. No network or page-to-native JS bridge.
 This is a local fixture's DOM/JS completion timestamp, NOT first contentful
 paint, Speedometer, overall web loading speed, or UI smoothness. Engine
 startup timing remains a separate instrument.
+
+
+## View attachment vs posted startup (experimental)
+
+Cefrium startup currently runs from root.post(), after Android attaches the
+first view hierarchy. The delay between building the native UI and starting
+Cefrium was often 0.7–1.0 seconds even after the renderer manifest checks
+became cheap. New debug-APK smoke-only code permits an alternative start at
+root.onViewAttachedToWindow. Normal and signed release browsing retain the
+safe root.post() path.
+
+After standard smoke tests, the emulator runs a post/attach/attach/post
+sequence across force-stopped processes. Both strategies must instantiate
+a native Surface, execute JavaScript after DOMContentLoaded on a local HTML
+fixture, and retain a running renderer host process. Per-trial phase metrics
+and JS completion are retained. This is an optional experiment, not
+production behavior or evidence of faster real-page paint.

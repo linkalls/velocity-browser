@@ -68,3 +68,8 @@ grep 'CEFPageTiming synthetic_dom_ready_ms=' dist/cefrium-logcat-filtered.txt
 # is used for renderer smoke tests. Accessibility for CEF's Surface can differ
 # by Android version; retain hierarchy/screenshot without false assertions.
 echo "PASS: Chromium main process survived foreground launch (emulator only)"
+if [[ "$(printenv VELOCITY_STARTUP_EXPERIMENT || true)" == "1" ]]; then
+  if ! python3 experiments/chromium-013/tools/bench/startup_strategy.py; then
+    echo "WARN: optional attach-vs-post experiment did not complete" >&2
+  fi
+fi

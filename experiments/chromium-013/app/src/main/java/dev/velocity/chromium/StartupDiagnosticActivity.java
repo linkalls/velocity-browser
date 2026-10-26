@@ -73,6 +73,9 @@ public final class StartupDiagnosticActivity extends Activity {
                 Intent browser = new Intent(this, ChromiumTestActivity.class);
                 if (getIntent() != null && getIntent().getBooleanExtra("smoke_test", false)) {
                     browser.putExtra("cefrium_render_smoke", true);
+                    if ("attach".equals(getIntent().getStringExtra("startup_strategy"))) {
+                        browser.putExtra("cefrium_start_strategy", "attach");
+                    }
                 }
                 startActivity(browser);
             } catch (RuntimeException exception) {

@@ -334,9 +334,28 @@ public final class ChromiumTestActivity extends Activity {
 
         updateNavigation();
         address.clearFocus();
-        // The SDK creates WindowAndroid and surfaces only after attachment.
+        // The SDK's WindowAndroid requires an attached Activity view.
+        // Compare the safe root.post() path with an *experiment-only* hook
+        // directly at window attachment. The attach hook is available only
+        // for synthetic smoke tests, never regular browsing or releases.
         uiPreparedAtMs = SystemClock.elapsedRealtime();
-        root.post(this::startChromium);
+        if (syntheticSmokeRequested
+                && (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                && getIntent() != null
+                && "attach".equals(getIntent().getStringExtra("cefrium_start_strategy"))) {
+            Log.i(TAG, "CEFStartupStrategy strategy=attach");
+            root.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(View view) {
+                    view.removeOnAttachStateChangeListener(this);
+                    if (!destroyed) startChromium();
+                }
+
+                @Override public void onViewDetachedFromWindow(View view) {}
+            });
+        } else {
+            Log.i(TAG, "CEFStartupStrategy strategy=post");
+            root.post(this::startChromium);
+        }
     }
 
     /** A native home never fetches remote data during cold start. */
