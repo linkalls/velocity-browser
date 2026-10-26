@@ -316,3 +316,35 @@ The permanent-key arm64 Preview always stays on legacy native packaging.
 This experiment never disables renderer sandboxing, browser security updates
 or native initialization. Replicate positive results on Android 17 and Pixel
 hardware before changing the release default.
+
+## Results: JNI mmap was NOT a speed win (run 40341410313)
+
+The feature-branch experimental workflow succeeded on Android 16. Both
+ZIP-DEFLATED/extracted and ZIP-STORED/direct-mapped libcef.so APKs rendered
+Chromium content and passed DOM+JS execution checks. Both used the same
+fast-attach startup and disposable signing identity.
+
+| ABBA block | Mode | Activity start median | Provider median | Settled PSS |
+|---:|---|---:|---:|---:|
+| 1 | Legacy extraction | 2658.5 ms | 932.5 ms | 105.1 MiB |
+| 2 | APK mmap | 4182.5 ms | 2165.5 ms | 106.7 MiB |
+| 3 | APK mmap | 2094.0 ms | 610.0 ms | 138.5 MiB |
+| 4 | Legacy extraction | 1711.0 ms | 450.5 ms | 108.2 MiB |
+
+The per-mode median of block medians was 2184.8 ms for legacy vs 3138.2 ms
+for mmap. This small, order-confounded test **does not support** changing
+the default APK packaging. Keep the tested legacy extraction mode for real
+Preview builds. Native mapping is still an optional isolated experiment.
+
+The Maven Central 0.14.0 AAR contains a 238,619,136-byte x86_64 libcef.so.
+readelf inspection found no .debug* or .symtab sections: this binary is
+already stripped, so blindly applying strip is not a responsible startup
+optimization. The .text section alone occupies approximately 183 MiB.
+Across these eight trials the provider-phase and Activity startup times were
+highly correlated (Pearson r approx 0.983), partly because the provider is
+by definition included in the latter. The large between-launch variability
+remains the real blocker to claiming a repeatable 1400-ms start. Follow-up
+work requires native CPU/page-fault and storage traces, preferably under
+repeatable device thermal/cache conditions, and ultimately native-engine
+PGO/link-order work if appropriate; do not simply suppress engine init to
+make the Activity metric appear faster.
