@@ -31,6 +31,20 @@ public final class HttpUrlHostTest {
             "https://%zz.example/",
             "HTTPS://Example.Org:9443/a",
             "https://a.example/very/long/path?many=parameters",
+            "https://example.com:9999999999999999/",
+            "https://example.com:2147483648/",
+            "https://example.com:2147483647/",
+            "https://example.com-/foo",
+            "http://127.1/",
+            "http://127.0.0.256/",
+            "http://127.0.0.1/",
+            "http://foo.123/",
+            "http://8.8.8.8a/",
+            "http://123.456.789.1/",
+            "http://a.1.2/",
+            "http://123.abc/",
+            "https://example.com.:443/",
+            "https://example.com../",
         };
         for (String url : urls) {
             String expected = null;

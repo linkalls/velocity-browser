@@ -37,15 +37,29 @@ public final class HttpUrlHost {
                 hostEnd = i;
                 // Malformed ports need standard URI validation.
                 if (i + 1 == end) return standardParse(url);
+                long port = 0L;
                 for (int j = i + 1; j < end; j++) {
-                    if (url.charAt(j) < '0' || url.charAt(j) > '9') {
-                        return standardParse(url);
-                    }
+                    char digit = url.charAt(j);
+                    if (digit < '0' || digit > '9') return standardParse(url);
+                    port = port * 10L + (digit - '0');
+                    // java.net.URI.getHost() rejects a syntactically numeric
+                    // port if its value overflows a signed 32-bit int.
+                    if (port > Integer.MAX_VALUE) return standardParse(url);
                 }
                 break;
             }
         }
         if (hostEnd == start) return null;
+        // URI.getHost() rejects a terminal all-numeric or digit-prefixed
+        // TLD unless the authority is a valid numeric IP literal. Delegate
+        // these uncommon hosts (including IPv4) to the standard parser.
+        int finalLabel = start;
+        for (int i = start; i < hostEnd; i++) {
+            if (url.charAt(i) == '.') finalLabel = i + 1;
+        }
+        if (finalLabel < hostEnd && Character.isDigit(url.charAt(finalLabel))) {
+            return standardParse(url);
+        }
         int length = hostEnd - start;
         if (length > 253) return standardParse(url);
 
@@ -69,6 +83,7 @@ public final class HttpUrlHost {
         }
         // A trailing dot is valid DNS notation and URI.getHost retains it.
         if (labelLength == 0 && !lastDot) return standardParse(url);
+        if (url.charAt(hostEnd - 1) == '-') return standardParse(url);
         return url.substring(start, hostEnd).toLowerCase(Locale.ROOT);
     }
 

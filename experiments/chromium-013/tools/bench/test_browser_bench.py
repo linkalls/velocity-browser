@@ -63,6 +63,21 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(10000, rec["median_pss_kib"])
         self.assertIsNone(rec["median_cefrium_surface_ready_ms"])
 
+    def test_spread_reports_uncertainty_not_a_false_winner(self):
+        samples = [
+            {"activity_launch_ms": 400, "pss_kib_after_settle": 8000},
+            {"activity_launch_ms": 1200, "pss_kib_after_settle": 8500},
+            {"activity_launch_ms": 700, "pss_kib_after_settle": 9000},
+            {"activity_launch_ms": 600, "pss_kib_after_settle": 8600},
+        ]
+        rec = bench.aggregate(samples)
+        self.assertEqual(400, rec["min_activity_launch_ms"])
+        self.assertEqual(1200, rec["max_activity_launch_ms"])
+        self.assertEqual(3, rec["startup_variability_ratio"])
+        report = bench.markdown_report({"browsers": {"Velocity": rec}})
+        self.assertIn("Startup variability", report)
+        self.assertIn("filesystem, ART", report)
+
     def test_report_preserves_missing_results(self):
         data = {'browsers': {'Velocity': {'status': 'unavailable', 'reason': 'not installed'},
                              'Chrome': {'status': 'measured', 'version': '1',

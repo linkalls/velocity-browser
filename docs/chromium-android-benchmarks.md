@@ -177,3 +177,13 @@ when reversed. It is **not** perfectly randomized, cannot separate all
 temperature/filesystem-cache effects, and says nothing about competing
 browsers' ART profiles or first-page paint. No standalone speed-mode
 measurement should ever be presented as a general browser victory.
+
+## Why distributions must be shown
+
+On run 40326545991 the rotated Velocity startup samples were 5931, 2552,
+1427 and 786 ms. The fastest trial alone did not mean the browser reached
+competitor performance consistently; the 7.5x spread indicates substantial
+warmup/cache effects. Subsequent reports expose min/median/max, max/min and
+the unmeasured per-browser warmup launch separately. None of these metrics
+represent first paint. A force-stop does not drop page cache or simulate
+a fresh application install.

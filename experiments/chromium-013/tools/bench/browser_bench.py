@@ -168,10 +168,14 @@ def aggregate(samples):
               if s.get("cefrium_startup_phases_ms")]
     ready = [p["provider_ms"] + p["total_ms"] for p in phases
              if p.get("provider_ms", -1) >= 0]
+    launches = [s["activity_launch_ms"] for s in samples]
     return {
         "status": "measured", "samples": samples,
-        "median_activity_launch_ms": statistics.median(
-            s["activity_launch_ms"] for s in samples),
+        "median_activity_launch_ms": statistics.median(launches),
+        "min_activity_launch_ms": min(launches),
+        "max_activity_launch_ms": max(launches),
+        "startup_variability_ratio": (
+            round(max(launches) / min(launches), 2) if min(launches) > 0 else None),
         "median_pss_kib": statistics.median(pss) if pss else None,
         "median_cefrium_surface_ready_ms": (
             statistics.median(ready) if len(ready) == len(samples) else None),
@@ -200,8 +204,13 @@ def measure_interleaved(active, repetitions, settle_seconds, output_dir):
         time.sleep(2)
         run_adb("shell", "am", "force-stop", pkg)
         eligible[name] = record
-        result[name] = {"package": pkg, "version": record["version"],
-                        "status": "pending", "warmup_completed": True, "samples": []}
+        result[name] = {
+            "package": pkg, "version": record["version"],
+            "status": "pending", "warmup_completed": True,
+            "warmup_activity_launch_ms": parse_launch(output, pkg),
+            "warmup_launch_state": parse_launch_state(output),
+            "samples": [],
+        }
 
     order = rotated_trials(eligible, repetitions)
     for round_index, names in enumerate(order):
@@ -265,6 +274,23 @@ def markdown_report(data):
             values = [x[phase] for x in phase_samples if x.get(phase, -1) >= 0]
             lines.append(f"- {phase}: {statistics.median(values):.0f} ms" if values
                          else f"- {phase}: unavailable")
+    lines += ["", "## Startup variability (same emulator)", "",
+              "The distribution matters more than a single fastest run.", "",
+              "| Browser | Unmeasured warmup (ms) | Min (ms) | Median (ms) | Max (ms) | Max/min |",
+              "|---|---:|---:|---:|---:|---:|"]
+    for name, rec in data["browsers"].items():
+        def fmt(value):
+            return "—" if value is None else str(value)
+        lines.append(f"| {name} | {fmt(rec.get('warmup_activity_launch_ms'))} | "
+                     f"{fmt(rec.get('min_activity_launch_ms'))} | "
+                     f"{fmt(rec.get('median_activity_launch_ms'))} | "
+                     f"{fmt(rec.get('max_activity_launch_ms'))} | "
+                     f"{fmt(rec.get('startup_variability_ratio'))} |")
+    lines += ["", "Warmup is not first-install startup. Chrome may have an existing",
+              "preinstalled profile. Large max/min ratios indicate filesystem, ART",
+              "and CPU/GPU cache states affect these startup samples. Do not",
+              "claim browser or page-loading superiority from the minimum sample.",
+              ""]
     lines += ["", "## Measurement limitations", "",
         "- Same emulator; an unmeasured warmup runs once for each installed browser.",
         "- Rotated interleaved rounds balance execution order; all competitors are force-stopped before each trial.",
