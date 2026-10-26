@@ -3,7 +3,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:name=".ChromiumDiagnosticApplication"
-        android:label="Velocity Preview"\n        android:icon="@drawable/ic_velocity"
+        android:label="Velocity Preview"
+        android:icon="@drawable/ic_velocity"
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
         android:theme="@android:style/Theme.Material.NoActionBar"

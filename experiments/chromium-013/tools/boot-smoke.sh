@@ -19,6 +19,10 @@ sleep 12
 adb shell pidof "$APP" | tee dist/cefrium-pid.txt || true
 adb shell dumpsys activity activities > dist/cefrium-activities.txt || true
 adb logcat -d -v threadtime > dist/cefrium-logcat-full.txt || true
+# Preserve a visual artifact for UI regressions even if startup later fails.
+# Emulator captures are diagnostic only, not a substitute for Pixel tests.
+adb exec-out screencap -p > dist/cefrium-screen.png || true
+adb shell dumpsys window windows > dist/cefrium-window.txt || true
 grep -E 'VelocityCefStartup|AndroidRuntime|FATAL EXCEPTION|Fatal signal|DEBUG *:|libcef|com.cefrium|Cefrium' \
     dist/cefrium-logcat-full.txt > dist/cefrium-logcat-filtered.txt || true
 if ! test -s dist/cefrium-pid.txt; then

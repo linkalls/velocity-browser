@@ -123,4 +123,6 @@ jobs:
             dist/cefrium-pid.txt
             dist/cefrium-activities.txt
             dist/cefrium-logcat-filtered.txt
+            dist/cefrium-screen.png
+            dist/cefrium-window.txt
           if-no-files-found: warn
