@@ -2,6 +2,13 @@ name: Chromium native JNI packaging A-B startup experiment
 
 on:
   workflow_dispatch:
+  # A newly added workflow cannot be manually dispatched until it exists on
+  # the default branch. Allow only the feature-branch workflow edit to start
+  # its first correctness/performance trial; later runs are manual.
+  push:
+    branches: [feat/cefrium-tabs-core]
+    paths:
+      - '.github/workflows/chromium-native-packaging-experiment.yml'
 
 permissions:
   contents: read
