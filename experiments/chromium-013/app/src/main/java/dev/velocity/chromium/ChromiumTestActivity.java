@@ -5,9 +5,9 @@ import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.Context;
 import android.content.Intent;
-import android.content.ComponentName;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.PackageInfo;
 import android.content.pm.ServiceInfo;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -44,6 +44,7 @@ import android.content.SharedPreferences;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashSet;
@@ -437,8 +438,20 @@ public final class ChromiumTestActivity extends Activity {
         // regressions and prevent testing the current Android process model.
         try {
             PackageManager manager = getPackageManager();
-            ApplicationInfo info = manager.getApplicationInfo(
-                getPackageName(), PackageManager.GET_META_DATA);
+            // A single package-manager IPC returns app metadata and all
+            // services. The previous verifier did 40-42 individual IPCs.
+            PackageInfo packageInfo = manager.getPackageInfo(
+                getPackageName(), PackageManager.GET_META_DATA | PackageManager.GET_SERVICES);
+            ApplicationInfo info = packageInfo.applicationInfo;
+            if (info == null || packageInfo.services == null) {
+                throw new IllegalStateException("Renderer manifest was not resolved");
+            }
+            Map<String, ServiceInfo> services = new HashMap<>();
+            for (ServiceInfo service : packageInfo.services) {
+                if (service.name == null || services.put(service.name, service) != null) {
+                    throw new IllegalStateException("Duplicate or invalid renderer service");
+                }
+            }
             String expected = info.metaData == null ? null : info.metaData.getString(
                 "org.chromium.content.browser.SANDBOXED_SERVICES_NAME");
             int count = info.metaData == null ? 0 : info.metaData.getInt(
@@ -452,9 +465,9 @@ public final class ChromiumTestActivity extends Activity {
                 Build.VERSION.SDK_INT, javalessDeclared, expected,
                 nativePrefix, selected, count);
             for (int slot = 0; slot < count; slot++) {
-                ServiceInfo service = manager.getServiceInfo(
-                    new ComponentName(this, expected + slot), 0);
-                if ((service.flags & ServiceInfo.FLAG_ISOLATED_PROCESS) == 0
+                ServiceInfo service = services.get(expected + slot);
+                if (service == null
+                        || (service.flags & ServiceInfo.FLAG_ISOLATED_PROCESS) == 0
                         || service.exported || !service.enabled) {
                     throw new IllegalStateException("Unsafe renderer service slot " + slot);
                 }
@@ -469,10 +482,10 @@ public final class ChromiumTestActivity extends Activity {
             // package-manager view when running on Android 17+.
             if (usingNative) {
                 for (int slot = 0; slot < 2; slot++) {
-                    ServiceInfo nativeService = manager.getServiceInfo(
-                        new ComponentName(this,
-                            "com.cefrium.ChildServices$NativeSandboxed" + slot), 0);
-                    if ((nativeService.flags & ServiceInfo.FLAG_ISOLATED_PROCESS) == 0
+                    ServiceInfo nativeService = services.get(
+                        RendererPoolSelection.NATIVE + slot);
+                    if (nativeService == null
+                            || (nativeService.flags & ServiceInfo.FLAG_ISOLATED_PROCESS) == 0
                             || nativeService.exported || !nativeService.enabled) {
                         throw new IllegalStateException(
                             "Unsafe Android 17 native renderer slot " + slot);
