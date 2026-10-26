@@ -89,3 +89,23 @@ uses its previously recorded download SHA-256 and requires the same official
 versioned URL; this is integrity of a prior HTTPS download, **not** an
 independently authenticated Vivaldi vendor digest. The benchmark still records
 versions and download provenance, and it refuses third-party APK mirrors.
+
+
+## R8 build experiment
+
+Benchmarks with the velocityMinify=true Gradle property enable Android
+R8 Java/Dex shrinking and shrinkResources on the Cefrium Preview release.
+Default fixed-signing Preview releases do NOT set that flag; this
+keeps existing upgrades stable until optimized builds pass compilation,
+API 36/37 startup, navigation, private-context and device checks.
+The benchmark JSON explicitly labels the R8 variant. Never claim that
+old debug-mode baseline values measure the R8 optimization directly.
+
+## Native readiness verification
+
+The benchmark must not report a fast Velocity Activity if Chromium itself
+never created its native Surface. Each Velocity sample now captures the
+Cefrium startup log, the Surface-ready marker, the surviving process PID
+after settling, and nonmissing PSS. The benchmark workflow fails when
+any trial omits one of these required native-readiness observations.
+The Surface marker confirms creation and initial navigation, not first paint.

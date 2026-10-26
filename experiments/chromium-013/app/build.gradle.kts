@@ -10,6 +10,10 @@ require(chromiumAbi == "arm64-v8a" || chromiumAbi == "x86_64") { "Unsupported AB
 val previewKeystorePath = providers.environmentVariable("VELOCITY_CEF_KEYSTORE_PATH").orNull
 val previewSigningPassword = providers.environmentVariable("VELOCITY_CEF_SIGNING_PASSWORD").orNull
 val previewCanSign = !previewKeystorePath.isNullOrBlank() && !previewSigningPassword.isNullOrBlank()
+// Opt-in R8 experiment: signed Preview remains non-minified by default
+// until renderer isolation, lifecycle and app UX are validated.
+val velocityMinify = providers.gradleProperty("velocityMinify")
+    .orElse("false").get().toBooleanStrict()
 
 android {
     namespace = "dev.velocity.chromium"
@@ -39,7 +43,12 @@ android {
     }
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = velocityMinify
+            isShrinkResources = velocityMinify
+            if (velocityMinify) {
+                // Respect Cefrium SDK's published consumer ProGuard rules.
+                proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            }
             if (previewCanSign) signingConfig = signingConfigs.getByName("velocityPreview")
         }
         debug { isMinifyEnabled = false }

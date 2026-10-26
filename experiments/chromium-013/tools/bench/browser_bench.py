@@ -7,6 +7,7 @@ Uninstalled/blocked competitors are reported as unavailable, never zero.
 import argparse
 import datetime as dt
 import json
+import os
 import re
 import statistics
 import subprocess
@@ -127,6 +128,11 @@ def sample_browser(package, launcher, repetitions, settle_seconds, output_dir=No
         if package == BROWSERS["Velocity"]:
             _, log = run_adb("logcat", "-d", "-s", "VelocityCefStartup:I", "*:S")
             entry["cefrium_startup_phases_ms"] = parse_velocity_timing(log)
+            entry["cefrium_surface_created"] = (
+                "CEF surface created and page navigation started" in log)
+            _, alive = run_adb("shell", "pidof", package)
+            entry["process_alive_after_settle"] = any(
+                x.isdigit() for x in alive.strip().split())
         samples.append(entry)
     if output_dir is not None and name is not None:
         screenshot(output_dir, name)
@@ -190,7 +196,8 @@ def main():
     data = {"timestamp_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
             "device_fingerprint": device.strip(), "abi": abi.strip(),
             "repetitions": args.repetitions, "settle_seconds": args.settle_seconds,
-            "velocity_build_variant": "release (not debuggable), ephemeral CI signature",
+            "velocity_build_variant": os.environ.get(
+                "VELOCITY_BENCH_VARIANT", "release-unminified"),
             "browsers": {}}
     for name, package in BROWSERS.items():
         version = installed_version(package)
