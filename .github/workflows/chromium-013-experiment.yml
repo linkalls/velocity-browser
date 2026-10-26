@@ -125,4 +125,6 @@ jobs:
             dist/cefrium-logcat-filtered.txt
             dist/cefrium-screen.png
             dist/cefrium-window.txt
+            dist/cefrium-ui-dump-command.txt
+            dist/cefrium-ui-hierarchy.xml
           if-no-files-found: warn

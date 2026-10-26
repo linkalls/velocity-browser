@@ -23,6 +23,11 @@ adb logcat -d -v threadtime > dist/cefrium-logcat-full.txt || true
 # Emulator captures are diagnostic only, not a substitute for Pixel tests.
 adb exec-out screencap -p > dist/cefrium-screen.png || true
 adb shell dumpsys window windows > dist/cefrium-window.txt || true
+# Accessibility hierarchy evidence for the new native offline start page.
+# A frame showing "Cefrium initialized" is not enough if UI is blank.
+if timeout 30s adb shell uiautomator dump /sdcard/velocity-ui-smoke.xml   > dist/cefrium-ui-dump-command.txt 2>&1; then
+  adb shell cat /sdcard/velocity-ui-smoke.xml     > dist/cefrium-ui-hierarchy.xml || true
+fi
 grep -E 'VelocityCefStartup|AndroidRuntime|FATAL EXCEPTION|Fatal signal|DEBUG *:|libcef|com.cefrium|Cefrium' \
     dist/cefrium-logcat-full.txt > dist/cefrium-logcat-filtered.txt || true
 if ! test -s dist/cefrium-pid.txt; then
@@ -49,5 +54,14 @@ fi
 if ! grep -F 'Verified Java renderer pool: 40 isolated services' dist/cefrium-logcat-filtered.txt; then
   echo "FAIL: Java renderer service selection was not verified" >&2
   exit 1
+fi
+if test -s dist/cefrium-ui-hierarchy.xml; then
+  if grep -Fq 'クイックアクセス' dist/cefrium-ui-hierarchy.xml; then
+    echo "PASS: native offline home is present in the UI accessibility tree"
+  else
+    echo "WARN: native home not observed in accessibility hierarchy; inspect screenshot"
+  fi
+else
+  echo "WARN: UI hierarchy unavailable; screenshot and Activity logs retained"
 fi
 echo "PASS: Chromium main process survived foreground launch (emulator only)"
