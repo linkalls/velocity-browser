@@ -19,8 +19,10 @@ ORDER = ("post", "attach", "attach", "post")
 def parse_log(log):
     timing = re.findall(r"CEFStartupTiming\s+([^\r\n]+)", log)
     match = re.search(r"CEFPageTiming synthetic_dom_ready_ms=(\d+)", log)
+    paint = re.search(r"CEFPageTiming synthetic_fcp_browser_ms=(\d+)", log)
     result = {"strategy": None, "renderer_ready": False,
-              "dom_js_ready_ms": int(match.group(1)) if match else None}
+              "dom_js_ready_ms": int(match.group(1)) if match else None,
+              "fcp_browser_ms": int(paint.group(1)) if paint else None}
     if not timing:
         return result
     parts = dict((key, int(value)) for key, value in
@@ -43,15 +45,16 @@ def summarize(records):
              "Local emulator only. Both paths retain the Cefrium provider, sandbox checks,",
              "native browser creation and a DOM+JavaScript fixture. Experimental",
              "attach path is NOT enabled for normal browsing.", "",
-             "| Trial | Mode | UI wait (ms) | Native ready (ms) | DOM+JS (ms) | Result |",
-             "|---:|---|---:|---:|---:|---|"]
+             "| Trial | Mode | UI wait (ms) | Native ready (ms) | DOM+JS (ms) | Synthetic FCP (ms) | Result |",
+             "|---:|---|---:|---:|---:|---:|---|"]
     for rec in records:
         phases = rec.get("phases_ms") or {}
         num = lambda value: str(value) if value is not None else "—"
         lines.append(f"| {rec['iteration']} | {rec['mode']} | "
                      f"{num(phases.get('ui_wait_ms'))} | "
                      f"{num(rec.get('surface_ready_ms'))} | "
-                     f"{num(rec.get('dom_js_ready_ms'))} | {rec['status']} |")
+                     f"{num(rec.get('dom_js_ready_ms'))} | "
+                     f"{num(rec.get('fcp_browser_ms'))} | {rec['status']} |")
         if rec["status"] == "measured" and "ui_wait_ms" in phases:
             by_mode[rec["mode"]].append(phases["ui_wait_ms"])
     for mode in ("post", "attach"):

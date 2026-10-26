@@ -64,6 +64,11 @@ if ! grep -Eq 'CEFPageTiming synthetic_dom_ready_ms=[0-9]+' dist/cefrium-logcat-
   exit 1
 fi
 grep 'CEFPageTiming synthetic_dom_ready_ms=' dist/cefrium-logcat-filtered.txt
+if grep -q 'CEFPageTiming synthetic_fcp_browser_ms=' dist/cefrium-logcat-filtered.txt; then
+  grep 'CEFPageTiming synthetic_fcp_browser_ms=' dist/cefrium-logcat-filtered.txt
+else
+  echo "INFO: paint timing API did not emit an FCP entry for this local page"
+fi
 # The native home is used for regular startups, while the synthetic content
 # is used for renderer smoke tests. Accessibility for CEF's Surface can differ
 # by Android version; retain hierarchy/screenshot without false assertions.

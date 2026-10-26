@@ -14,5 +14,9 @@ public final class SyntheticRenderFixtureTest {
         assertFalse(html.contains("http://"));
         assertFalse(html.contains("https://"));
         assertFalse(html.contains("cefriumQuery"));
+        assertTrue(html.contains("PerformanceObserver"));
+        assertTrue(html.contains("first-contentful-paint"));
+        assertTrue(html.contains(SyntheticRenderFixture.FCP_TITLE_PREFIX));
+        assertTrue(html.contains("buffered:true"));
     }
 }

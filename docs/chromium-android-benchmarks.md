@@ -243,3 +243,38 @@ a native Surface, execute JavaScript after DOMContentLoaded on a local HTML
 fixture, and retain a running renderer host process. Per-trial phase metrics
 and JS completion are retained. This is an optional experiment, not
 production behavior or evidence of faster real-page paint.
+
+
+## Optional Chromium Paint Timing signal for a synthetic document
+
+The local DOM/JS smoke fixture also registers a PerformanceObserver with
+type=paint and buffered=true. If the Chromium renderer reports the
+first-contentful-paint entry for this data document, the fixture sends only
+its integer duration via its page title (no page-to-native JS bridge).
+The Android title callback logs both the browser-provided relative paint
+time and the wall-clock delay to observing the callback. The DOM/JS success
+marker remains the required correctness check; FCP is optional until the
+SDK reliably exposes paint entries on Android 16 and 17. A missing metric is
+reported as unavailable, **never zero**.
+
+This paint metric applies to a tiny inline HTML page; it is not the FCP of
+real websites or a valid cross-browser rendering benchmark.
+
+## Opt-in fast attach start for signed Preview builds
+
+The A/B trials in run 40333059586 recorded both strategies on Android 16:
+posted startup 604 ms median view-attach wait versus early attach 48 ms;
+native Surface readiness 1145 ms versus 604 ms. Both modes produced real
+identical smoke-page screenshots. This is not webpage first paint.
+
+Android 17 supplied one valid post and one valid attach trial, but two
+additional trials had no application logcat, and API 37 screenshot capture
+was unavailable. Hence the early strategy is **not a default** on any OS.
+In the Chromium Preview browser menu, an informed tester can explicitly
+toggle "高速起動（実験・次回から）". It applies next Activity launch and
+preserves native initialization, renderer isolation and normal browsing.
+The launcher diagnostic Activity runs in its own process and now includes
+"高速起動の実験モードを解除" so a test user can recover even if the
+Chromium engine fails to launch. The experiment setting is application
+private, and the imported Gecko main app is unaffected. No claim of Pixel
+hardware improvement has yet been substantiated.

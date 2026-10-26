@@ -114,6 +114,7 @@ public final class ChromiumTestActivity extends Activity {
     private static final String TAG = "VelocityCefStartup";
     private boolean syntheticSmokeRequested;
     private long syntheticLoadStartedAtMs = -1L;
+    private long syntheticPaintStartedAtMs = -1L;
 
     // Deliberately restrained palette. No novelty gradients, false neon
     // borders, or extra Material dependencies on the critical launch path.
@@ -334,15 +335,19 @@ public final class ChromiumTestActivity extends Activity {
 
         updateNavigation();
         address.clearFocus();
-        // The SDK's WindowAndroid requires an attached Activity view.
-        // Compare the safe root.post() path with an *experiment-only* hook
-        // directly at window attachment. The attach hook is available only
-        // for synthetic smoke tests, never regular browsing or releases.
+        // The SDK's WindowAndroid requires an attached Activity view. The
+        // early attachment path is now an explicitly opt-in Preview experiment;
+        // release defaults to the older, verified root.post() strategy.
+        // Debug smoke tests can also request attach without persisting it.
         uiPreparedAtMs = SystemClock.elapsedRealtime();
-        if (syntheticSmokeRequested
-                && (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0
-                && getIntent() != null
-                && "attach".equals(getIntent().getStringExtra("cefrium_start_strategy"))) {
+        boolean explicitlyEnabled = getSharedPreferences(StartupModePolicy.PREFS,
+            MODE_PRIVATE).getBoolean(StartupModePolicy.KEY_FAST_ATTACH, false);
+        boolean attachRequested = getIntent() != null &&
+            "attach".equals(getIntent().getStringExtra("cefrium_start_strategy"));
+        if (StartupModePolicy.onAttach(
+                explicitlyEnabled, syntheticSmokeRequested,
+                (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0,
+                attachRequested)) {
             Log.i(TAG, "CEFStartupStrategy strategy=attach");
             root.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
                 @Override public void onViewAttachedToWindow(View view) {
@@ -570,6 +575,7 @@ public final class ChromiumTestActivity extends Activity {
                     mainHandler.postDelayed(() -> {
                         if (!destroyed && engine == probe) {
                             syntheticLoadStartedAtMs = SystemClock.elapsedRealtime();
+                            syntheticPaintStartedAtMs = syntheticLoadStartedAtMs;
                             probe.loadHtml(SyntheticRenderFixture.html());
                         }
                     }, 450);
@@ -834,6 +840,20 @@ public final class ChromiumTestActivity extends Activity {
                     Log.i(TAG, "CEF synthetic document title observed");
                     Log.i(TAG, "CEFPageTiming synthetic_dom_ready_ms=" + domReadyMs);
                     syntheticLoadStartedAtMs = -1L;
+                }
+                if (syntheticSmokeRequested && syntheticPaintStartedAtMs > 0
+                        && name != null && name.startsWith(
+                            SyntheticRenderFixture.FCP_TITLE_PREFIX)) {
+                    String timing = name.substring(
+                        SyntheticRenderFixture.FCP_TITLE_PREFIX.length());
+                    // Ignore untrusted / malformed page-title metrics.
+                    if (timing.matches("[0-9]{1,6}")) {
+                        int fcpMs = Integer.parseInt(timing);
+                        Log.i(TAG, "CEFPageTiming synthetic_fcp_browser_ms=" + fcpMs
+                            + " synthetic_fcp_observed_ms="
+                            + (SystemClock.elapsedRealtime() - syntheticPaintStartedAtMs));
+                        syntheticPaintStartedAtMs = -1L;
+                    }
                 }
                 if (tabRegistry.current() == tab) updateNavigation();
                 if (!tab.privateMode) scheduleRegularTabsSave();
@@ -1120,6 +1140,16 @@ public final class ChromiumTestActivity extends Activity {
             }).setNegativeButton("キャンセル", null).show();
     }
 
+    private void toggleExperimentalFastStartup() {
+        SharedPreferences prefs = getSharedPreferences(StartupModePolicy.PREFS, MODE_PRIVATE);
+        boolean enabled = !prefs.getBoolean(StartupModePolicy.KEY_FAST_ATTACH, false);
+        prefs.edit().putBoolean(StartupModePolicy.KEY_FAST_ATTACH, enabled).apply();
+        Toast.makeText(this, enabled
+            ? "高速起動の実験モードを有効化。次回の起動から適用します。起動できなければ診断画面で解除。"
+            : "通常の安全な起動方法に戻します。次回の起動から適用します。",
+            Toast.LENGTH_LONG).show();
+    }
+
     private void openUpdatesPage() {
         // A plain HTTPS page, never silent APK installation or downloads from
         // unauthenticated third-party hosts.
@@ -1137,10 +1167,11 @@ public final class ChromiumTestActivity extends Activity {
             "新しいタブ", "新しい非公開タブ", "現在のタブを閉じる",
             "ページ内検索", "ページを共有", "比較サイト",
             "広告・トラッカードメイン遮断", "広告枠の非表示を切替",
-            "このサイトの追加遮断を切替", "更新APKを確認", "起動診断", "このブラウザについて"
+            "このサイトの追加遮断を切替", "高速起動（実験・次回から）",
+            "更新APKを確認", "起動診断", "このブラウザについて"
         };
         String[] glyphs = {
-            "+", "◇", "×", "⌕", "↗", "▤", "◎", "▧", "◉", "↓", "⚙", "ⓘ"
+            "+", "◇", "×", "⌕", "↗", "▤", "◎", "▧", "◉", "⚡", "↓", "⚙", "ⓘ"
         };
         String[] hints = {
             "通常のブラウジング", "終了時にURLを保存しない", "5秒以内ならURLを再度開ける",
@@ -1148,6 +1179,9 @@ public final class ChromiumTestActivity extends Activity {
             blockDomainsEnabled ? "追加遮断 ON" : "追加遮断 OFF",
             cosmeticEnabled ? "要素非表示 ON" : "要素非表示 OFF",
             "サイト別の例外設定（非公開モードは保存しない）",
+            getSharedPreferences(StartupModePolicy.PREFS, MODE_PRIVATE).getBoolean(
+                StartupModePolicy.KEY_FAST_ATTACH, false)
+                    ? "ON · 失敗時は起動診断から解除できる" : "OFF · 標準起動を使用中",
             "GitHub Actionsの署名済みビルド", "クラッシュ・起動状態を確認",
             "Cefrium 0.14.0 · 開発版"
         };
@@ -1211,9 +1245,10 @@ public final class ChromiumTestActivity extends Activity {
             case 6: toggleNetworkRules(); break;
             case 7: toggleCosmetics(); break;
             case 8: toggleCurrentSiteException(); break;
-            case 9: openUpdatesPage(); break;
-            case 10: startActivity(new Intent(this, StartupDiagnosticActivity.class)); break;
-            case 11: showInfo(); break;
+            case 9: toggleExperimentalFastStartup(); break;
+            case 10: openUpdatesPage(); break;
+            case 11: startActivity(new Intent(this, StartupDiagnosticActivity.class)); break;
+            case 12: showInfo(); break;
             default: break;
         }
     }

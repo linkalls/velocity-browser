@@ -140,7 +140,12 @@ jobs:
           if [[ -f dist/cefrium-logcat-filtered.txt ]]; then
             echo "## Cefrium emulator smoke DOM test" >> "$GITHUB_STEP_SUMMARY"
             if grep -Eo 'CEFPageTiming synthetic_dom_ready_ms=[0-9]+'                 dist/cefrium-logcat-filtered.txt | tail -1 >> "$GITHUB_STEP_SUMMARY"; then
-              echo "Local HTML JS DOM-ready title callback; NOT first contentful paint." >> "$GITHUB_STEP_SUMMARY"
+              echo "Local HTML DOM+JS title callback, not first contentful paint." >> "$GITHUB_STEP_SUMMARY"
+              if grep -Eo 'CEFPageTiming synthetic_fcp_browser_ms=[0-9]+ synthetic_fcp_observed_ms=[0-9]+'                   dist/cefrium-logcat-filtered.txt | tail -1 >> "$GITHUB_STEP_SUMMARY"; then
+                echo "Chromium Paint Timing API on synthetic HTML only; NOT an external site benchmark." >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "Synthetic FCP Paint Timing API result unavailable; not treated as zero." >> "$GITHUB_STEP_SUMMARY"
+              fi
             else
               echo "DOM and JS readiness not observed." >> "$GITHUB_STEP_SUMMARY"
             fi
