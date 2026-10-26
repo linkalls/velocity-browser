@@ -62,7 +62,7 @@ import org.chromium.content.browser.ChildProcessCreationParamsImpl;
  * A separate Cefrium browser test bed with persistent regular tab metadata,
  * isolated private tabs, navigation, and native Surface rendering.
  *
- * No moving toolbar or page JavaScript instrumentation is introduced.
+ * No remote JavaScript instrumentation is introduced.
  * This is not ready as a default browser: permission/download policies,
  * extensions, and physical device validation remain open.
  */
@@ -85,6 +85,7 @@ public final class ChromiumTestActivity extends Activity {
     private CefriumBrowser engine;
     private LinearLayout browserRoot;
     private FrameLayout browserContent;
+    private FrameLayout homeOverlay;
     private View browserHeader;
     private View browserFooter;
     private LinearLayout toolbarActions;
@@ -209,6 +210,9 @@ public final class ChromiumTestActivity extends Activity {
         browserContent = content;
         browserHeader = header;
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1f));
+        // The browser starts with a native, zero-network home, not a remote
+        // news page. It also makes the current tab's about:blank useful.
+        buildHome(content);
 
         // The page remains the focus. One compact chrome surface is anchored
         // at the bottom, within thumb reach on tall phones.
@@ -328,6 +332,83 @@ public final class ChromiumTestActivity extends Activity {
         root.post(this::startChromium);
     }
 
+    /** A native home never fetches remote data during cold start. */
+    private void buildHome(FrameLayout parent) {
+        FrameLayout overlay = new FrameLayout(this);
+        homeOverlay = overlay;
+        overlay.setBackgroundColor(CANVAS);
+        parent.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
+        overlay.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
+
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding(dp(24), dp(26), dp(24), dp(24));
+        scroll.addView(body);
+
+        TextView wordmark = text("Velocity", 32, PRIMARY, true);
+        body.addView(wordmark, new LinearLayout.LayoutParams(-1, dp(62)));
+
+        TextView sub = text("軽く、速く、あなたのウェブへ。", 14, SECONDARY, false);
+        body.addView(sub, new LinearLayout.LayoutParams(-1, dp(35)));
+
+        Button search = makeButton("⌕    検索またはURLを入力", "アドレスバーに入力", this::focusAddress);
+        search.setTextSize(15);
+        search.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+        search.setPadding(dp(20), 0, dp(12), 0);
+        search.setBackground(rounded(SURFACE, 16, BORDER));
+        LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(-1, dp(56));
+        searchLp.topMargin = dp(32);
+        body.addView(search, searchLp);
+
+        TextView caption = text("クイックアクセス", 13, SECONDARY, true);
+        LinearLayout.LayoutParams captionLp = new LinearLayout.LayoutParams(-1, dp(45));
+        captionLp.topMargin = dp(23);
+        body.addView(caption, captionLp);
+
+        for (int startIndex = 0; startIndex < SITE_NAMES.length; startIndex += 2) {
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            body.addView(row, new LinearLayout.LayoutParams(-1, dp(65)));
+            for (int col = 0; col < 2 && startIndex + col < SITE_NAMES.length; col++) {
+                final int index = startIndex + col;
+                Button shortcut = makeButton(SITE_NAMES[index], SITE_NAMES[index] + " を開く",
+                    () -> openHomeLink(index));
+                shortcut.setTextSize(13);
+                shortcut.setBackground(new RippleDrawable(ColorStateList.valueOf(0x28FFFFFF),
+                    rounded(SURFACE, 14, BORDER), null));
+                LinearLayout.LayoutParams cell = new LinearLayout.LayoutParams(0, dp(55), 1f);
+                if (col != 0) cell.leftMargin = dp(9);
+                row.addView(shortcut, cell);
+            }
+        }
+        TextView privacy = text("ホーム画面自体はオフラインで使えます。", 12, SECONDARY, false);
+        LinearLayout.LayoutParams privacyLp = new LinearLayout.LayoutParams(-1, dp(45));
+        privacyLp.topMargin = dp(10);
+        body.addView(privacy, privacyLp);
+    }
+
+    private void openHomeLink(int index) {
+        if (index < 0 || index >= SITE_URLS.length || engine == null) return;
+        TabRegistry.Tab current = tabRegistry.current();
+        if (current == null) return;
+        current.url = SITE_URLS[index];
+        updateHomeState();
+        engine.loadUrl(current.url);
+        saveRegularTabs();
+    }
+
+    private void updateHomeState() {
+        if (homeOverlay == null) return;
+        TabRegistry.Tab current = tabRegistry.current();
+        boolean showHome = current != null && "about:blank".equals(current.url);
+        homeOverlay.setVisibility(showHome ? View.VISIBLE : View.GONE);
+        if (showHome) homeOverlay.bringToFront();
+    }
+
     private void positionChromiumSurface(FrameLayout surface, View header, View footer) {
         if (destroyed || !(surface.getParent() instanceof FrameLayout)) return;
         int top = header.getHeight();
@@ -344,11 +425,12 @@ public final class ChromiumTestActivity extends Activity {
     }
 
 
-    /** Select the SDK's isolated Java services before lazy native initialization. */
+    /** Verify isolated Java renderer services after the SDK provider initializes. */
     private void configureRendererLauncher() {
         Cefrium.setupProcess(this);
-        // 0.13.0's provider only sets up the process. Native initialization is
-        // lazy, so CommandLine may not exist yet when this Activity starts.
+        // CefriumInitProvider in SDK 0.13.0 initializes native Chromium before
+        // the first Activity. This is an idempotent compatibility check, not
+        // a means to defer or bypass sandbox initialization.
         if (!CommandLine.isInitialized()) CommandLine.init(null);
         if (Build.VERSION.SDK_INT >= 37) {
             // The official AAR does not implement the native-only entry point.
@@ -386,7 +468,7 @@ public final class ChromiumTestActivity extends Activity {
         }
     }
 
-    /** The launcher must be verified once before the first Cefrium browser. */
+    /** Renderer pool must be verified before the first Cefrium browser. */
     private void startChromium() {
         if (destroyed || isFinishing()) return;
         try {
@@ -397,7 +479,9 @@ public final class ChromiumTestActivity extends Activity {
             long rulesReadyAt = SystemClock.elapsedRealtime();
             chromiumReady = true;
             restoreRegularTabs();
-            if (tabRegistry.current() == null) tabRegistry.add(SITE_URLS[0], false);
+            // No automatic remote homepage request; keep the first launch
+            // stable offline and do not disadvantage cold-start performance.
+            if (tabRegistry.current() == null) tabRegistry.add("about:blank", false);
             activateCurrentTab();
             long engineReadyAt = SystemClock.elapsedRealtime();
             // Timings are numeric only: never collect private URLs or profile data.
@@ -639,7 +723,10 @@ public final class ChromiumTestActivity extends Activity {
                 if (destroyed || tabRegistry.find(tab.id) != tab || url == null) return;
                 tab.url = url;
                 currentOrigin.set(url);
-                if (tabRegistry.current() == tab && !address.hasFocus()) address.setText(url);
+                if (tabRegistry.current() == tab) {
+                    if (!address.hasFocus()) address.setText(url);
+                    updateHomeState();
+                }
                 if (!tab.privateMode) saveRegularTabs();
             }));
             browser.setOnTitleChangedListener(name -> runOnUiThread(() -> {
@@ -681,6 +768,7 @@ public final class ChromiumTestActivity extends Activity {
             if (activityResumed && oldEngine != active) engine.onResume();
             engine.getSurfaceContainer().bringToFront();
             browserRoot.bringToFront();
+            updateHomeState();
             updateNavigation();
         } catch (RuntimeException | LinkageError error) {
             Log.e(TAG, "Tab engine failed to open", error);
@@ -698,6 +786,7 @@ public final class ChromiumTestActivity extends Activity {
         forward.setEnabled(ready && tab.canGoForward);
         if (tabsButton != null) tabsButton.setText("□ " + tabRegistry.all().size());
         if (tab != null) {
+            updateHomeState();
             title.setText((tab.privateMode ? "非公開 · " : "") + tab.displayTitle());
             if (!address.hasFocus()) {
                 address.setText(tab.url.equals("about:blank") ? "" : tab.url);
@@ -716,6 +805,7 @@ public final class ChromiumTestActivity extends Activity {
         address.clearFocus();
         TabRegistry.Tab current = tabRegistry.current();
         if (current != null) current.url = parsed;
+        updateHomeState();
         engine.loadUrl(parsed);
         saveRegularTabs();
     }
@@ -729,6 +819,7 @@ public final class ChromiumTestActivity extends Activity {
                 if (engine != null) {
                     TabRegistry.Tab current = tabRegistry.current();
                     if (current != null) current.url = SITE_URLS[item];
+                    updateHomeState();
                     engine.loadUrl(SITE_URLS[item]);
                     saveRegularTabs();
                 }

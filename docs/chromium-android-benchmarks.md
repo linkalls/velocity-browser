@@ -109,3 +109,19 @@ Cefrium startup log, the Surface-ready marker, the surviving process PID
 after settling, and nonmissing PSS. The benchmark workflow fails when
 any trial omits one of these required native-readiness observations.
 The Surface marker confirms creation and initial navigation, not first paint.
+
+## Native offline start page experiment
+
+The experiment previously navigated to `https://news.yahoo.co.jp/` on cold
+start, unlike the built-in start pages of comparison browsers. Velocity now
+opens a native, network-free new-tab page (`about:blank` underneath) with
+shortcuts that navigate only after a user action. The SDK itself may still
+perform background network traffic (for example component metadata), so
+this does **not** claim that the entire browser makes zero connections.
+
+Cefrium 0.13.0's `CefriumInitProvider` calls `Cefrium.initialize()` before
+any Activity. Upstream's v0.13.0 code comments explicitly require early
+initialization for the Chromium UI looper and native browser. We are not
+bypassing provider setup or weakening renderer sandboxing to game `am start -W`.
+The ~4-second provider path remains a separate performance challenge. Never
+interpret a fast local home overlay as faster web page first paint.
