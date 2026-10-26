@@ -24,6 +24,8 @@ require(!benchmarkFastAttach || (chromiumAbi == "x86_64" && velocityMinify && !p
 
 android {
     namespace = "dev.velocity.chromium"
+    // Required for per-build benchmark-only resValue() flags on AGP 9.
+    buildFeatures { resValues = true }
     compileSdk { version = release(37) { minorApiLevel = 1 } }
     buildToolsVersion = "36.0.0"
     defaultConfig {
