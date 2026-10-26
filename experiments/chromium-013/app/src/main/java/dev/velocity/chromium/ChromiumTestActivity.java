@@ -428,7 +428,7 @@ public final class ChromiumTestActivity extends Activity {
     /** Verify isolated Java renderer services after the SDK provider initializes. */
     private void configureRendererLauncher() {
         Cefrium.setupProcess(this);
-        // CefriumInitProvider in SDK 0.13.0 initializes native Chromium before
+        // CefriumInitProvider in SDK 0.14.0 initializes native Chromium before
         // the first Activity. This is an idempotent compatibility check, not
         // a means to defer or bypass sandbox initialization.
         if (!CommandLine.isInitialized()) CommandLine.init(null);
@@ -444,11 +444,13 @@ public final class ChromiumTestActivity extends Activity {
             int count = info.metaData == null ? 0 : info.metaData.getInt(
                 "org.chromium.content.browser.NUM_SANDBOXED_SERVICES", 0);
             String selected = ChildProcessCreationParamsImpl.getSandboxedServicesName();
-            if (!"com.cefrium.ChildServices$Sandboxed".equals(expected)
-                    || !expected.equals(selected) || count != 40) {
-                throw new IllegalStateException("Unexpected renderer pool: " + selected
-                    + " metadata=" + expected + " count=" + count);
-            }
+            boolean javalessDeclared = info.metaData != null
+                && info.metaData.getBoolean("com.cefrium.JAVALESS_RENDERERS", false);
+            String nativePrefix = info.metaData == null ? null : info.metaData.getString(
+                "org.chromium.content.browser.NATIVE_SANDBOXED_SERVICES_NAME");
+            boolean usingNative = RendererPoolSelection.usingNative(
+                Build.VERSION.SDK_INT, javalessDeclared, expected,
+                nativePrefix, selected, count);
             for (int slot = 0; slot < count; slot++) {
                 ServiceInfo service = manager.getServiceInfo(
                     new ComponentName(this, expected + slot), 0);
@@ -465,12 +467,7 @@ public final class ChromiumTestActivity extends Activity {
             // 0.14's Gradle plugin declares native-only child renderer
             // services for compileSdk >= 37. Test the actual packaged
             // package-manager view when running on Android 17+.
-            if (Build.VERSION.SDK_INT >= 37) {
-                boolean javalessDeclared = info.metaData != null
-                    && info.metaData.getBoolean("com.cefrium.JAVALESS_RENDERERS", false);
-                if (!javalessDeclared) {
-                    throw new IllegalStateException("Android 17 native renderer marker missing");
-                }
+            if (usingNative) {
                 for (int slot = 0; slot < 2; slot++) {
                     ServiceInfo nativeService = manager.getServiceInfo(
                         new ComponentName(this,
