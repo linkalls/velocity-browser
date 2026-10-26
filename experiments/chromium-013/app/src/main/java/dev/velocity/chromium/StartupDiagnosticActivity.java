@@ -87,9 +87,9 @@ public final class StartupDiagnosticActivity extends Activity {
         resetStartup.setText("高速起動の実験モードを解除");
         resetStartup.setAllCaps(false);
         resetStartup.setOnClickListener(view -> {
-            boolean saved = getSharedPreferences(StartupModePolicy.PREFS, MODE_PRIVATE)
+            boolean resetSucceeded = getSharedPreferences(StartupModePolicy.PREFS, MODE_PRIVATE)
                 .edit().putBoolean(StartupModePolicy.KEY_FAST_ATTACH, false).commit();
-            status.setText(saved
+            status.setText(resetSucceeded
                 ? "高速起動を解除しました。ブラウザ本体を再起動してください。"
                 : "起動設定の解除に失敗。adb logcatを確認してください。");
         });
