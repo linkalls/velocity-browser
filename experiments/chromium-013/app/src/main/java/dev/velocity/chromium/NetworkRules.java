@@ -1,6 +1,5 @@
 package dev.velocity.chromium;
 
-import java.net.URI;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.StringReader;
@@ -91,27 +90,18 @@ public final class NetworkRules {
 
     public boolean shouldBlock(String url, boolean mainFrame) {
         if (mainFrame || url == null) return false;
-        try {
-            URI uri = URI.create(url);
-            String scheme = uri.getScheme();
-            if (scheme == null || !(scheme.equalsIgnoreCase("https")
-                    || scheme.equalsIgnoreCase("http"))) return false;
-            String host = uri.getHost();
-            if (host == null) return false;
-            host = host.toLowerCase(Locale.ROOT);
-            // Domain suffix matching must stop at a label boundary.
-            boolean denied = false;
-            for (int start = 0; start < host.length();) {
-                String candidate = host.substring(start);
-                if (allowed.contains(candidate)) return false;
-                if (blocked.contains(candidate)) denied = true;
-                int dot = host.indexOf('.', start);
-                if (dot < 0) break;
-                start = dot + 1;
-            }
-            return denied;
-        } catch (IllegalArgumentException ignored) {
-            return false;
+        String host = HttpUrlHost.parse(url);
+        if (host == null) return false;
+        // Domain suffix matching must stop at a label boundary.
+        boolean denied = false;
+        for (int start = 0; start < host.length();) {
+            String candidate = host.substring(start);
+            if (allowed.contains(candidate)) return false;
+            if (blocked.contains(candidate)) denied = true;
+            int dot = host.indexOf('.', start);
+            if (dot < 0) break;
+            start = dot + 1;
         }
+        return denied;
     }
 }
