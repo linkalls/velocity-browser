@@ -160,3 +160,20 @@ once in every execution slot (first, second, third, fourth). All four packages
 are force-stopped before each trial. JSON retains trial order, iteration and
 order position. These measurements are better balanced, but still show
 Android Activity startup rather than interactive webpage first paint.
+
+
+## ART verify/speed/speed/verify crossover
+
+The earlier Android Runtime speed-only trial ran at the *end* of the entire
+comparison and reached 727.5 ms median on one emulator run. That result was
+heavily confounded by time/order/cache warming: the last ordinary Velocity
+startup in that same run had already fallen to 1034 ms.
+
+The new exploratory experiment applies ART verify, speed, speed, then verify
+compilation on the identical signed x86_64 Velocity APK, measuring each block
+with three fresh force-stopped Activity launches and an unmeasured warmup.
+This ABBA design probes whether ART optimization has an effect that persists
+when reversed. It is **not** perfectly randomized, cannot separate all
+temperature/filesystem-cache effects, and says nothing about competing
+browsers' ART profiles or first-page paint. No standalone speed-mode
+measurement should ever be presented as a general browser victory.
