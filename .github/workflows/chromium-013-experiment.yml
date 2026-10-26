@@ -132,7 +132,7 @@ jobs:
           disk-size: 6G
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 4
-          script: VELOCITY_STARTUP_EXPERIMENT=1 bash experiments/chromium-013/tools/boot-smoke.sh
+          script: VELOCITY_STARTUP_EXPERIMENT=1 VELOCITY_CAPTURE_PERFETTO=1 bash experiments/chromium-013/tools/boot-smoke.sh
       - name: Report actual DOM+JS readiness (not visual paint)
         if: always()
         shell: bash
@@ -159,6 +159,16 @@ jobs:
           else
             echo "Optional startup strategy experiment unavailable." >> "$GITHUB_STEP_SUMMARY"
           fi
+      - name: Summarize CPU and fault probes
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f dist/cefrium-perfetto-startup/metadata.json ]]; then
+            echo '## Native CPU + page-fault startup diagnosis' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Captured a bounded Perfetto trace of a synthetic, offline DOM+JS fixture.' >> "$GITHUB_STEP_SUMMARY"
+            cat dist/cefrium-perfetto-startup/startup-phases.txt >> "$GITHUB_STEP_SUMMARY" || true
+            echo 'A native trace is NOT a first paint or cross-browser performance ranking.' >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Upload logcat and Activity results even when failed
         if: always()
         uses: actions/upload-artifact@v7.0.2
@@ -177,4 +187,5 @@ jobs:
             dist/cefrium-ui-dump-command.txt
             dist/cefrium-ui-hierarchy.xml
             dist/cefrium-startup-strategy/**
+            dist/cefrium-perfetto-startup/**
           if-no-files-found: warn

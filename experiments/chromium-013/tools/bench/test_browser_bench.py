@@ -35,6 +35,38 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(result['ui_build_ms'], 13)
         self.assertIsNone(bench.parse_velocity_timing('unrelated activity log'))
 
+    def test_startup_resource_parsing_with_unknown_procfs_values(self):
+        fields = bench.RESOURCE_FIELDS
+        periods = ("provider", "activity", "total")
+        sample = {f"{period}_{field}": n for n, (period, field) in enumerate(
+            ((period, field) for period in periods for field in fields))}
+        sample["provider_read_bytes"] = -1
+        line = "CEFStartupResource " + " ".join(
+            f"{key}={value}" for key, value in sample.items())
+        result = bench.parse_velocity_resources(
+            "I/VelocityCefStartup: " + line)
+        self.assertEqual(-1, result["provider_read_bytes"])
+        self.assertEqual(0, result["provider_wall_ms"])
+        self.assertEqual(17, result["total_written_bytes"])
+        self.assertIsNone(bench.parse_velocity_resources("no resources"))
+        self.assertIsNone(bench.parse_velocity_resources(
+            "CEFStartupResource provider_wall_ms=200"))
+
+    def test_resource_report_does_not_make_zero_from_missing_values(self):
+        r = {f"{period}_{field}": -1
+             for period in ("provider", "activity", "total")
+             for field in bench.RESOURCE_FIELDS}
+        r.update(provider_wall_ms=1200, provider_cpu_ms=350,
+                 provider_minor_faults=1700, provider_major_faults=9)
+        d = {"browsers": {"Velocity": {
+            "status": "measured", "version": "0.14",
+            "median_activity_launch_ms": 1500, "median_pss_kib": 100000,
+            "samples": [{"cefrium_startup_resources": r}]}}}
+        report = bench.markdown_report(d)
+        self.assertIn("CPU, page faults and storage I/O", report)
+        self.assertIn("0.29", report)
+        self.assertIn("unavailable", report)
+
     def test_ci_logs_prove_actual_early_attach_strategy(self):
         self.assertEqual("attach", bench.parse_velocity_strategy(
             "I VelocityCefStartup: CEFStartupStrategy strategy=attach"))

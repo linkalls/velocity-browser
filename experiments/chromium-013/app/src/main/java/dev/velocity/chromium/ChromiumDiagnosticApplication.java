@@ -5,6 +5,7 @@ import android.content.Context;
 import android.os.Build;
 import android.os.Process;
 import android.os.SystemClock;
+import android.os.Trace;
 import android.util.Log;
 
 import java.io.File;
@@ -29,6 +30,7 @@ public final class ChromiumDiagnosticApplication extends Application {
     // Set in the main process BEFORE ContentProvider installation. This lets
     // perf tests measure native/provider startup independently of Activity UI.
     static volatile long mainProcessAttachedAtMs;
+    static volatile StartupResourceProbe.Snapshot mainProcessStartedResources;
 
     @Override protected void attachBaseContext(Context base) {
         super.attachBaseContext(base);
@@ -39,6 +41,12 @@ public final class ChromiumDiagnosticApplication extends Application {
             return;
         }
         mainProcessAttachedAtMs = SystemClock.elapsedRealtime();
+        // Capture BEFORE CefriumInitProvider runs native initialization.
+        // These counters help distinguish CPU-bound startup from blocked I/O.
+        mainProcessStartedResources = StartupResourceProbe.capture();
+        // Visible in optional Perfetto traces across CefriumInitProvider's
+        // expensive synchronous native startup before Activity.onCreate().
+        Trace.beginAsyncSection("Velocity CEF provider startup", 6421);
         final Thread.UncaughtExceptionHandler original =
             Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {

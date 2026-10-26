@@ -348,3 +348,35 @@ work requires native CPU/page-fault and storage traces, preferably under
 repeatable device thermal/cache conditions, and ultimately native-engine
 PGO/link-order work if appropriate; do not simply suppress engine init to
 make the Activity metric appear faster.
+
+
+## Native CPU, page-fault and Perfetto investigation
+
+After JNI packaging's negative result, the key unknown is the variable
+synchronous Cefrium initialization inside CefriumInitProvider. The main
+process Application captures best-effort read-only /proc/self/stat
+(minor/major faults), /proc/self/io (physical disk read/write bytes),
+process CPU time and monotonic wall time *before* the SDK provider runs.
+The Activity captures these again at onCreate and after native Surface
+creation. The CEFStartupResource log exposes deltas for provider/activity/
+total, using -1 for missing metrics (never interpreted as zero). Numeric
+data contains no URLs, cookies, profile paths, credentials or page content.
+The benchmark reports per-trial values and median CPU/wall ratios, faults
+and physical read bytes. The values are whole-process, not thread-exclusive;
+low CPU/wall alone cannot prove I/O is responsible.
+
+Android 16 and 17 emulator smoke jobs also attempt a bounded 14-second
+Perfetto trace with scheduler, CPU frequency and Activity/Window/GPU/View
+events and app Trace spans. The async span from Application.attachBaseContext
+to Activity.onCreate includes CefriumInitProvider initialization. Other
+spans mark renderer service verification, rule parse and first Surface
+creation. All measurements use an offline, synthetic DOM+JavaScript page
+and no authenticated or private browser data. The trace may include other
+system process names, so the artifact is not an anonymous recording.
+Missing procfs counters and rejected Perfetto sessions are reported as
+unavailable; no need for production root or a disabled sandbox.
+
+Distinguish true cold native starts from warmed and cached starts. The
+next optimization should follow evidence of where native initialization
+is running on CPU versus blocked on storage/CPU scheduling, not merely
+make a placeholder splash screen appear earlier.

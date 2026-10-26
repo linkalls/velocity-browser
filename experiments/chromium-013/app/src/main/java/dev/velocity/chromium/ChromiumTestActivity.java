@@ -22,6 +22,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.os.Trace;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -99,6 +100,7 @@ public final class ChromiumTestActivity extends Activity {
     private boolean chromiumReady;
     private boolean activityResumed;
     private long activityCreateStartedAtMs;
+    private StartupResourceProbe.Snapshot activityStartedResources;
     private long uiPreparedAtMs;
     private volatile boolean blockDomainsEnabled;
     private boolean cosmeticEnabled;
@@ -192,6 +194,8 @@ public final class ChromiumTestActivity extends Activity {
         syntheticSmokeRequested = getIntent() != null
             && getIntent().getBooleanExtra("cefrium_render_smoke", false);
         activityCreateStartedAtMs = SystemClock.elapsedRealtime();
+        activityStartedResources = StartupResourceProbe.capture();
+        Trace.endAsyncSection("Velocity CEF provider startup", 6421);
         super.onCreate(state);
         getWindow().setStatusBarColor(CANVAS);
         getWindow().setNavigationBarColor(CANVAS);
@@ -539,17 +543,43 @@ public final class ChromiumTestActivity extends Activity {
         if (destroyed || isFinishing()) return;
         try {
             long layoutReadyAt = SystemClock.elapsedRealtime();
-            configureRendererLauncher();
+            Trace.beginSection("Velocity CEF renderer pool validation");
+            try {
+                configureRendererLauncher();
+            } finally {
+                Trace.endSection();
+            }
             long launcherReadyAt = SystemClock.elapsedRealtime();
-            loadNetworkRules();
+            Trace.beginSection("Velocity blocking rules load");
+            try {
+                loadNetworkRules();
+            } finally {
+                Trace.endSection();
+            }
             long rulesReadyAt = SystemClock.elapsedRealtime();
             chromiumReady = true;
-            restoreRegularTabs();
-            // No automatic remote homepage request; keep the first launch
-            // stable offline and do not disadvantage cold-start performance.
-            if (tabRegistry.current() == null) tabRegistry.add("about:blank", false);
-            activateCurrentTab();
+            Trace.beginSection("Velocity CEF create Surface");
+            try {
+                restoreRegularTabs();
+                // Do not fetch a remote homepage at cold startup.
+                if (tabRegistry.current() == null) tabRegistry.add("about:blank", false);
+                activateCurrentTab();
+            } finally {
+                Trace.endSection();
+            }
             long engineReadyAt = SystemClock.elapsedRealtime();
+            StartupResourceProbe.Snapshot engineReadyResources = StartupResourceProbe.capture();
+            // Counters are process-wide; no private URLs or profile contents.
+            // -1 means unavailable, NEVER "zero page faults" or "zero I/O".
+            Log.i(TAG, "CEFStartupResource "
+                + StartupResourceProbe.describe(
+                    ChromiumDiagnosticApplication.mainProcessStartedResources,
+                    activityStartedResources, "provider")
+                + " " + StartupResourceProbe.describe(
+                    activityStartedResources, engineReadyResources, "activity")
+                + " " + StartupResourceProbe.describe(
+                    ChromiumDiagnosticApplication.mainProcessStartedResources,
+                    engineReadyResources, "total"));
             // Timings are numeric only: never collect private URLs or profile data.
             // Native Surface creation != first page paint.
             long attachedAt = ChromiumDiagnosticApplication.mainProcessAttachedAtMs;

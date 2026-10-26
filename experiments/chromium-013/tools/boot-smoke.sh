@@ -64,6 +64,11 @@ if ! grep -Eq 'CEFPageTiming synthetic_dom_ready_ms=[0-9]+' dist/cefrium-logcat-
   exit 1
 fi
 grep 'CEFPageTiming synthetic_dom_ready_ms=' dist/cefrium-logcat-filtered.txt
+if ! grep -Eq 'CEFStartupResource provider_wall_ms=[0-9]+ provider_cpu_ms=[0-9]+' dist/cefrium-logcat-filtered.txt; then
+  echo "FAIL: provider/resource profiler log is missing" >&2
+  exit 1
+fi
+grep 'CEFStartupResource ' dist/cefrium-logcat-filtered.txt | tail -1
 if grep -q 'CEFPageTiming synthetic_fcp_browser_ms=' dist/cefrium-logcat-filtered.txt; then
   grep 'CEFPageTiming synthetic_fcp_browser_ms=' dist/cefrium-logcat-filtered.txt
 else
@@ -77,4 +82,12 @@ if [[ "$(printenv VELOCITY_STARTUP_EXPERIMENT || true)" == "1" ]]; then
   if ! python3 experiments/chromium-013/tools/bench/startup_strategy.py; then
     echo "WARN: optional attach-vs-post experiment did not complete" >&2
   fi
+fi
+
+
+# This optional trace is taken against a synthetic offline fixture only;
+# never capture logged-in browsing, private tabs or unredacted URL activity.
+if [[ "$(printenv VELOCITY_CAPTURE_PERFETTO || true)" == "1" ]]; then
+  python3 experiments/chromium-013/tools/bench/perfetto_startup.py ||
+    echo "WARN: optional Perfetto startup probe unavailable" >&2
 fi

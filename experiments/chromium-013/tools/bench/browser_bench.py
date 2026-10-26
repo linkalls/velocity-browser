@@ -86,6 +86,26 @@ def parse_velocity_timing(log):
     )}
 
 
+RESOURCE_FIELDS = ("wall_ms", "cpu_ms", "minor_faults", "major_faults",
+                   "read_bytes", "written_bytes")
+
+
+def parse_velocity_resources(log):
+    """Read-only /proc/self counters captured around provider and Activity.
+
+    Counters are missing (-1) if Android blocks procfs, not "zero I/O".
+    """
+    logs = re.findall(r"CEFStartupResource\s+([^\r\n]+)", log)
+    if not logs:
+        return None
+    matched = {name: int(value) for name, value in
+               re.findall(r"([a-z_]+)=(-?\d+)", logs[-1])}
+    keys = tuple(f"{period}_{field}" for period in ("provider", "activity", "total")
+                 for field in RESOURCE_FIELDS)
+    return {key: matched.get(key, -1) for key in keys} if all(
+        key in matched for key in keys) else None
+
+
 def parse_velocity_strategy(log):
     """Read the actual startup path, rather than assuming the build flag worked."""
     strategies = re.findall(r"CEFStartupStrategy strategy=(post|attach)", log)
@@ -134,6 +154,7 @@ def sample_browser(package, launcher, repetitions, settle_seconds, output_dir=No
         if package == BROWSERS["Velocity"]:
             _, log = run_adb("logcat", "-d", "-s", "VelocityCefStartup:I", "*:S")
             entry["cefrium_startup_phases_ms"] = parse_velocity_timing(log)
+            entry["cefrium_startup_resources"] = parse_velocity_resources(log)
             entry["cefrium_start_strategy"] = parse_velocity_strategy(log)
             entry["cefrium_surface_created"] = (
                 "CEF surface created and page navigation started" in log)
@@ -285,6 +306,38 @@ def markdown_report(data):
             values = [x[phase] for x in phase_samples if x.get(phase, -1) >= 0]
             lines.append(f"- {phase}: {statistics.median(values):.0f} ms" if values
                          else f"- {phase}: unavailable")
+    resource_samples = [x.get("cefrium_startup_resources")
+                        for x in velocity.get("samples", [])
+                        if x.get("cefrium_startup_resources")]
+    if resource_samples:
+        lines += ["", "## Velocity startup CPU, page faults and storage I/O", "",
+                  "Process-wide resource deltas across Cefrium provider, Java Activity,",
+                  "and the complete native Surface creation interval. -1 means unavailable;",
+                  "read_bytes counts actual disk reads, NOT all cached file reads.", "",
+                  "| Phase | Wall (ms) | CPU (ms) | CPU/wall | Minor faults | Major faults | Physical read (KiB) |",
+                  "|---|---:|---:|---:|---:|---:|---:|"]
+        for phase in ("provider", "activity", "total"):
+            def median_value(field):
+                values = [r[f"{phase}_{field}"] for r in resource_samples
+                          if r.get(f"{phase}_{field}", -1) >= 0]
+                return statistics.median(values) if values else None
+            wall = median_value("wall_ms")
+            cpu = median_value("cpu_ms")
+            minflt = median_value("minor_faults")
+            majflt = median_value("major_faults")
+            disk = median_value("read_bytes")
+            ratio = (cpu / wall if wall and cpu is not None else None)
+            def formatted(value, digits=0):
+                return "—" if value is None else f"{value:.{digits}f}"
+            lines.append(f"| {phase} | {formatted(wall)} | {formatted(cpu)} | "
+                         f"{formatted(ratio, 2)} | {formatted(minflt)} | "
+                         f"{formatted(majflt)} | "
+                         f"{formatted(disk / 1024 if disk is not None else None)} |")
+        lines += ["", "Low CPU/wall suggests blocked or descheduled work but does not",
+                  "identify I/O by itself. A major page fault suggests a disk-backed",
+                  "page must be brought in; page faults and read_bytes may be unavailable",
+                  "on some Android versions. Full native CPU call stacks and off-CPU",
+                  "time still require a Perfetto/simpleperf trace.", ""]
     lines += ["", "## Startup variability (same emulator)", "",
               "The distribution matters more than a single fastest run.", "",
               "| Browser | Unmeasured warmup (ms) | Min (ms) | Median (ms) | Max (ms) | Max/min |",
