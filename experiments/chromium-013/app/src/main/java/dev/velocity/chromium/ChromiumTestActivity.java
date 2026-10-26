@@ -112,8 +112,8 @@ public final class ChromiumTestActivity extends Activity {
     private Button forward;
     private boolean destroyed;
     private static final String TAG = "VelocityCefStartup";
-    private static final String SYNTHETIC_SMOKE_TITLE = "VelocityCEFRenderSmoke2026";
     private boolean syntheticSmokeRequested;
+    private long syntheticLoadStartedAtMs = -1L;
 
     // Deliberately restrained palette. No novelty gradients, false neon
     // borders, or extra Material dependencies on the critical launch path.
@@ -543,15 +543,15 @@ public final class ChromiumTestActivity extends Activity {
                 // it only after the real native browser Surface was created.
                 Log.i(TAG, "CEF surface created and page navigation started");
                 if (syntheticSmokeRequested) {
-                    // Local, deterministic page. Title callback means a
-                    // renderer loaded HTML, not merely that a Surface exists.
-                    // Never install a page-to-native bridge for this probe.
+                    // The local test page must run JavaScript after DOM
+                    // is ready before the renderer emits the special title.
+                    // This is not a first-paint metric. Do not expose a
+                    // page-to-native JavaScript bridge for smoke tests.
                     final CefriumBrowser probe = engine;
                     mainHandler.postDelayed(() -> {
                         if (!destroyed && engine == probe) {
-                            probe.loadHtml("<!doctype html><html><head><title>"
-                                + SYNTHETIC_SMOKE_TITLE + "</title></head>"
-                                + "<body><h1>CEF RENDER SMOKE OK</h1></body></html>");
+                            syntheticLoadStartedAtMs = SystemClock.elapsedRealtime();
+                            probe.loadHtml(SyntheticRenderFixture.html());
                         }
                     }, 450);
                 }
@@ -808,8 +808,13 @@ public final class ChromiumTestActivity extends Activity {
             browser.setOnTitleChangedListener(name -> runOnUiThread(() -> {
                 if (destroyed || tabRegistry.find(tab.id) != tab) return;
                 tab.title = name == null ? "" : name;
-                if (syntheticSmokeRequested && SYNTHETIC_SMOKE_TITLE.equals(name)) {
+                if (syntheticSmokeRequested && syntheticLoadStartedAtMs > 0
+                        && SyntheticRenderFixture.READY_TITLE.equals(name)) {
+                    long domReadyMs = SystemClock.elapsedRealtime()
+                        - syntheticLoadStartedAtMs;
                     Log.i(TAG, "CEF synthetic document title observed");
+                    Log.i(TAG, "CEFPageTiming synthetic_dom_ready_ms=" + domReadyMs);
+                    syntheticLoadStartedAtMs = -1L;
                 }
                 if (tabRegistry.current() == tab) updateNavigation();
                 if (!tab.privateMode) scheduleRegularTabsSave();

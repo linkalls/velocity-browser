@@ -211,3 +211,18 @@ libcef.so ABI, and uploads it as a temporary Actions artifact. Both emulator
 jobs download that identical APK instead of duplicating the entire build.
 The smoke tests still install and run on different OS images independently.
 This is CI throughput optimization, **not evidence of better app runtime**.
+
+
+## Synthetic DOM and JavaScript readiness in emulator
+
+Android 16 and Android 17 smoke jobs now load a local data HTML fixture in
+the real Cefrium renderer. The document starts with a generic loading
+title. An inline script waits for DOMContentLoaded, verifies an expected H1,
+then changes the title to a unique success marker. The Java title callback
+records elapsed milliseconds from loadHtml until the DOM/JS signal.
+CI requires the marker and numeric timing in logcat; native Surface
+creation alone is insufficient. No network or page-to-native JS bridge.
+
+This is a local fixture's DOM/JS completion timestamp, NOT first contentful
+paint, Speedometer, overall web loading speed, or UI smoothness. Engine
+startup timing remains a separate instrument.

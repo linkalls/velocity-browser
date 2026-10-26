@@ -56,9 +56,14 @@ if ! grep -F 'Verified Java renderer pool: 40 isolated services' dist/cefrium-lo
   exit 1
 fi
 if ! grep -Fq 'CEF synthetic document title observed' dist/cefrium-logcat-filtered.txt; then
-  echo "FAIL: Cefrium never loaded the deterministic synthetic HTML document" >&2
+  echo "FAIL: Cefrium never executed JavaScript after DOMContentLoaded" >&2
   exit 1
 fi
+if ! grep -Eq 'CEFPageTiming synthetic_dom_ready_ms=[0-9]+' dist/cefrium-logcat-filtered.txt; then
+  echo "FAIL: JavaScript DOM readiness timing is missing" >&2
+  exit 1
+fi
+grep 'CEFPageTiming synthetic_dom_ready_ms=' dist/cefrium-logcat-filtered.txt
 # The native home is used for regular startups, while the synthetic content
 # is used for renderer smoke tests. Accessibility for CEF's Surface can differ
 # by Android version; retain hierarchy/screenshot without false assertions.

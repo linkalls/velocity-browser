@@ -133,6 +133,18 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 4
           script: bash experiments/chromium-013/tools/boot-smoke.sh
+      - name: Report actual DOM+JS readiness (not visual paint)
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f dist/cefrium-logcat-filtered.txt ]]; then
+            echo "## Cefrium emulator smoke DOM test" >> "$GITHUB_STEP_SUMMARY"
+            if grep -Eo 'CEFPageTiming synthetic_dom_ready_ms=[0-9]+'                 dist/cefrium-logcat-filtered.txt | tail -1 >> "$GITHUB_STEP_SUMMARY"; then
+              echo "Local HTML JS DOM-ready title callback; NOT first contentful paint." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "DOM and JS readiness not observed." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
       - name: Upload logcat and Activity results even when failed
         if: always()
         uses: actions/upload-artifact@v7.0.2
