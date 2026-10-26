@@ -200,3 +200,14 @@ immediate save points. Private tab URLs and titles are never serialized.
 This aims to reduce main-thread JSON serialization and redundant background
 preference writes during page loads; no measured improvement in first paint or
 frame jank is asserted before a controlled device benchmark.
+
+## CI build reuse for Android 16 / Android 17
+
+The Android emulator smoke workflow used to re-run a full Cefrium x86_64
+Gradle build in **both** the API 36 and API 37 matrix jobs, even though both
+needed the same APK bytes. The build job now creates exactly one x86_64
+diagnostic APK (after keeping the separate arm64 build), verifies the native
+libcef.so ABI, and uploads it as a temporary Actions artifact. Both emulator
+jobs download that identical APK instead of duplicating the entire build.
+The smoke tests still install and run on different OS images independently.
+This is CI throughput optimization, **not evidence of better app runtime**.
