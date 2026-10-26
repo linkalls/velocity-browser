@@ -12,7 +12,7 @@ runs Velocity, Google Chrome, Brave, and Vivaldi sequentially.
 
 | Browser | Source | Installation method |
 |---|---|---|
-| Velocity | Same commit as the workflow | Build Cefrium 0.13 debug APK for x86_64 |
+| Velocity | Same commit as the workflow | Build Cefrium 0.13 release-mode APK for x86_64 and sign it with disposable CI key |
 | Chrome | Google APIs + Play Store Android system image | Use preinstalled Chrome if available; otherwise `unavailable` |
 | Brave | Official `brave/brave-browser` GitHub stable release | `BraveMonox64.apk`, verify official SHA-256 |
 | Vivaldi | `vivaldi.com/android/` official Intel 64-bit link | Download its own APK, record SHA-256, no independently authenticated digest |
@@ -67,3 +67,13 @@ renderer pool, parsing bundled blocklists and creating the initial Cefrium
 Surface-backed browser. Each phase is stored in the JSON and reported as an
 optional median in the summary. No URLs, login data or private browsing
 content is logged. These are **not page-paint timestamps**.
+
+## Release-mode fairness
+
+Starting with the `release` benchmark upgrade, Velocity is measured as a
+**non-debuggable, non-minified release APK** for x86_64. An ephemeral
+benchmark-only signature is attached after Gradle assembly because AGP
+intentionally leaves release unsigned without configured production secrets.
+The disposable key is never used for arm64 signed previews. Old benchmark
+figures from the **debug** build cannot be used as a true release-vs-release
+comparison or directly compared as a performance regression.

@@ -94,6 +94,7 @@ public final class ChromiumTestActivity extends Activity {
     private Runnable undoTimeout;
     private boolean chromiumReady;
     private long activityCreateStartedAtMs;
+    private long uiPreparedAtMs;
     private volatile boolean blockDomainsEnabled;
     private boolean cosmeticEnabled;
     private volatile Set<String> normalSiteExemptions = Collections.emptySet();
@@ -322,6 +323,7 @@ public final class ChromiumTestActivity extends Activity {
         updateNavigation();
         address.clearFocus();
         // The SDK creates WindowAndroid and surfaces only after attachment.
+        uiPreparedAtMs = SystemClock.elapsedRealtime();
         root.post(this::startChromium);
     }
 
@@ -399,7 +401,13 @@ public final class ChromiumTestActivity extends Activity {
             long engineReadyAt = SystemClock.elapsedRealtime();
             // Timings are numeric only: never collect private URLs or profile data.
             // Native Surface creation != first page paint.
-            Log.i(TAG, "CEFStartupTiming ui_ms=" + (layoutReadyAt - activityCreateStartedAtMs)
+            long attachedAt = ChromiumDiagnosticApplication.mainProcessAttachedAtMs;
+            long providerMs = attachedAt > 0 && activityCreateStartedAtMs >= attachedAt
+                ? activityCreateStartedAtMs - attachedAt : -1;
+            Log.i(TAG, "CEFStartupTiming provider_ms=" + providerMs
+                + " ui_build_ms=" + (uiPreparedAtMs - activityCreateStartedAtMs)
+                + " ui_wait_ms=" + (layoutReadyAt - uiPreparedAtMs)
+                + " ui_ms=" + (layoutReadyAt - activityCreateStartedAtMs)
                 + " pool_ms=" + (launcherReadyAt - layoutReadyAt)
                 + " rules_ms=" + (rulesReadyAt - launcherReadyAt)
                 + " create_ms=" + (engineReadyAt - rulesReadyAt)
@@ -421,7 +429,7 @@ public final class ChromiumTestActivity extends Activity {
     }
 
     private void loadNetworkRules() {
-        StringBuilder all = new StringBuilder();
+        NetworkRules.Builder builder = new NetworkRules.Builder();
         try {
             for (String file : new String[] {
                 "velocity-block/rules.txt", "velocity-block/pgl.txt"
@@ -429,10 +437,10 @@ public final class ChromiumTestActivity extends Activity {
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(
                         getAssets().open(file), StandardCharsets.UTF_8))) {
                     String line;
-                    while ((line = reader.readLine()) != null) all.append(line).append('\n');
+                    while ((line = reader.readLine()) != null) builder.acceptLine(line);
                 }
             }
-            networkRules = NetworkRules.parse(all.toString());
+            networkRules = builder.build();
             SharedPreferences blocking = getSharedPreferences(TAB_PREFS, MODE_PRIVATE);
             blockDomainsEnabled = blocking.getBoolean("block_domains", true);
             cosmeticEnabled = blocking.getBoolean("cosmetic_elements", true);
@@ -444,6 +452,7 @@ public final class ChromiumTestActivity extends Activity {
         } catch (Exception error) {
             // Fail open for content but leave the feature visibly disabled.
             blockDomainsEnabled = false;
+            cosmeticEnabled = false;
             Log.w(TAG, "Cefrium domain rules unavailable", error);
         }
     }

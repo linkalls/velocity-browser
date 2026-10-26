@@ -39,6 +39,23 @@ def parse_launch(output, package):
     return int(elapsed.group(1))
 
 
+def parse_launch_state(output):
+    match = re.search(r"^LaunchState:\s*(\w+)", output, re.M)
+    return match.group(1).upper() if match else None
+
+
+def screenshot(directory, name):
+    """Capture the actual last displayed screen to audit onboarding/blank UI."""
+    try:
+        result = subprocess.run(["adb", "exec-out", "screencap", "-p"],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                timeout=20, check=False)
+        if result.returncode == 0 and result.stdout.startswith(b"\x89PNG"):
+            (directory / (name.lower() + "-last-screen.png")).write_bytes(result.stdout)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+
+
 def parse_pss(output):
     """Prefer aggregate TOTAL PSS. Return KiB, never guess from Java heap."""
     # Standard Android dumpsys `TOTAL PSS: 123456` format.
@@ -55,13 +72,15 @@ def parse_pss(output):
 def parse_velocity_timing(log):
     """Parse numeric-only phase timings emitted by the Cefrium startup path."""
     match = re.search(
-        r"CEFStartupTiming ui_ms=(\d+) pool_ms=(\d+) rules_ms=(\d+) "
+        r"CEFStartupTiming provider_ms=(-?\d+) ui_build_ms=(\d+) ui_wait_ms=(\d+) "
+        r"ui_ms=(\d+) pool_ms=(\d+) rules_ms=(\d+) "
         r"create_ms=(\d+) total_ms=(\d+)", log
     )
     if match is None:
         return None
     return {key: int(value) for key, value in zip(
-        ("ui_ms", "pool_ms", "rules_ms", "create_ms", "total_ms"),
+        ("provider_ms", "ui_build_ms", "ui_wait_ms", "ui_ms", "pool_ms",
+         "rules_ms", "create_ms", "total_ms"),
         match.groups()
     )}
 
@@ -87,7 +106,7 @@ def installed_version(package):
     return found.group(1) if found else "unknown"
 
 
-def sample_browser(package, launcher, repetitions, settle_seconds):
+def sample_browser(package, launcher, repetitions, settle_seconds, output_dir=None, name=None):
     samples = []
     for idx in range(repetitions):
         run_adb("shell", "am", "force-stop", package)
@@ -103,11 +122,14 @@ def sample_browser(package, launcher, repetitions, settle_seconds):
         _, meminfo = run_adb("shell", "dumpsys", "meminfo", package)
         pss = parse_pss(meminfo)
         entry = {"iteration": idx + 1, "activity_launch_ms": launch_ms,
+                 "launch_state": parse_launch_state(launch),
                  "pss_kib_after_settle": pss}
         if package == BROWSERS["Velocity"]:
             _, log = run_adb("logcat", "-d", "-s", "VelocityCefStartup:I", "*:S")
             entry["cefrium_startup_phases_ms"] = parse_velocity_timing(log)
         samples.append(entry)
+    if output_dir is not None and name is not None:
+        screenshot(output_dir, name)
     pss_samples = [x["pss_kib_after_settle"] for x in samples if x["pss_kib_after_settle"] is not None]
     return {
         "status": "measured", "samples": samples,
@@ -137,13 +159,17 @@ def markdown_report(data):
         lines += ["", "## Velocity native startup breakdown (median, ms)", "",
                   "These phase times are instrumented inside Velocity only; "
                   "they do not represent first paint.", ""]
-        for phase in ("ui_ms", "pool_ms", "rules_ms", "create_ms", "total_ms"):
-            values = [x[phase] for x in phase_samples]
-            lines.append(f"- {phase}: {statistics.median(values):.0f} ms")
+        for phase in ("provider_ms", "ui_build_ms", "ui_wait_ms", "ui_ms",
+                      "pool_ms", "rules_ms", "create_ms", "total_ms"):
+            values = [x[phase] for x in phase_samples if x.get(phase, -1) >= 0]
+            lines.append(f"- {phase}: {statistics.median(values):.0f} ms" if values
+                         else f"- {phase}: unavailable")
     lines += ["", "## Measurement limitations", "",
         "- Same x86_64 Android emulator instance, one foreground browser at a time, forced stop before each start.",
         "- Startup time is Android Activity TotalTime; it **does not** ensure a rendered web page.",
         "- PSS is Android package `dumpsys meminfo` after a fixed settle delay; service-process attribution can vary.",
+        "- All four are release-mode binaries, but Chrome is the emulator's preinstalled (possibly older) build.",
+        "- Startup screenshots of all four browsers are saved to detect onboarding, permission prompts or blank rendering.",
         "- First-run onboarding, installed app versions, network, cache and emulator performance affect comparability.",
         "- Unavailable packages remain unavailable; missing memory samples are not zero.",
         "- No competitor-specific anti-tracking comparisons or Speedometer claims are made here.", ""]
@@ -164,6 +190,7 @@ def main():
     data = {"timestamp_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
             "device_fingerprint": device.strip(), "abi": abi.strip(),
             "repetitions": args.repetitions, "settle_seconds": args.settle_seconds,
+            "velocity_build_variant": "release (not debuggable), ephemeral CI signature",
             "browsers": {}}
     for name, package in BROWSERS.items():
         version = installed_version(package)
@@ -171,7 +198,8 @@ def main():
             record = {"status": "unavailable", "reason": "package not installed"}
         else:
             launcher = resolve_launcher(package)
-            record = (sample_browser(package, launcher, args.repetitions, args.settle_seconds)
+            record = (sample_browser(package, launcher, args.repetitions, args.settle_seconds,
+                                     args.out, name)
                       if launcher else {"status": "unavailable", "reason": "no resolvable launcher"})
             record["version"] = version
         record["package"] = package

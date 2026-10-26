@@ -34,9 +34,29 @@ jobs:
           gradle-version: '9.7.1'
       - name: Run parser tests
         run: python3 -m unittest discover -s experiments/chromium-013/tools/bench -p 'test_*.py' -v
-      - name: Build matching x86_64 Velocity debug APK
+      - name: Build matching x86_64 Velocity release APK
         working-directory: experiments/chromium-013
-        run: gradle --no-daemon --max-workers=2 -PchromiumAbi=x86_64 :app:assembleDebug
+        run: gradle --no-daemon --max-workers=2 -PchromiumAbi=x86_64 :app:testDebugUnitTest :app:assembleRelease
+      - name: Locally sign benchmark release APK (disposable identity)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/browser-bench
+          # A disposable key is ONLY for an emulator benchmark, not updates.
+          keytool -genkeypair -keystore "$RUNNER_TEMP/benchmark-only.jks" \
+            -storetype JKS -alias benchmark -storepass android -keypass android \
+            -keyalg RSA -keysize 2048 -validity 1 \
+            -dname 'CN=Velocity Benchmark ONLY,O=CI,C=JP' -noprompt >/dev/null 2>&1
+          sdk="$ANDROID_HOME/build-tools/36.0.0"
+          unsigned='experiments/chromium-013/app/build/outputs/apk/release/app-release-unsigned.apk'
+          test -s "$unsigned"
+          "$sdk/zipalign" -f -p 4 "$unsigned" "$RUNNER_TEMP/benchmark-aligned.apk"
+          "$sdk/apksigner" sign --ks "$RUNNER_TEMP/benchmark-only.jks" \
+            --ks-pass pass:android --key-pass pass:android --ks-key-alias benchmark \
+            --out dist/browser-bench/velocity-release.apk "$RUNNER_TEMP/benchmark-aligned.apk"
+          "$sdk/apksigner" verify --verbose dist/browser-bench/velocity-release.apk
+          echo 'Benchmark-only key: never use this APK as a future updatable Preview.'
+          sha256sum dist/browser-bench/velocity-release.apk | cut -d' ' -f1 > dist/browser-bench/velocity-apk-sha256.txt
       - name: Download competitor APKs from official sources
         run: python3 experiments/chromium-013/tools/bench/fetch_competitors.py
       - name: Enable KVM
@@ -74,4 +94,6 @@ jobs:
             dist/browser-bench/downloads.json
             dist/browser-bench/*-install.txt
             dist/browser-bench/last-screen.png
+            dist/browser-bench/*-last-screen.png
+            dist/browser-bench/velocity-apk-sha256.txt
           if-no-files-found: warn

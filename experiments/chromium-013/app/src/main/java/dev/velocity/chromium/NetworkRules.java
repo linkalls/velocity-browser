@@ -1,6 +1,9 @@
 package dev.velocity.chromium;
 
 import java.net.URI;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.StringReader;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Locale;
@@ -22,39 +25,66 @@ public final class NetworkRules {
         this.allowed = Collections.unmodifiableSet(allowed);
     }
 
-    public static NetworkRules parse(String text) {
-        Set<String> deny = new HashSet<>();
-        Set<String> allow = new HashSet<>();
-        if (text == null) return new NetworkRules(deny, allow);
+    /**
+     * Streaming parser. Keep this builder confined to the startup thread;
+     * build() returns a defensively copied immutable snapshot for CEF workers.
+     */
+    public static final class Builder {
+        private final HashSet<String> deny = new HashSet<>(4096);
+        private final HashSet<String> allow = new HashSet<>();
 
-        // The original Gecko Lite parser intentionally supports only
-        // domain-level ABP rules. Don't try to reinterpret cosmetic rules,
-        // scriptlets, regex filters or advanced AdGuard syntax.
-        for (String line : text.split("\\r?\\n")) {
+        public void acceptLine(String line) {
+            if (line == null) return;
             String rule = line.trim().toLowerCase(Locale.ROOT);
             boolean exception = rule.startsWith("@@||");
-            String prefix = exception ? "@@||" : "||";
-            if (!rule.startsWith(prefix) || !rule.endsWith("^")) continue;
-            String host = rule.substring(prefix.length(), rule.length() - 1);
-            if (!validHost(host)) continue;
+            int start = exception ? 4 : 2;
+            if ((!exception && !rule.startsWith("||"))
+                    || rule.length() <= start + 1 || rule.charAt(rule.length() - 1) != '^') {
+                return;
+            }
+            String host = rule.substring(start, rule.length() - 1);
+            if (!validHost(host)) return;
             (exception ? allow : deny).add(host);
         }
-        return new NetworkRules(deny, allow);
+
+        public NetworkRules build() {
+            return new NetworkRules(new HashSet<>(deny), new HashSet<>(allow));
+        }
+    }
+
+    public static NetworkRules parse(String text) {
+        Builder builder = new Builder();
+        if (text == null) return builder.build();
+        try (BufferedReader reader = new BufferedReader(new StringReader(text))) {
+            String line;
+            while ((line = reader.readLine()) != null) builder.acceptLine(line);
+        } catch (IOException unexpected) {
+            // StringReader does no I/O: preserve fail-open behavior.
+            return new Builder().build();
+        }
+        return builder.build();
     }
 
     private static boolean validHost(String host) {
-        if (host.length() > 253 || host.indexOf('.') < 1) return false;
-        for (String label : host.split("\\.", -1)) {
-            if (label.length() == 0 || label.length() > 63) return false;
-            if (!Character.isLetterOrDigit(label.charAt(0))
-                    || !Character.isLetterOrDigit(label.charAt(label.length() - 1))) return false;
-            for (int i = 0; i < label.length(); i++) {
-                char c = label.charAt(i);
-                if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-'))
-                    return false;
+        if (host.length() < 3 || host.length() > 253) return false;
+        int labelLength = 0;
+        boolean hasDot = false;
+        boolean lastAlphanumeric = false;
+        for (int i = 0; i < host.length(); i++) {
+            char c = host.charAt(i);
+            if (c == '.') {
+                if (labelLength == 0 || !lastAlphanumeric) return false;
+                labelLength = 0;
+                hasDot = true;
+                continue;
             }
+            boolean alnum = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+            if (!alnum && c != '-') return false;
+            if (labelLength == 0 && !alnum) return false;
+            if (++labelLength > 63) return false;
+            lastAlphanumeric = alnum;
         }
-        return true;
+        return hasDot && labelLength > 0 && lastAlphanumeric;
     }
 
     public int blockedDomains() { return blocked.size(); }

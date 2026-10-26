@@ -6,9 +6,9 @@ adb shell settings put global window_animation_scale 0 || true
 adb shell settings put global transition_animation_scale 0 || true
 adb shell settings put global animator_duration_scale 0 || true
 
-# Install our current x86_64 debug APK. It is never confused with the arm64
-# fixed-key signed release artifact used for actual device installation.
-velocity_apk='experiments/chromium-013/app/build/outputs/apk/debug/app-debug.apk'
+# Install a non-debuggable x86_64 release APK with disposable CI signature.
+# This must never be mixed with the permanent arm64 Preview signing identity.
+velocity_apk='dist/browser-bench/velocity-release.apk'
 test -s "$velocity_apk"
 adb install -r "$velocity_apk" > dist/browser-bench/velocity-install.txt 2>&1 || {
   cat dist/browser-bench/velocity-install.txt

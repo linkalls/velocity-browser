@@ -4,6 +4,7 @@ import android.app.Application;
 import android.content.Context;
 import android.os.Build;
 import android.os.Process;
+import android.os.SystemClock;
 import android.util.Log;
 
 import java.io.File;
@@ -25,6 +26,9 @@ import java.util.Locale;
 public final class ChromiumDiagnosticApplication extends Application {
     static final String CRASH_FILE = "cefrium-last-java-crash.txt";
     static final String TAG = "VelocityCefStartup";
+    // Set in the main process BEFORE ContentProvider installation. This lets
+    // perf tests measure native/provider startup independently of Activity UI.
+    static volatile long mainProcessAttachedAtMs;
 
     @Override protected void attachBaseContext(Context base) {
         super.attachBaseContext(base);
@@ -34,6 +38,7 @@ public final class ChromiumDiagnosticApplication extends Application {
             // process Java stack trace, preventing misleading overwrites.
             return;
         }
+        mainProcessAttachedAtMs = SystemClock.elapsedRealtime();
         final Thread.UncaughtExceptionHandler original =
             Thread.getDefaultUncaughtExceptionHandler();
         Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {

@@ -17,6 +17,10 @@ class ParseTest(unittest.TestCase):
         self.assertIsNone(bench.parse_launch('Error: Activity not started\n', 'x'))
         self.assertIsNone(bench.parse_launch('Status: ok\nActivity: other/.Main\nTotalTime: 150\n', 'x'))
 
+    def test_launch_state_is_not_fabricated(self):
+        self.assertEqual(bench.parse_launch_state('LaunchState: COLD\n'), 'COLD')
+        self.assertIsNone(bench.parse_launch_state('Activity launched\n'))
+
     def test_memory_parses_explicit_totals(self):
         self.assertEqual(123456, bench.parse_pss('TOTAL PSS: 123,456 TOTAL RSS: 234567'))
         self.assertEqual(98765, bench.parse_pss(' TOTAL   98765    0    0\n'))
@@ -24,9 +28,11 @@ class ParseTest(unittest.TestCase):
 
     def test_cefrium_phase_log_is_numeric_and_optional(self):
         result = bench.parse_velocity_timing(
-            'I/VelocityCefStartup: CEFStartupTiming ui_ms=20 pool_ms=15 '
+            'I/VelocityCefStartup: CEFStartupTiming provider_ms=400 ui_build_ms=13 ui_wait_ms=7 ui_ms=20 pool_ms=15 '
             'rules_ms=5 create_ms=1200 total_ms=1240')
         self.assertEqual(result['create_ms'], 1200)
+        self.assertEqual(result['provider_ms'], 400)
+        self.assertEqual(result['ui_build_ms'], 13)
         self.assertIsNone(bench.parse_velocity_timing('unrelated activity log'))
 
     def test_report_preserves_missing_results(self):
