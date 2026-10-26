@@ -110,6 +110,8 @@ public final class ChromiumTestActivity extends Activity {
     private Button forward;
     private boolean destroyed;
     private static final String TAG = "VelocityCefStartup";
+    private static final String SYNTHETIC_SMOKE_TITLE = "VelocityCEFRenderSmoke2026";
+    private boolean syntheticSmokeRequested;
 
     // Deliberately restrained palette. No novelty gradients, false neon
     // borders, or extra Material dependencies on the critical launch path.
@@ -184,6 +186,8 @@ public final class ChromiumTestActivity extends Activity {
     }
 
     @Override public void onCreate(Bundle state) {
+        syntheticSmokeRequested = getIntent() != null
+            && getIntent().getBooleanExtra("cefrium_render_smoke", false);
         activityCreateStartedAtMs = SystemClock.elapsedRealtime();
         super.onCreate(state);
         getWindow().setStatusBarColor(CANVAS);
@@ -536,6 +540,19 @@ public final class ChromiumTestActivity extends Activity {
                 // Retain the original startup smoke-test assertion, and emit
                 // it only after the real native browser Surface was created.
                 Log.i(TAG, "CEF surface created and page navigation started");
+                if (syntheticSmokeRequested) {
+                    // Local, deterministic page. Title callback means a
+                    // renderer loaded HTML, not merely that a Surface exists.
+                    // Never install a page-to-native bridge for this probe.
+                    final CefriumBrowser probe = engine;
+                    mainHandler.postDelayed(() -> {
+                        if (!destroyed && engine == probe) {
+                            probe.loadHtml("<!doctype html><html><head><title>"
+                                + SYNTHETIC_SMOKE_TITLE + "</title></head>"
+                                + "<body><h1>CEF RENDER SMOKE OK</h1></body></html>");
+                        }
+                    }, 450);
+                }
             }
             Log.i(TAG, "CEF tabbed test bed initialized");
         } catch (RuntimeException | LinkageError error) {
@@ -771,6 +788,9 @@ public final class ChromiumTestActivity extends Activity {
             browser.setOnTitleChangedListener(name -> runOnUiThread(() -> {
                 if (destroyed || tabRegistry.find(tab.id) != tab) return;
                 tab.title = name == null ? "" : name;
+                if (syntheticSmokeRequested && SYNTHETIC_SMOKE_TITLE.equals(name)) {
+                    Log.i(TAG, "CEF synthetic document title observed");
+                }
                 if (tabRegistry.current() == tab) updateNavigation();
                 if (!tab.privateMode) saveRegularTabs();
             }));

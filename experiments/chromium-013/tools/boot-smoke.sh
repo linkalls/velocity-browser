@@ -55,13 +55,11 @@ if ! grep -F 'Verified Java renderer pool: 40 isolated services' dist/cefrium-lo
   echo "FAIL: Java renderer service selection was not verified" >&2
   exit 1
 fi
-if test -s dist/cefrium-ui-hierarchy.xml; then
-  if grep -Fq 'クイックアクセス' dist/cefrium-ui-hierarchy.xml; then
-    echo "PASS: native offline home is present in the UI accessibility tree"
-  else
-    echo "WARN: native home not observed in accessibility hierarchy; inspect screenshot"
-  fi
-else
-  echo "WARN: UI hierarchy unavailable; screenshot and Activity logs retained"
+if ! grep -Fq 'CEF synthetic document title observed' dist/cefrium-logcat-filtered.txt; then
+  echo "FAIL: Cefrium never loaded the deterministic synthetic HTML document" >&2
+  exit 1
 fi
+# The native home is used for regular startups, while the synthetic content
+# is used for renderer smoke tests. Accessibility for CEF's Surface can differ
+# by Android version; retain hierarchy/screenshot without false assertions.
 echo "PASS: Chromium main process survived foreground launch (emulator only)"

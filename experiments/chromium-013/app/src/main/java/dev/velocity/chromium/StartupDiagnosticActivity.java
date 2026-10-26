@@ -70,7 +70,11 @@ public final class StartupDiagnosticActivity extends Activity {
         launch.setAllCaps(false);
         launch.setOnClickListener(view -> {
             try {
-                startActivity(new Intent(this, ChromiumTestActivity.class));
+                Intent browser = new Intent(this, ChromiumTestActivity.class);
+                if (getIntent() != null && getIntent().getBooleanExtra("smoke_test", false)) {
+                    browser.putExtra("cefrium_render_smoke", true);
+                }
+                startActivity(browser);
             } catch (RuntimeException exception) {
                 status.setText("起動Intent失敗: " + exception.getClass().getSimpleName());
             }
