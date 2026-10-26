@@ -17,6 +17,19 @@ public final class SiteBlockPolicyTest {
             "https://news.example.evil.invalid/a", allow));
     }
 
+    @Test public void cachedTopHostHasSameSecuritySemantics() {
+        Set<String> allowed = Set.of("news.example");
+        for (String top : new String[] {"https://news.example/path",
+                                         "https://news.example.evil.invalid/"}) {
+            boolean expected = SiteBlockPolicy.shouldBlock(rules,
+                "https://tracker.example/t", false, top, allowed);
+            assertEquals(expected, SiteBlockPolicy.shouldBlockForTopHost(rules,
+                "https://tracker.example/t", false, SiteBlockPolicy.hostOf(top), allowed));
+        }
+        assertTrue(SiteBlockPolicy.shouldBlockForTopHost(rules,
+            "https://tracker.example/t", false, "news.example.evil.invalid", allowed));
+    }
+
     @Test public void invalidUrlsDoNotAcquireExemptions() {
         assertNull(SiteBlockPolicy.hostOf("javascript:alert(1)"));
         assertNull(SiteBlockPolicy.hostOf("file:///etc/passwd"));

@@ -57,8 +57,19 @@ public final class SiteBlockPolicy {
     public static boolean shouldBlock(NetworkRules rules, String requestedUrl,
                                       boolean mainFrame, String topLevelUrl,
                                       Set<String> allowedHosts) {
-        String host = hostOf(topLevelUrl);
-        if (host != null && allowedHosts.contains(host)) return false;
+        return shouldBlockForTopHost(rules, requestedUrl, mainFrame,
+            hostOf(topLevelUrl), allowedHosts);
+    }
+
+    /**
+     * Hot path for CEF's background network thread. The page host has
+     * already been parsed once at the navigation boundary, not for every
+     * image/script/tracker request. Caller must pass hostOf(url), not a URL.
+     */
+    public static boolean shouldBlockForTopHost(NetworkRules rules, String requestedUrl,
+                                                boolean mainFrame, String topHost,
+                                                Set<String> allowedHosts) {
+        if (topHost != null && allowedHosts.contains(topHost)) return false;
         return rules.shouldBlock(requestedUrl, mainFrame);
     }
 }

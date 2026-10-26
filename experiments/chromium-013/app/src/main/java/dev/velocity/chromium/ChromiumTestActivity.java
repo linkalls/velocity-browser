@@ -724,11 +724,15 @@ public final class ChromiumTestActivity extends Activity {
             attachSurface(browser);
             // Per-browser origin snapshot avoids carrying a site's exemption
             // across the earliest subrequests of a top-level navigation.
-            final AtomicReference<String> currentOrigin = new AtomicReference<>(tab.url);
+            // Parse the top-level host once per navigation, not for every
+            // resource request on the network thread (which can be hundreds
+            // per modern page). A redirect updates the snapshot immediately.
+            final AtomicReference<String> currentOriginHost = new AtomicReference<>(
+                SiteBlockPolicy.hostOf(tab.url));
             browser.setRequestInterceptor((url, method, isMainFrame) -> {
-                if (isMainFrame) currentOrigin.set(url);
-                return blockDomainsEnabled && SiteBlockPolicy.shouldBlock(
-                    networkRules, url, isMainFrame, currentOrigin.get(),
+                if (isMainFrame) currentOriginHost.set(SiteBlockPolicy.hostOf(url));
+                return blockDomainsEnabled && SiteBlockPolicy.shouldBlockForTopHost(
+                    networkRules, url, isMainFrame, currentOriginHost.get(),
                     tab.privateMode ? privateSiteExemptions : normalSiteExemptions);
             });
             browser.setOnLoadingStateChangedListener((loading, canBack, canForward) ->
@@ -747,7 +751,7 @@ public final class ChromiumTestActivity extends Activity {
             browser.setOnUrlChangedListener(url -> runOnUiThread(() -> {
                 if (destroyed || tabRegistry.find(tab.id) != tab || url == null) return;
                 tab.url = url;
-                currentOrigin.set(url);
+                currentOriginHost.set(SiteBlockPolicy.hostOf(url));
                 if (tabRegistry.current() == tab) {
                     if (!address.hasFocus()) address.setText(url);
                     updateHomeState();
