@@ -90,6 +90,13 @@ RESOURCE_FIELDS = ("wall_ms", "cpu_ms", "minor_faults", "major_faults",
                    "read_bytes", "written_bytes")
 
 
+def parse_native_prefetch(log):
+    modes = re.findall(r"CEFNativePrefetch requested_mib=(\d+)", log)
+    statuses = re.findall(r"CEFNativePrefetch status=([a-z_]+)", log)
+    return {"requested_mib": int(modes[-1]) if modes else None,
+            "status": statuses[-1] if statuses else None}
+
+
 def parse_velocity_resources(log):
     """Read-only /proc/self counters captured around provider and Activity.
 
@@ -155,6 +162,7 @@ def sample_browser(package, launcher, repetitions, settle_seconds, output_dir=No
             _, log = run_adb("logcat", "-d", "-s", "VelocityCefStartup:I", "*:S")
             entry["cefrium_startup_phases_ms"] = parse_velocity_timing(log)
             entry["cefrium_startup_resources"] = parse_velocity_resources(log)
+            entry["cefrium_native_prefetch"] = parse_native_prefetch(log)
             entry["cefrium_start_strategy"] = parse_velocity_strategy(log)
             entry["cefrium_surface_created"] = (
                 "CEF surface created and page navigation started" in log)

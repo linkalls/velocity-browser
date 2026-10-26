@@ -23,6 +23,13 @@ val benchmarkFastAttach = providers.gradleProperty("velocityBenchmarkFastAttach"
 // defaults before proving CEF can bootstrap and load pages on-device.
 val velocityMmapNative = providers.gradleProperty("velocityMmapNative")
     .orElse("false").get().toBooleanStrict()
+val velocityNativePrefetchMiB = providers.gradleProperty("velocityNativePrefetchMiB")
+    .orElse("0").get().toInt()
+require(velocityNativePrefetchMiB in 0..32 &&
+        (velocityNativePrefetchMiB == 0 ||
+         (chromiumAbi == "x86_64" && velocityMinify && !previewCanSign && !velocityMmapNative))) {
+    "Bounded native ELF prefetch is restricted to unsigned x86_64, R8, legacy JNI benchmarks"
+}
 require(!velocityMmapNative || (chromiumAbi == "x86_64" && velocityMinify && !previewCanSign)) {
     "Native-mmap experiment is limited to unsigned x86_64 R8 CI builds"
 }
@@ -47,6 +54,7 @@ android {
             .orElse("0.14.0-experiment").get()
         ndk { abiFilters += chromiumAbi }
         resValue("bool", "velocity_benchmark_fast_attach", benchmarkFastAttach.toString())
+        resValue("integer", "velocity_native_prefetch_mib", velocityNativePrefetchMiB.toString())
     }
     signingConfigs {
         if (previewCanSign) {

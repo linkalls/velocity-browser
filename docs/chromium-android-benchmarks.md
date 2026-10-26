@@ -380,3 +380,35 @@ Distinguish true cold native starts from warmed and cached starts. The
 next optimization should follow evidence of where native initialization
 is running on CPU versus blocked on storage/CPU scheduling, not merely
 make a placeholder splash screen appear earlier.
+
+
+## Bounded experimental prefetch of executable ELF pages
+
+A controlled, separate workflow builds two disposable-signed x86_64 R8
+release APKs with identical Cefrium/Chromium engine settings, native ELF
+extraction mode and fast-attach startup. Both share the same temporary
+signing identity; only a test-only integer resource differs:
+NativeCodePrefetch disabled (0) versus enabled (16 MiB). The regular
+arm64 signed Preview ALWAYS receives zero and never starts prefetch.
+
+The prefetch variant starts a daemon worker during the main-process
+Application.attachBaseContext, before CefriumInitProvider initializes
+Chromium. It maps an intentionally bounded 16-MiB read-only window
+beginning 48 MiB into the official 0.14 x86_64 executable ELF and calls
+MappedByteBuffer.load(). This may cause the Linux kernel to fault/cache
+some of those pages before CEF's main-thread initialization uses them.
+The window is deliberately specific to the tested x86_64 SDK, not a
+portable choice for ARM or future CEF engine link orders. The test never
+maps private profile files, retains a live writer or pins pages in memory.
+Failures are logged and normal engine initialization remains possible.
+
+The ABBA test alternates OFF, prefetch16, prefetch16, OFF, with two
+force-stopped Activity launch samples and a real DOM+JavaScript smoke
+check per block. Runtime logs must prove both the requested window and
+successful advice completion on **every** prefetch trial, otherwise the
+result is invalid. The same samples include provider major/minor faults,
+CPU/wall time and PSS. Order effects, CPU contention, page-cache reuse
+and native-library layouts limit generalizability. An apparent win here
+is NOT an automatic production feature or a Brave performance win.
+Replicate under truly cold device conditions and check physical Pixel
+power/memory and Android 17 correctness before considering a default.

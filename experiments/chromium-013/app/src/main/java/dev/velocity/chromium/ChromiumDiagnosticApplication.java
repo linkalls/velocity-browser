@@ -44,6 +44,10 @@ public final class ChromiumDiagnosticApplication extends Application {
         // Capture BEFORE CefriumInitProvider runs native initialization.
         // These counters help distinguish CPU-bound startup from blocked I/O.
         mainProcessStartedResources = StartupResourceProbe.capture();
+        // The normal arm64 Preview always receives zero. Experimental
+        // nonzero builds must be unsigned, x86_64 and R8-minified.
+        NativeCodePrefetch.start(base, base.getResources().getInteger(
+            R.integer.velocity_native_prefetch_mib));
         // Visible in optional Perfetto traces across CefriumInitProvider's
         // expensive synchronous native startup before Activity.onCreate().
         Trace.beginAsyncSection("Velocity CEF provider startup", 6421);

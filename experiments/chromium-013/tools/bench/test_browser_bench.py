@@ -35,6 +35,14 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(result['ui_build_ms'], 13)
         self.assertIsNone(bench.parse_velocity_timing('unrelated activity log'))
 
+    def test_native_prefetch_proven_by_actual_log_not_build_label(self):
+        measured = bench.parse_native_prefetch(
+            "CEFNativePrefetch requested_mib=16\nCEFNativePrefetch status=completed")
+        self.assertEqual({"requested_mib": 16, "status": "completed"}, measured)
+        self.assertEqual({"requested_mib": 0, "status": None},
+                         bench.parse_native_prefetch("CEFNativePrefetch requested_mib=0"))
+        self.assertIsNone(bench.parse_native_prefetch("unrelated")["requested_mib"])
+
     def test_startup_resource_parsing_with_unknown_procfs_values(self):
         fields = bench.RESOURCE_FIELDS
         periods = ("provider", "activity", "total")
