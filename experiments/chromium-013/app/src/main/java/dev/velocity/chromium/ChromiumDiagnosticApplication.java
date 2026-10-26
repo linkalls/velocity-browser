@@ -48,7 +48,7 @@ public final class ChromiumDiagnosticApplication extends Application {
                         new FileOutputStream(target, false), StandardCharsets.UTF_8))) {
                     String time = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS Z", Locale.JAPAN)
                         .format(new Date());
-                    writer.println("Velocity Chromium 0.13.0 - Java crash at " + time);
+                    writer.println("Velocity Chromium 0.14.0 - Java crash at " + time);
                     writer.println("process=" + process + " thread=" + thread.getName());
                     writer.println("Android=" + Build.VERSION.SDK_INT);
                     error.printStackTrace(writer);

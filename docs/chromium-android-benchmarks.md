@@ -125,3 +125,15 @@ initialization for the Chromium UI looper and native browser. We are not
 bypassing provider setup or weakening renderer sandboxing to game `am start -W`.
 The ~4-second provider path remains a separate performance challenge. Never
 interpret a fast local home overlay as faster web page first paint.
+
+## Cefrium 0.14.0 SDK upgrade trial
+
+0.14.0 is published in Maven Central and remains Chromium 156.0.8078.17.
+It fixes the Android 17 native-only child renderer launch path and moves
+persistent profiles out of the app cache directory, with a one-time migration.
+The SDK also flushes pending profile storage when the last Activity stops.
+These correctness changes motivate testing the newer release, but do not
+establish any speed improvement by themselves. The workspace retains its
+historical chromium-013 path until final migration and reorganization.
+Measure this version with the same emulator, release/R8 settings, repetitions
+and workload as 0.13 before making comparative performance claims.

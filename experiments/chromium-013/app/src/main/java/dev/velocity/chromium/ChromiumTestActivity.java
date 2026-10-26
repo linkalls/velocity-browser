@@ -1046,7 +1046,7 @@ public final class ChromiumTestActivity extends Activity {
             cosmeticEnabled ? "要素非表示 ON" : "要素非表示 OFF",
             "サイト別の例外設定（非公開モードは保存しない）",
             "GitHub Actionsの署名済みビルド", "クラッシュ・起動状態を確認",
-            "Cefrium 0.13.0 · 開発版"
+            "Cefrium 0.14.0 · 開発版"
         };
         LinearLayout panel = sheetPanel();
         TextView header = text("Velocity", 21, PRIMARY, true);
@@ -1117,7 +1117,7 @@ public final class ChromiumTestActivity extends Activity {
 
     private void showInfo() {
         new AlertDialog.Builder(this).setTitle("Velocity Chromium 実験版")
-            .setMessage("エンジン：Chromium（Cefrium 0.13.0）\n\n" +
+            .setMessage("エンジン：Chromium（Cefrium 0.14.0）\n\n" +
                 "これはAndroid標準WebViewではありません。\n\n" +
                 "Gecko/WPE版とは別アプリとしてインストールできます。\n\n" +
                 "通常・非公開タブ、URL復元、戻る・進む、検索と共有を追加しました。\n\n" +
