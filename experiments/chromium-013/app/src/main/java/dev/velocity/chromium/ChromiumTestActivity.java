@@ -432,10 +432,9 @@ public final class ChromiumTestActivity extends Activity {
         // the first Activity. This is an idempotent compatibility check, not
         // a means to defer or bypass sandbox initialization.
         if (!CommandLine.isInitialized()) CommandLine.init(null);
-        if (Build.VERSION.SDK_INT >= 37) {
-            // The official AAR does not implement the native-only entry point.
-            CommandLine.getInstance().appendSwitchWithValue("javaless-renderers", "disabled");
-        }
+        // Cefrium 0.14 has native Android 17 renderer entrypoints. Do not
+        // force javaless renderers off: doing so would mask SDK integration
+        // regressions and prevent testing the current Android process model.
         try {
             PackageManager manager = getPackageManager();
             ApplicationInfo info = manager.getApplicationInfo(
@@ -463,6 +462,32 @@ public final class ChromiumTestActivity extends Activity {
             }
             Log.i(TAG, "Verified Java renderer pool: 40 isolated services; API "
                 + Build.VERSION.SDK_INT + "; selected=" + selected);
+            // 0.14's Gradle plugin declares native-only child renderer
+            // services for compileSdk >= 37. Test the actual packaged
+            // package-manager view when running on Android 17+.
+            if (Build.VERSION.SDK_INT >= 37) {
+                boolean javalessDeclared = info.metaData != null
+                    && info.metaData.getBoolean("com.cefrium.JAVALESS_RENDERERS", false);
+                if (!javalessDeclared) {
+                    throw new IllegalStateException("Android 17 native renderer marker missing");
+                }
+                for (int slot = 0; slot < 2; slot++) {
+                    ServiceInfo nativeService = manager.getServiceInfo(
+                        new ComponentName(this,
+                            "com.cefrium.ChildServices$NativeSandboxed" + slot), 0);
+                    if ((nativeService.flags & ServiceInfo.FLAG_ISOLATED_PROCESS) == 0
+                            || nativeService.exported || !nativeService.enabled) {
+                        throw new IllegalStateException(
+                            "Unsafe Android 17 native renderer slot " + slot);
+                    }
+                    if (slot == 0
+                            && (nativeService.flags & ServiceInfo.FLAG_USE_APP_ZYGOTE) == 0) {
+                        throw new IllegalStateException(
+                            "Android 17 native renderer slot 0 lacks app zygote");
+                    }
+                }
+                Log.i(TAG, "Verified Android 17 native renderer services: 2 isolated slots");
+            }
         } catch (PackageManager.NameNotFoundException failure) {
             throw new IllegalStateException("Missing Chromium renderer service", failure);
         }

@@ -27,7 +27,7 @@ android {
         // Legacy diagnostic/debug builds retain versionCode 1 by default.
         versionCode = providers.gradleProperty("velocityVersionCode").orElse("1").get().toInt()
         versionName = providers.gradleProperty("velocityVersionName")
-            .orElse("0.13.0-experiment").get()
+            .orElse("0.14.0-experiment").get()
         ndk { abiFilters += chromiumAbi }
     }
     signingConfigs {

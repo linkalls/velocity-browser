@@ -1,4 +1,4 @@
-name: Chromium Cefrium 0.13 Java experiment APK
+name: Chromium Cefrium 0.14 renderer experiment APK
 on:
   push:
     branches: [feat/chromium-cefrium-0.13]
