@@ -83,6 +83,7 @@ public final class ChromiumTestActivity extends Activity {
     private final TabRegistry tabRegistry = new TabRegistry();
     private final Map<String, CefriumBrowser> liveBrowsers = new LinkedHashMap<>();
     private static final String TAB_PREFS = "cefrium_tabs_v1";
+    private String lastSavedTabSnapshot;
     private CefriumBrowser engine;
     private LinearLayout browserRoot;
     private FrameLayout browserContent;
@@ -93,6 +94,7 @@ public final class ChromiumTestActivity extends Activity {
     private View progressLine;
     private PopupWindow undoPopup;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final Runnable deferredTabSave = this::saveRegularTabs;
     private Runnable undoTimeout;
     private boolean chromiumReady;
     private boolean activityResumed;
@@ -660,7 +662,9 @@ public final class ChromiumTestActivity extends Activity {
     private void restoreRegularTabs() {
         SharedPreferences prefs = getSharedPreferences(TAB_PREFS, MODE_PRIVATE);
         try {
-            JSONObject state = new JSONObject(prefs.getString("state", "{}"));
+            String rawSnapshot = prefs.getString("state", "{}");
+            JSONObject state = new JSONObject(rawSnapshot);
+            lastSavedTabSnapshot = rawSnapshot;
             JSONArray normal = state.optJSONArray("normal");
             if (normal == null) return;
             int selected = state.optInt("selected", 0);
@@ -689,6 +693,16 @@ public final class ChromiumTestActivity extends Activity {
             && (url.startsWith("https://") || url.startsWith("http://"));
     }
 
+    /**
+     * A single page may report several URL/title updates during redirects.
+     * Coalesce disk-bound SharedPreferences writes on the main thread.
+     * Tab CRUD and Activity.onStop still flush immediately.
+     */
+    private void scheduleRegularTabsSave() {
+        mainHandler.removeCallbacks(deferredTabSave);
+        mainHandler.postDelayed(deferredTabSave, 350L);
+    }
+
     private void saveRegularTabs() {
         JSONArray normal = new JSONArray();
         int selected = 0;
@@ -704,10 +718,16 @@ public final class ChromiumTestActivity extends Activity {
                         0, Math.min(tab.title.length(), 120))));
                 regularIndex++;
             }
-            getSharedPreferences(TAB_PREFS, MODE_PRIVATE).edit()
-                .putString("state", new JSONObject()
-                    .put("normal", normal)
-                    .put("selected", selected).toString()).apply();
+            String snapshot = new JSONObject()
+                .put("normal", normal)
+                .put("selected", selected).toString();
+            // No preference commit or observer notifications if the data is
+            // identical to the last disk-persisted normal-tab snapshot.
+            if (!snapshot.equals(lastSavedTabSnapshot)) {
+                getSharedPreferences(TAB_PREFS, MODE_PRIVATE).edit()
+                    .putString("state", snapshot).apply();
+                lastSavedTabSnapshot = snapshot;
+            }
         } catch (Exception error) {
             Log.w(TAG, "Could not save regular-tab metadata", error);
         }
@@ -783,7 +803,7 @@ public final class ChromiumTestActivity extends Activity {
                     if (!address.hasFocus()) address.setText(url);
                     updateHomeState();
                 }
-                if (!tab.privateMode) saveRegularTabs();
+                if (!tab.privateMode) scheduleRegularTabsSave();
             }));
             browser.setOnTitleChangedListener(name -> runOnUiThread(() -> {
                 if (destroyed || tabRegistry.find(tab.id) != tab) return;
@@ -792,7 +812,7 @@ public final class ChromiumTestActivity extends Activity {
                     Log.i(TAG, "CEF synthetic document title observed");
                 }
                 if (tabRegistry.current() == tab) updateNavigation();
-                if (!tab.privateMode) saveRegularTabs();
+                if (!tab.privateMode) scheduleRegularTabsSave();
             }));
             browser.loadUrl(tab.url);
             return browser;
@@ -1180,7 +1200,7 @@ public final class ChromiumTestActivity extends Activity {
                 "これはAndroid標準WebViewではありません。\n\n" +
                 "Gecko/WPE版とは別アプリとしてインストールできます。\n\n" +
                 "通常・非公開タブ、URL復元、戻る・進む、検索と共有を追加しました。\n\n" +
-                "ドメイン遮断のみ移植。Gecko拡張・CSS要素ブロック・ダウンロードUI・権限UI、" +
+                "ドメイン遮断・限定的なCSS要素非表示を移植。Gecko拡張・完全なフィルター互換・ダウンロードUI・権限UI、" +
                 "実機セキュリティ検証は未移植です。重要なアカウントにはログインしないでください。")
             .setPositiveButton("OK", null).show();
     }
@@ -1206,6 +1226,7 @@ public final class ChromiumTestActivity extends Activity {
     }
 
     @Override protected void onStop() {
+        mainHandler.removeCallbacks(deferredTabSave);
         saveRegularTabs();
         super.onStop();
     }
@@ -1230,6 +1251,7 @@ public final class ChromiumTestActivity extends Activity {
 
     @Override protected void onDestroy() {
         destroyed = true;
+        mainHandler.removeCallbacks(deferredTabSave);
         if (undoTimeout != null) mainHandler.removeCallbacks(undoTimeout);
         if (undoPopup != null) undoPopup.dismiss();
         for (CefriumBrowser browser : liveBrowsers.values()) browser.close();

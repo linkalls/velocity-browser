@@ -187,3 +187,16 @@ warmup/cache effects. Subsequent reports expose min/median/max, max/min and
 the unmeasured per-browser warmup launch separately. None of these metrics
 represent first paint. A force-stop does not drop page cache or simulate
 a fresh application install.
+
+## Page-navigation persistence I/O experiment
+
+The tabbed UI previously serialized all regular tabs and called
+SharedPreferences.apply() on every URL callback and every title callback.
+Cefrium can deliver multiple callbacks for redirects or dynamic page titles.
+The new UI coalesces only these frequent callbacks over 350 ms and skips a
+write altogether when the serialized normal-tab snapshot is unchanged.
+Explicit tab creation/closing, address navigation and Activity.onStop remain
+immediate save points. Private tab URLs and titles are never serialized.
+This aims to reduce main-thread JSON serialization and redundant background
+preference writes during page loads; no measured improvement in first paint or
+frame jank is asserted before a controlled device benchmark.
