@@ -97,6 +97,14 @@ jobs:
         run: |
           if [[ -f dist/browser-bench/summary.md ]]; then
             cat dist/browser-bench/summary.md >> "$GITHUB_STEP_SUMMARY"
+            if [[ -f dist/browser-bench/art-speed/summary.md ]]; then
+              {
+                echo
+                echo '## Optional ART speed-compiled Velocity experiment'
+                echo 'After the common trials, Android Runtime optimizes Velocity DEX. This is not a controlled randomized comparison.'
+                cat dist/browser-bench/art-speed/summary.md
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
           else
             echo 'No measurements: emulator or setup did not complete.' >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -113,4 +121,7 @@ jobs:
             dist/browser-bench/last-screen.png
             dist/browser-bench/*-last-screen.png
             dist/browser-bench/velocity-apk-sha256.txt
+            dist/browser-bench/art-speed/*.json
+            dist/browser-bench/art-speed/*.md
+            dist/browser-bench/art-speed/*.txt
           if-no-files-found: warn

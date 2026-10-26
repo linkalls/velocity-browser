@@ -35,6 +35,16 @@ class ParseTest(unittest.TestCase):
         self.assertEqual(result['ui_build_ms'], 13)
         self.assertIsNone(bench.parse_velocity_timing('unrelated activity log'))
 
+    def test_native_surface_ready_metric_is_not_content_first_paint(self):
+        d = {'browsers': {'Velocity': {
+            'status': 'measured', 'version': '0.14',
+            'median_activity_launch_ms': 1200, 'median_pss_kib': 124000,
+            'median_cefrium_surface_ready_ms': 1400,
+            'samples': [{'cefrium_startup_phases_ms': {'provider_ms': 900, 'total_ms': 500}}]}}}
+        output = bench.markdown_report(d)
+        self.assertIn('end-to-end Cefrium Surface creation: 1400 ms', output)
+        self.assertIn('NOT first paint', output)
+
     def test_report_preserves_missing_results(self):
         data = {'browsers': {'Velocity': {'status': 'unavailable', 'reason': 'not installed'},
                              'Chrome': {'status': 'measured', 'version': '1',

@@ -137,3 +137,14 @@ establish any speed improvement by themselves. The workspace retains its
 historical chromium-013 path until final migration and reorganization.
 Measure this version with the same emulator, release/R8 settings, repetitions
 and workload as 0.13 before making comparative performance claims.
+
+## Exploratory Android Runtime AOT test
+
+After the shared four-browser cold-start test, the same Velocity package is
+compiled by Android Runtime in speed mode and measured in three extra trials,
+saved under the distinct art-speed directory. This tests whether ahead-of-time
+optimization of app DEX improves startup. It does not change the release APK,
+nor the CEF native library, nor measure web-first-paint. Comparing scores from
+before and after is NOT a randomized A/B test because warmed CPU caches,
+device heat, storage and trial order may bias results. Never cite this as a
+browser-wide performance win without device validation.

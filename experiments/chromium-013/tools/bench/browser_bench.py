@@ -137,10 +137,16 @@ def sample_browser(package, launcher, repetitions, settle_seconds, output_dir=No
     if output_dir is not None and name is not None:
         screenshot(output_dir, name)
     pss_samples = [x["pss_kib_after_settle"] for x in samples if x["pss_kib_after_settle"] is not None]
+    ready_values = [s["cefrium_startup_phases_ms"]["provider_ms"]
+                    + s["cefrium_startup_phases_ms"]["total_ms"]
+                    for s in samples if s.get("cefrium_startup_phases_ms") and
+                    s["cefrium_startup_phases_ms"].get("provider_ms", -1) >= 0]
     return {
         "status": "measured", "samples": samples,
         "median_activity_launch_ms": statistics.median(x["activity_launch_ms"] for x in samples),
         "median_pss_kib": statistics.median(pss_samples) if pss_samples else None,
+        "median_cefrium_surface_ready_ms": (
+            statistics.median(ready_values) if len(ready_values) == repetitions else None),
         "pss_samples": len(pss_samples),
     }
 
@@ -165,6 +171,9 @@ def markdown_report(data):
         lines += ["", "## Velocity native startup breakdown (median, ms)", "",
                   "These phase times are instrumented inside Velocity only; "
                   "they do not represent first paint.", ""]
+        native_ready = velocity.get("median_cefrium_surface_ready_ms")
+        if native_ready is not None:
+            lines.append(f"- end-to-end Cefrium Surface creation: {native_ready:.0f} ms")
         for phase in ("provider_ms", "ui_build_ms", "ui_wait_ms", "ui_ms",
                       "pool_ms", "rules_ms", "create_ms", "total_ms"):
             values = [x[phase] for x in phase_samples if x.get(phase, -1) >= 0]
@@ -186,6 +195,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=Path("dist/browser-bench"))
     parser.add_argument("--repetitions", type=int, default=3)
+    parser.add_argument("--only", choices=tuple(BROWSERS))
     parser.add_argument("--settle-seconds", type=float, default=6)
     args = parser.parse_args()
     if not 1 <= args.repetitions <= 10 or not 0 <= args.settle_seconds <= 120:
@@ -200,6 +210,8 @@ def main():
                 "VELOCITY_BENCH_VARIANT", "release-unminified"),
             "browsers": {}}
     for name, package in BROWSERS.items():
+        if args.only and name != args.only:
+            continue
         version = installed_version(package)
         if version is None:
             record = {"status": "unavailable", "reason": "package not installed"}
