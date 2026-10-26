@@ -57,6 +57,20 @@ jobs:
           "$sdk/apksigner" verify --verbose dist/browser-bench/velocity-release.apk
           echo 'Benchmark-only key: never use this APK as a future updatable Preview.'
           sha256sum dist/browser-bench/velocity-release.apk | cut -d' ' -f1 > dist/browser-bench/velocity-apk-sha256.txt
+      - name: Resolve official-versioned competitor APK cache key
+        id: competitors
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="$(python3 experiments/chromium-013/tools/bench/fetch_competitors.py --cache-key)"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+      - name: Reuse version-matched APKs (SHA-256 reverified)
+        uses: actions/cache@v4
+        with:
+          path: |
+            dist/browser-bench/apks
+            dist/browser-bench/downloads.json
+          key: android-browser-apks-v2-${{ runner.os }}-${{ steps.competitors.outputs.key }}
       - name: Download competitor APKs from official sources
         run: python3 experiments/chromium-013/tools/bench/fetch_competitors.py
       - name: Enable KVM

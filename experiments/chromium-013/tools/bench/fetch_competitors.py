@@ -6,9 +6,8 @@ replaced with an unofficial APK mirror.
 """
 import hashlib
 import json
-import os
+import argparse
 import re
-import sys
 import urllib.request
 from pathlib import Path
 
@@ -28,8 +27,25 @@ def request(url, maximum=1_000_000):
         return data
 
 
-def fetch_apk(url, target, expected_sha=None):
+def checksum_of(path):
+    digest = hashlib.sha256()
+    with path.open('rb') as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def fetch_apk(url, target, expected_sha=None, cached=None):
     assert url.startswith('https://'), 'No insecure download URLs'
+    verified_sha = expected_sha
+    if not verified_sha and cached and cached.get('url') == url:
+        verified_sha = cached.get('sha256')
+    if target.is_file() and target.stat().st_size >= 1_000_000 and verified_sha:
+        actual_sha = checksum_of(target)
+        if actual_sha.lower() == verified_sha.lower():
+            return {'status': 'cached', 'url': url, 'sha256': actual_sha,
+                    'size_bytes': target.stat().st_size,
+                    'sha256_verified': bool(expected_sha)}
     req = urllib.request.Request(url, headers={'User-Agent': USER_AGENT})
     digest = hashlib.sha256()
     total = 0
@@ -51,7 +67,7 @@ def fetch_apk(url, target, expected_sha=None):
             'sha256_verified': bool(expected_sha)}
 
 
-def brave():
+def brave(cached=None):
     j = json.loads(request('https://api.github.com/repos/brave/brave-browser/releases/latest'))
     assets = {x['name']: x for x in j['assets']}
     filename = 'BraveMonox64.apk'
@@ -70,28 +86,55 @@ def brave():
         if matched is None:
             raise ValueError('Could not parse official Brave checksum')
         expected_sha = matched.group(1)
-    result = fetch_apk(url, OUT / 'brave.apk', expected_sha)
+    result = fetch_apk(url, OUT / 'brave.apk', expected_sha, cached)
     result['release'] = j['tag_name']
     return result
 
 
-def vivaldi():
+def vivaldi(cached=None):
     html = request('https://vivaldi.com/android/', 1_500_000).decode('utf-8')
     matches = re.findall(r'https://downloads\.vivaldi\.com/stable/Vivaldi\.[A-Za-z0-9._-]+_x86-64\.apk', html)
     if not matches:
         raise ValueError('No official Vivaldi Intel 64-bit APK URL found')
     # HTTPS authenticity only: Vivaldi did not provide a pinned checksum here.
-    result = fetch_apk(matches[0], OUT / 'vivaldi.apk')
+    result = fetch_apk(matches[0], OUT / 'vivaldi.apk', cached=cached)
     result['sha256_verified'] = False
     return result
 
 
+def cache_key():
+    brave_meta = json.loads(
+        request('https://api.github.com/repos/brave/brave-browser/releases/latest'))
+    vivaldi_html = request('https://vivaldi.com/android/', 1_500_000).decode('utf-8')
+    urls = re.findall(
+        r'https://downloads\.vivaldi\.com/stable/Vivaldi\.[A-Za-z0-9._-]+_x86-64\.apk',
+        vivaldi_html)
+    if not urls or not brave_meta.get('tag_name'):
+        raise ValueError('Official latest release metadata unavailable')
+    payload = (brave_meta['tag_name'] + '|' + urls[0]).encode('utf-8')
+    return hashlib.sha256(payload).hexdigest()[:20]
+
+
 def main():
+    cli = argparse.ArgumentParser()
+    cli.add_argument('--cache-key', action='store_true',
+                     help='Print official-versioned cache key (no APK download)')
+    args = cli.parse_args()
+    if args.cache_key:
+        print(cache_key())
+        return
+    previous = {}
+    previous_path = OUT.parent / 'downloads.json'
+    if previous_path.is_file():
+        try:
+            previous = json.loads(previous_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            previous = {}
     results = {}
     for name, getter in [('brave', brave), ('vivaldi', vivaldi)]:
         try:
-            results[name] = getter()
-            print(name, 'downloaded', results[name]['size_bytes'], flush=True)
+            results[name] = getter(previous.get(name))
+            print(name, results[name]['status'], results[name]['size_bytes'], flush=True)
         except Exception as e:
             (OUT / (name + '.apk')).unlink(missing_ok=True)
             results[name] = {'status': 'unavailable', 'reason': type(e).__name__ + ': ' + str(e)}

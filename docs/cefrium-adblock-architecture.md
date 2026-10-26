@@ -40,3 +40,14 @@ Velocity-owned element. Users can turn off cosmetic hiding independently and
 exempt troublesome sites. This has a much smaller scope than uBlock Origin
 or AdGuard cosmetic/scriptlet support, and iframe hiding still requires a
 separate design and device tests.
+
+## Parsing cold-start optimization (2026-10-26)
+
+The original parser split the entire filter text (about 3,500 domain entries)
+with regex and allocated a regex split for each hostname. The current
+`NetworkRules.Builder` accepts lines straight from `BufferedReader`, validates
+ASCII hostname labels in one pass and defensively snapshots immutable sets
+before exposing them to Cefrium's network worker threads. Parsing remains
+synchronous so the very first navigation cannot escape unfiltered.
+The bundled list has exactly 3,552 unique blocked domains (2026-10-10
+snapshot), verified against both source assets in a JVM test.

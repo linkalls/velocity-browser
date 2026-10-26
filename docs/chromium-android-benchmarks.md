@@ -77,3 +77,15 @@ intentionally leaves release unsigned without configured production secrets.
 The disposable key is never used for arm64 signed previews. Old benchmark
 figures from the **debug** build cannot be used as a true release-vs-release
 comparison or directly compared as a performance regression.
+
+
+## APK download cache
+
+Each benchmark resolves the current official Brave stable release tag and
+Vivaldi's official Intel64 APK URL. A SHA-256 of those two identifiers keys
+the Actions cache, and cached APK bytes are hashed again before installation.
+Brave is checked against its official GitHub release digest. Vivaldi's cache
+uses its previously recorded download SHA-256 and requires the same official
+versioned URL; this is integrity of a prior HTTPS download, **not** an
+independently authenticated Vivaldi vendor digest. The benchmark still records
+versions and download provenance, and it refuses third-party APK mirrors.

@@ -2,12 +2,41 @@ package dev.velocity.chromium;
 
 import static org.junit.Assert.*;
 import org.junit.Test;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.io.BufferedReader;
+import java.io.IOException;
 
 public final class NetworkRulesStreamingTest {
     private static final String SAMPLE =
         "! comment\n||ads.example.com^\n@@||login.ads.example.com^\n"
         + "||metrics.example.net^\n||bad domain^\n"
         + "||last.example.org^\r\n";
+
+    @Test public void bundledPeterLoweSnapshotPreservesCoverage() throws IOException {
+        Path assets = Path.of("src/main/assets/velocity-block");
+        if (!Files.isDirectory(assets)) {
+            // Gradle's JVM Test task normally runs with app/ as its cwd.
+            // Resolve the same repository root when launched from the root.
+            assets = Path.of("app/src/main/assets/velocity-block");
+        }
+        assertTrue("Bundled blocklists must be available in CI", Files.isDirectory(assets));
+        NetworkRules.Builder builder = new NetworkRules.Builder();
+        for (String filename : new String[] {"rules.txt", "pgl.txt"}) {
+            try (BufferedReader reader = Files.newBufferedReader(
+                    assets.resolve(filename), StandardCharsets.UTF_8)) {
+                String line;
+                while ((line = reader.readLine()) != null) builder.acceptLine(line);
+            }
+        }
+        NetworkRules rules = builder.build();
+        // Snapshot dated 2026-10-10: Peter Lowe has 3548 unique ABP domains;
+        // 4 of Velocity's 8 additional entries overlap it.
+        assertEquals(3552, rules.blockedDomains());
+        assertTrue(rules.shouldBlock("https://ads.doubleclick.net/banner.js", false));
+        assertFalse(rules.shouldBlock("https://doubleclick.net/", true));
+    }
 
     @Test public void streamingMatchesOriginalDomainSemantics() {
         NetworkRules.Builder builder = new NetworkRules.Builder();

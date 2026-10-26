@@ -24,3 +24,12 @@ Branch feat/cefrium-tabs-core. Experimental, not production.
 
 The Gecko production app has not been modified. Reusable UI components
 and security features must still be ported before switching its engine.
+
+## Background tabs and idle renderers
+
+Only the foreground Cefrium tab resumes its compositor and media on Activity
+resume. Switching away calls `onPause()` on the old engine, rather than
+merely hiding its Surface. After tab closure or under Android memory pressure,
+`CefriumBrowser.reapUnusedRenderers()` asks the SDK to reclaim zero-frame
+renderer processes only; it never kills renderers that host live tabs.
+Physical-device stress tests with 1/5/12 tabs remain outstanding.

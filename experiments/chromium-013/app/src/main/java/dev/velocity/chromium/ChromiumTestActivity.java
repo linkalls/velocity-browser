@@ -93,6 +93,7 @@ public final class ChromiumTestActivity extends Activity {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private Runnable undoTimeout;
     private boolean chromiumReady;
+    private boolean activityResumed;
     private long activityCreateStartedAtMs;
     private long uiPreparedAtMs;
     private volatile boolean blockDomainsEnabled;
@@ -659,11 +660,16 @@ public final class ChromiumTestActivity extends Activity {
         if (!chromiumReady || destroyed) return;
         TabRegistry.Tab current = tabRegistry.current();
         if (current == null) return;
-        if (engine != null) {
-            engine.setPageVisible(false);
-            engine.getSurfaceContainer().setVisibility(View.GONE);
-        }
+        CefriumBrowser oldEngine = engine;
         CefriumBrowser active = liveBrowsers.get(current.id);
+        if (oldEngine != null && oldEngine != active) {
+            // Cefrium.onPause() also suspends media, unlike page visibility
+            // alone. Inactive tabs must never resume animation/audio on
+            // Activity.onResume -- only the foreground engine is resumed.
+            oldEngine.onPause();
+            oldEngine.setPageVisible(false);
+            oldEngine.getSurfaceContainer().setVisibility(View.GONE);
+        }
         try {
             if (active == null) {
                 active = createEngineFor(current);
@@ -672,6 +678,7 @@ public final class ChromiumTestActivity extends Activity {
             engine = active;
             engine.getSurfaceContainer().setVisibility(View.VISIBLE);
             engine.setPageVisible(true);
+            if (activityResumed && oldEngine != active) engine.onResume();
             engine.getSurfaceContainer().bringToFront();
             browserRoot.bringToFront();
             updateNavigation();
@@ -850,6 +857,9 @@ public final class ChromiumTestActivity extends Activity {
         if (closing != null) {
             if (engine == closing) engine = null;
             closing.close();
+            // The SDK may keep empty renderer processes around for reuse.
+            // Reap only zero-frame children; live renderers are unaffected.
+            CefriumBrowser.reapUnusedRenderers();
         }
         tabRegistry.close(id);
         if (tabRegistry.current() == null) tabRegistry.add("about:blank", false);
@@ -1026,13 +1036,23 @@ public final class ChromiumTestActivity extends Activity {
     }
 
     @Override protected void onPause() {
-        for (CefriumBrowser browser : liveBrowsers.values()) browser.onPause();
+        activityResumed = false;
+        if (engine != null) engine.onPause();
         super.onPause();
     }
 
     @Override protected void onResume() {
         super.onResume();
-        for (CefriumBrowser browser : liveBrowsers.values()) browser.onResume();
+        activityResumed = true;
+        if (engine != null) engine.onResume();
+    }
+
+    @Override public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        if (chromiumReady && level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            // Reclaim orphaned renderers without discarding any live WebContents.
+            CefriumBrowser.reapUnusedRenderers();
+        }
     }
 
     @Override protected void onStop() {
@@ -1065,6 +1085,7 @@ public final class ChromiumTestActivity extends Activity {
         for (CefriumBrowser browser : liveBrowsers.values()) browser.close();
         liveBrowsers.clear();
         engine = null;
+        if (chromiumReady) CefriumBrowser.reapUnusedRenderers();
         super.onDestroy();
     }
 }
