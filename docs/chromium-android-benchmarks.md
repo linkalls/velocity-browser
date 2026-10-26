@@ -24,7 +24,7 @@ fingerprints in each JSON artifact to compare runs responsibly.
 
 ## Metrics currently implemented
 
-- Three trials per browser: `adb shell am force-stop`, then `am start -W` for
+- Four interleaved trials per browser: `adb shell am force-stop`, then `am start -W` for
   the resolved launcher. Record Android Activity `TotalTime` and report median.
 - Wait exactly five seconds after start, then capture `dumpsys meminfo` for
   that package. Report total PSS in KiB and median MiB where available.
@@ -148,3 +148,15 @@ nor the CEF native library, nor measure web-first-paint. Comparing scores from
 before and after is NOT a randomized A/B test because warmed CPU caches,
 device heat, storage and trial order may bias results. Never cite this as a
 browser-wide performance win without device validation.
+
+
+## Balanced execution-order experiment
+
+Earlier runs measured Velocity first, then Chrome, Brave and Vivaldi. This
+introduces startup order and emulator cache bias. The revised methodology
+performs one unmeasured warmup launch for each installed browser, then rotates
+the order across four rounds. When all four are available, each browser runs
+once in every execution slot (first, second, third, fourth). All four packages
+are force-stopped before each trial. JSON retains trial order, iteration and
+order position. These measurements are better balanced, but still show
+Android Activity startup rather than interactive webpage first paint.

@@ -45,6 +45,24 @@ class ParseTest(unittest.TestCase):
         self.assertIn('end-to-end Cefrium Surface creation: 1400 ms', output)
         self.assertIn('NOT first paint', output)
 
+    def test_four_browser_execution_order_balanced(self):
+        names = ["Velocity", "Chrome", "Brave", "Vivaldi"]
+        rounds = bench.rotated_trials(names, 4)
+        self.assertEqual(4, len(rounds))
+        for name in names:
+            self.assertEqual([0, 1, 2, 3],
+                sorted(group.index(name) for group in rounds))
+        self.assertEqual([["Velocity"]] * 4, bench.rotated_trials(["Velocity"], 4))
+
+    def test_aggregate_preserves_missing_memory(self):
+        rec = bench.aggregate([
+            {"activity_launch_ms": 110, "pss_kib_after_settle": None},
+            {"activity_launch_ms": 140, "pss_kib_after_settle": 10000},
+        ])
+        self.assertEqual(125, rec["median_activity_launch_ms"])
+        self.assertEqual(10000, rec["median_pss_kib"])
+        self.assertIsNone(rec["median_cefrium_surface_ready_ms"])
+
     def test_report_preserves_missing_results(self):
         data = {'browsers': {'Velocity': {'status': 'unavailable', 'reason': 'not installed'},
                              'Chrome': {'status': 'measured', 'version': '1',

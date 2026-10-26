@@ -30,13 +30,13 @@ for name in brave vivaldi; do
 done
 
 python3 experiments/chromium-013/tools/bench/browser_bench.py \
-  --out dist/browser-bench --repetitions 3 --settle-seconds 5
+  --out dist/browser-bench --repetitions 4 --settle-seconds 5
 
 # Optional, separately labeled Android Runtime AOT compilation experiment.
 # This runs after the common four-app trial and is not a randomized A/B test.
 mkdir -p dist/browser-bench/art-speed
 if adb shell cmd package compile -f -m speed   dev.velocity.browser.chromium013 > dist/browser-bench/art-speed/dexopt.txt 2>&1   && grep -q 'Success' dist/browser-bench/art-speed/dexopt.txt; then
-  VELOCITY_BENCH_VARIANT=release-r8-minified-art-speed     python3 experiments/chromium-013/tools/bench/browser_bench.py     --only Velocity --out dist/browser-bench/art-speed     --repetitions 3 --settle-seconds 5
+  VELOCITY_BENCH_VARIANT=release-r8-minified-art-speed     python3 experiments/chromium-013/tools/bench/browser_bench.py     --only Velocity --out dist/browser-bench/art-speed     --repetitions 4 --settle-seconds 5
 else
   echo 'ART speed experiment unavailable; compilation failed or was skipped'     > dist/browser-bench/art-speed/status.txt
 fi

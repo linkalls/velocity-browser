@@ -151,6 +151,92 @@ def sample_browser(package, launcher, repetitions, settle_seconds, output_dir=No
     }
 
 
+def rotated_trials(names, repetitions):
+    names = list(names)
+    if not names:
+        return []
+    return [names[i % len(names):] + names[:i % len(names)]
+            for i in range(repetitions)]
+
+
+def aggregate(samples):
+    if not samples:
+        return {"status": "unavailable", "reason": "No successful trials"}
+    pss = [s["pss_kib_after_settle"] for s in samples
+           if s.get("pss_kib_after_settle") is not None]
+    phases = [s["cefrium_startup_phases_ms"] for s in samples
+              if s.get("cefrium_startup_phases_ms")]
+    ready = [p["provider_ms"] + p["total_ms"] for p in phases
+             if p.get("provider_ms", -1) >= 0]
+    return {
+        "status": "measured", "samples": samples,
+        "median_activity_launch_ms": statistics.median(
+            s["activity_launch_ms"] for s in samples),
+        "median_pss_kib": statistics.median(pss) if pss else None,
+        "median_cefrium_surface_ready_ms": (
+            statistics.median(ready) if len(ready) == len(samples) else None),
+        "pss_samples": len(pss),
+    }
+
+
+def measure_interleaved(active, repetitions, settle_seconds, output_dir):
+    result = {}
+    eligible = {}
+    # Consistent unmeasured warmup for all available browsers.
+    for name, record in active.items():
+        if record["status"] == "unavailable":
+            result[name] = record.copy()
+            continue
+        pkg, launcher = record["package"], record["launcher"]
+        run_adb("shell", "am", "force-stop", pkg)
+        rc, output = run_adb("shell", "am", "start", "-W", "-n", launcher)
+        if rc or parse_launch(output, pkg) is None:
+            result[name] = {
+                "package": pkg, "version": record["version"],
+                "status": "unavailable", "reason": "Warmup launch failed",
+                "diagnostic": output[-300:],
+            }
+            continue
+        time.sleep(2)
+        run_adb("shell", "am", "force-stop", pkg)
+        eligible[name] = record
+        result[name] = {"package": pkg, "version": record["version"],
+                        "status": "pending", "warmup_completed": True, "samples": []}
+
+    order = rotated_trials(eligible, repetitions)
+    for round_index, names in enumerate(order):
+        for position, name in enumerate(names):
+            # No other comparison browser remains running in the background.
+            for other in eligible.values():
+                run_adb("shell", "am", "force-stop", other["package"])
+            record = eligible[name]
+            measured = sample_browser(record["package"], record["launcher"], 1,
+                settle_seconds,
+                output_dir if round_index == repetitions - 1 else None,
+                name if round_index == repetitions - 1 else None)
+            if measured["status"] != "measured":
+                result[name].update(measured)
+                result[name]["reason"] = "A cold trial failed: " + measured.get("reason", "")
+                continue
+            if result[name]["status"] != "pending":
+                continue
+            trial = measured["samples"][0]
+            trial["iteration"] = round_index + 1
+            trial["order_position"] = position + 1
+            result[name]["samples"].append(trial)
+            print("trial", round_index + 1, "position", position + 1,
+                  name, trial["activity_launch_ms"], "ms", flush=True)
+
+    for record in result.values():
+        if record["status"] == "pending":
+            if len(record["samples"]) == repetitions:
+                record.update(aggregate(record["samples"]))
+            else:
+                record["status"] = "unavailable"
+                record["reason"] = "Incomplete trial count"
+    return result, order
+
+
 def markdown_report(data):
     lines = ["# Android browser baseline", "",
         "Cold Activity launch and settled package PSS only — **NOT first paint, Speedometer, scrolling or JS throughput**.",
@@ -180,7 +266,9 @@ def markdown_report(data):
             lines.append(f"- {phase}: {statistics.median(values):.0f} ms" if values
                          else f"- {phase}: unavailable")
     lines += ["", "## Measurement limitations", "",
-        "- Same x86_64 Android emulator instance, one foreground browser at a time, forced stop before each start.",
+        "- Same emulator; an unmeasured warmup runs once for each installed browser.",
+        "- Rotated interleaved rounds balance execution order; all competitors are force-stopped before each trial.",
+        "- With four available browsers and four rounds, each app occupies every execution position once.",
         "- Startup time is Android Activity TotalTime; it **does not** ensure a rendered web page.",
         "- PSS is Android package `dumpsys meminfo` after a fixed settle delay; service-process attribution can vary.",
         "- All four are release-mode binaries, but Chrome is the emulator's preinstalled (possibly older) build.",
@@ -194,7 +282,7 @@ def markdown_report(data):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", type=Path, default=Path("dist/browser-bench"))
-    parser.add_argument("--repetitions", type=int, default=3)
+    parser.add_argument("--repetitions", type=int, default=4)
     parser.add_argument("--only", choices=tuple(BROWSERS))
     parser.add_argument("--settle-seconds", type=float, default=6)
     args = parser.parse_args()
@@ -209,20 +297,25 @@ def main():
             "velocity_build_variant": os.environ.get(
                 "VELOCITY_BENCH_VARIANT", "release-unminified"),
             "browsers": {}}
+    prepared = {}
     for name, package in BROWSERS.items():
         if args.only and name != args.only:
             continue
         version = installed_version(package)
-        if version is None:
-            record = {"status": "unavailable", "reason": "package not installed"}
+        launcher = resolve_launcher(package) if version is not None else None
+        if version is None or launcher is None:
+            prepared[name] = {"package": package, "version": version,
+                "status": "unavailable", "reason":
+                    "package not installed" if version is None else "no resolvable launcher"}
         else:
-            launcher = resolve_launcher(package)
-            record = (sample_browser(package, launcher, args.repetitions, args.settle_seconds,
-                                     args.out, name)
-                      if launcher else {"status": "unavailable", "reason": "no resolvable launcher"})
-            record["version"] = version
-        record["package"] = package
-        data["browsers"][name] = record
+            prepared[name] = {"package": package, "version": version,
+                              "launcher": launcher, "status": "ready"}
+    results, order = measure_interleaved(
+        prepared, args.repetitions, args.settle_seconds, args.out)
+    data["trial_order"] = order
+    data["trial_design"] = "unmeasured warmup plus rotated interleaved trials"
+    data["browsers"] = results
+    for name, record in results.items():
         print(name, record["status"], record.get("median_activity_launch_ms"),
               record.get("median_pss_kib"), flush=True)
     (args.out / "results.json").write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n")
