@@ -11,6 +11,8 @@ public final class NativeCodePrefetchTest {
     @Test public void boundedWindowCannotReadPastElfEnd() {
         assertEquals(16L * 1024 * 1024,
             NativeCodePrefetch.boundedLength(238619136L, 16));
+        assertEquals(8L * 1024 * 1024,
+            NativeCodePrefetch.boundedLength(238619136L, 8));
         assertEquals(1024, NativeCodePrefetch.boundedLength(
             NativeCodePrefetch.EXECUTABLE_WINDOW_OFFSET + 1024, 16));
         assertEquals(0, NativeCodePrefetch.boundedLength(

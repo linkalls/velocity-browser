@@ -7,22 +7,23 @@ from pathlib import Path
 
 from native_packaging_bench import run_block
 
-ORDER = ("off", "prefetch16", "read16", "read16", "prefetch16", "off")
-EXPECTED = {"off": 0, "prefetch16": 16, "read16": 16}
-MODES = {"off": "mmap", "prefetch16": "mmap", "read16": "read"}
+ORDER = ("off", "prefetch16", "read8", "read16", "read16", "read8",
+         "prefetch16", "off")
+EXPECTED = {"off": 0, "prefetch16": 16, "read8": 8, "read16": 16}
+MODES = {"off": "mmap", "prefetch16": "mmap", "read8": "read", "read16": "read"}
 
 
 def summarize(records, cold_cache=False):
     groups = {mode: [] for mode in EXPECTED}
     rows = [
-        "# CEF native executable pages: bounded three-way palindrome experiment",
+        "# CEF native executable pages: bounded four-way palindrome experiment",
         "",
         ("Rooted AOSP emulator: sync + drop_caches=3 before EVERY measured"
          " launch." if cold_cache else
          "No kernel cache reset; results can be affected by ELF cache warming."),
         "Same Android emulator, source, native library extraction, fast attach,",
-        "R8, package identity and disposable CI signing key for all three variants.",
-        "OFF versus mmap(16 MiB) versus buffered read(16 MiB); every mode",
+        "R8, package identity and disposable CI signing key for all four variants.",
+        "OFF vs mmap(16 MiB) vs buffered read(8 MiB) vs buffered read(16 MiB).",
         "appears twice in symmetrical order to reduce linear warmup bias.",
         "",
         "| Block | Mode | Activity median (ms) | Provider median (ms) | PSS median (MiB) | Major faults (per trial) | Status / reason |",
@@ -65,6 +66,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--off", required=True, type=Path)
     parser.add_argument("--prefetch16", required=True, type=Path)
+    parser.add_argument("--read8", required=True, type=Path)
     parser.add_argument("--read16", required=True, type=Path)
     parser.add_argument("--out", default=Path("dist/native-prefetch/results"), type=Path)
     parser.add_argument("--repetitions", type=int, default=2)
@@ -79,7 +81,7 @@ def main(argv=None):
         parser.error("settle-seconds must be in [1, 60]")
     args.out.mkdir(parents=True, exist_ok=True)
     paths = {"off": args.off, "prefetch16": args.prefetch16,
-             "read16": args.read16}
+             "read8": args.read8, "read16": args.read16}
     records = []
     for i, mode in enumerate(ORDER, 1):
         try:

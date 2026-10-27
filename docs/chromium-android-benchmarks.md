@@ -492,3 +492,29 @@ factory-reset or real-device cold start: app installation, ART
 compilation, global OS state and temperature are uncontrolled. Use
 repeated physical-device validation before promoting any performance
 optimization.
+
+## Rooted AOSP cold-cache page-hint results and smaller hint trial
+
+[CI run 40479251384](https://github.com/linkalls/velocity-browser/actions/runs/40479251384)
+completed all six palindrome blocks, including the rooted Android 16 AOSP
+`sync; drop_caches=3` check **before each measured Activity start**. All
+three variants passed native-Surface/DOM+JS smoke, runtime-mode validation and
+PSS collection. Each mode appeared twice with two launches per block.
+
+| Mode | Median of block medians (ms) | Approx. settled PSS (MiB) |
+|---|---:|---:|
+| OFF | 1113.25 | 109.0–109.3 |
+| mmap16 | 1065.5 | 120.2–120.3 |
+| read16 | 1071.5 | 113.4–113.5 |
+
+These are **not** results from the 4-browser comparison. The 40–48-ms
+apparent reduction is small and not replicated on physical devices; mmap's
+~11-MiB extra PSS argues against enabling it in the Preview. The
+uncached counterpart still suffers major provider page faults.
+
+The next isolated experiment compares OFF, mmap16, read8 and read16 in
+eight symmetric blocks on the same emulator, now with three launches per
+block for the cold-cache experiment. The same executable ELF offset and
+limited x86_64 benchmark-only configuration are retained. The 8-MiB
+variant is a hypothesis, **not** an established optimization. Never switch
+the arm64 permanent-key Preview automatically based on these results.

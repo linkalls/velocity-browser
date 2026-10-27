@@ -12,9 +12,11 @@ spec.loader.exec_module(mod)
 
 class NativePrefetchTest(unittest.TestCase):
     def test_cross_over_and_bounds(self):
-        self.assertEqual(("off", "prefetch16", "read16", "read16",
-                          "prefetch16", "off"), mod.ORDER)
-        self.assertEqual({"off": 0, "prefetch16": 16, "read16": 16}, mod.EXPECTED)
+        self.assertEqual(("off", "prefetch16", "read8", "read16",
+                          "read16", "read8", "prefetch16", "off"), mod.ORDER)
+        self.assertEqual({"off": 0, "prefetch16": 16, "read8": 8,
+                          "read16": 16}, mod.EXPECTED)
+        self.assertEqual("read", mod.MODES["read8"])
         self.assertEqual("read", mod.MODES["read16"])
 
     def test_missing_prefetch_is_not_presented_as_a_win(self):
@@ -73,12 +75,12 @@ class NativePrefetchTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             with mock.patch.object(mod, "run_block", side_effect=fake_block):
                 mod.main(["--off", "off.apk", "--prefetch16", "map.apk",
-                          "--read16", "read.apk",
+                          "--read8", "read8.apk", "--read16", "read.apk",
                           "--out", temp, "--repetitions", "1",
                           "--settle-seconds", "5.5"])
         self.assertEqual(list(mod.ORDER), [x[1] for x in observed])
-        self.assertEqual([5.5] * 6, [x[4] for x in observed])
-        self.assertEqual([1] * 6, [x[3] for x in observed])
+        self.assertEqual([5.5] * len(mod.ORDER), [x[4] for x in observed])
+        self.assertEqual([1] * len(mod.ORDER), [x[3] for x in observed])
 
     def test_cold_cache_flag_reaches_every_real_block_and_is_labeled(self):
         calls = []
@@ -96,7 +98,7 @@ class NativePrefetchTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             with mock.patch.object(mod, "run_block", side_effect=fake_block):
                 mod.main(["--off", "off.apk", "--prefetch16", "map.apk",
-                          "--read16", "read.apk", "--out", temp,
+                          "--read8", "read8.apk", "--read16", "read.apk", "--out", temp,
                           "--repetitions", "1", "--cold-cache"])
             report = (Path(temp) / "summary.md").read_text()
         self.assertEqual([(mode, True) for mode in mod.ORDER], calls)
@@ -107,7 +109,7 @@ class NativePrefetchTest(unittest.TestCase):
         workflow = (Path(__file__).resolve().parents[4] / ".github" /
                     "workflows" / "chromium-native-prefetch-experiment.yml")
         source = workflow.read_text()
-        section = source.split("name: Controlled cold-cache three-way benchmark", 1)[1]
+        section = source.split("name: Controlled cold-cache four-way benchmark", 1)[1]
         section = section.split("name: Results and limitations", 1)[0]
         # The emulator runner executes EACH newline as a separate command.
         # GitHub YAML >- folds the command to one line, unlike the former |.
@@ -125,7 +127,7 @@ class NativePrefetchTest(unittest.TestCase):
         import subprocess
         self.assertEqual(0, subprocess.run(["sh", "-n", "-c", command],
                                             capture_output=True, check=False).returncode)
-        for required in ("--off", "--prefetch16", "--read16", "--out",
+        for required in ("--off", "--prefetch16", "--read8", "--read16", "--out",
                          "--repetitions", "--settle-seconds", "--cold-cache"):
             self.assertIn(required, command)
         # Cross-check the launch args against the benchmark parser itself.
@@ -137,7 +139,7 @@ class NativePrefetchTest(unittest.TestCase):
             with self.subTest(value=value):
                 with self.assertRaises(SystemExit) as caught:
                     mod.main(["--off", "off.apk", "--prefetch16", "map.apk",
-                              "--read16", "read.apk",
+                              "--read8", "read8.apk", "--read16", "read.apk",
                               "--settle-seconds", value])
                 self.assertEqual(2, caught.exception.code)
 
@@ -159,7 +161,7 @@ class NativePrefetchTest(unittest.TestCase):
             with mock.patch.object(mod, "run_block", side_effect=fake_block):
                 with self.assertRaises(SystemExit):
                     mod.main(["--off", "off.apk", "--prefetch16", "map.apk",
-                              "--read16", "read.apk", "--out", temp,
+                              "--read8", "read8.apk", "--read16", "read.apk", "--out", temp,
                               "--repetitions", "1"])
             result = (Path(temp) / "results.json").read_text()
             self.assertIn("Runtime log does not prove the requested prefetch method",
