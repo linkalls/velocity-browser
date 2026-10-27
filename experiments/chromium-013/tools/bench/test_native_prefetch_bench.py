@@ -1,6 +1,8 @@
 import importlib.util
 from pathlib import Path
 import unittest
+import tempfile
+from unittest import mock
 
 p = Path(__file__).with_name("native_prefetch_bench.py")
 spec = importlib.util.spec_from_file_location("native_prefetch_bench", p)
@@ -27,6 +29,43 @@ class NativePrefetchTest(unittest.TestCase):
         self.assertEqual(1450, medians["off"])
         self.assertIsNone(medians["prefetch16"])
         self.assertIn("incomplete, no win claim", result)
+
+
+    def test_workflow_cli_accepts_settle_seconds_and_passes_it_to_sampler(self):
+        # Regression for workflow run 40353287367: --settle-seconds was rejected
+        # before the emulator could execute any of the ABBA measurements.
+        observed = []
+
+        def fake_block(number, variant, path, directory, repetitions, settle):
+            observed.append((number, variant, str(path), repetitions, settle))
+            requested = mod.EXPECTED[variant]
+            return {
+                "block": number, "variant": variant, "status": "measured",
+                "activity_median_ms": 1200,
+                "samples": [{"cefrium_native_prefetch": {
+                    "requested_mib": requested,
+                    "status": "completed" if requested else None,
+                }}],
+            }
+
+        with tempfile.TemporaryDirectory() as temp:
+            with mock.patch.object(mod, "run_block", side_effect=fake_block):
+                mod.main(["--off", "off.apk", "--prefetch16", "on.apk",
+                          "--out", temp, "--repetitions", "1",
+                          "--settle-seconds", "5.5"])
+        self.assertEqual(["off", "prefetch16", "prefetch16", "off"],
+                         [x[1] for x in observed])
+        self.assertEqual([5.5] * 4, [x[4] for x in observed])
+        self.assertEqual([1] * 4, [x[3] for x in observed])
+
+    def test_settle_seconds_refuses_invalid_values(self):
+        # Avoid marking an unvalidated, not-yet-initialized CEF process as ready.
+        for value in ("0", "-1", "61"):
+            with self.subTest(value=value):
+                with self.assertRaises(SystemExit) as caught:
+                    mod.main(["--off", "off.apk", "--prefetch16", "on.apk",
+                              "--settle-seconds", value])
+                self.assertEqual(2, caught.exception.code)
 
 
 if __name__ == "__main__":

@@ -49,21 +49,26 @@ def summarize(records):
     return "\n".join(rows), medians
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--off", required=True, type=Path)
     parser.add_argument("--prefetch16", required=True, type=Path)
     parser.add_argument("--out", default=Path("dist/native-prefetch/results"), type=Path)
     parser.add_argument("--repetitions", type=int, default=2)
-    args = parser.parse_args()
+    parser.add_argument("--settle-seconds", type=float, default=4.0,
+                        help="Time to allow native CEF and memory to settle before each PSS reading")
+    args = parser.parse_args(argv)
     if args.repetitions < 1 or args.repetitions > 6:
         parser.error("repetitions out of range")
+    if not 1 <= args.settle_seconds <= 60:
+        parser.error("settle-seconds must be in [1, 60]")
     args.out.mkdir(parents=True, exist_ok=True)
     paths = {"off": args.off, "prefetch16": args.prefetch16}
     records = []
     for i, mode in enumerate(ORDER, 1):
         try:
-            rec = run_block(i, mode, paths[mode], args.out, args.repetitions, 4)
+            rec = run_block(i, mode, paths[mode], args.out, args.repetitions,
+                            args.settle_seconds)
             if rec.get("status") == "measured":
                 requested = EXPECTED[mode]
                 if any(s.get("cefrium_native_prefetch", {}).get("requested_mib")

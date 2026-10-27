@@ -9,6 +9,9 @@ on:
     branches: [feat/cefrium-tabs-core]
     paths:
       - '.github/workflows/chromium-native-prefetch-experiment.yml'
+      - 'experiments/chromium-013/tools/bench/native_prefetch_bench.py'
+      - 'experiments/chromium-013/tools/bench/test_native_prefetch_bench.py'
+      - 'experiments/chromium-013/app/src/main/java/dev/velocity/chromium/NativeCodePrefetch.java'
 
 permissions:
   contents: read
