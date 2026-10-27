@@ -16,15 +16,17 @@ public final class StartupResourceProbe {
     public static final class Snapshot {
         public final long wallMs;
         public final long cpuMs;
+        public final long threadCpuMs;
         public final long minorFaults;
         public final long majorFaults;
         public final long readBytes;
         public final long writtenBytes;
 
-        Snapshot(long wallMs, long cpuMs, long minorFaults, long majorFaults,
-                 long readBytes, long writtenBytes) {
+        Snapshot(long wallMs, long cpuMs, long threadCpuMs, long minorFaults,
+                 long majorFaults, long readBytes, long writtenBytes) {
             this.wallMs = wallMs;
             this.cpuMs = cpuMs;
+            this.threadCpuMs = threadCpuMs;
             this.minorFaults = minorFaults;
             this.majorFaults = majorFaults;
             this.readBytes = readBytes;
@@ -37,6 +39,10 @@ public final class StartupResourceProbe {
     public static Snapshot capture() {
         long wallMs = SystemClock.elapsedRealtime();
         long cpuMs = Process.getElapsedCpuTime();
+        // Both capture sites are on the UI thread. Unlike process CPU time,
+        // this detects how much of provider startup actually ran on that
+        // thread rather than being scheduled out, blocking, or using workers.
+        long threadCpuMs = SystemClock.currentThreadTimeMillis();
         long minor = -1, major = -1, read = -1, written = -1;
         try (BufferedReader reader = new BufferedReader(new FileReader("/proc/self/stat"))) {
             long[] faults = parseFaults(reader.readLine());
@@ -54,7 +60,7 @@ public final class StartupResourceProbe {
         } catch (IOException | SecurityException ignored) {
             // Some sandbox policies deny /proc/self/io.
         }
-        return new Snapshot(wallMs, cpuMs, minor, major, read, written);
+        return new Snapshot(wallMs, cpuMs, threadCpuMs, minor, major, read, written);
     }
 
     /**
@@ -105,11 +111,13 @@ public final class StartupResourceProbe {
     public static String describe(Snapshot start, Snapshot end, String prefix) {
         if (start == null || end == null) {
             return prefix + "_wall_ms=-1 " + prefix + "_cpu_ms=-1 "
+                + prefix + "_thread_cpu_ms=-1 "
                 + prefix + "_minor_faults=-1 " + prefix + "_major_faults=-1 "
                 + prefix + "_read_bytes=-1 " + prefix + "_written_bytes=-1";
         }
         return prefix + "_wall_ms=" + delta(start.wallMs, end.wallMs)
             + " " + prefix + "_cpu_ms=" + delta(start.cpuMs, end.cpuMs)
+            + " " + prefix + "_thread_cpu_ms=" + delta(start.threadCpuMs, end.threadCpuMs)
             + " " + prefix + "_minor_faults=" + delta(start.minorFaults, end.minorFaults)
             + " " + prefix + "_major_faults=" + delta(start.majorFaults, end.majorFaults)
             + " " + prefix + "_read_bytes=" + delta(start.readBytes, end.readBytes)

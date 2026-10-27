@@ -86,7 +86,7 @@ def parse_velocity_timing(log):
     )}
 
 
-RESOURCE_FIELDS = ("wall_ms", "cpu_ms", "minor_faults", "major_faults",
+RESOURCE_FIELDS = ("wall_ms", "cpu_ms", "thread_cpu_ms", "minor_faults", "major_faults",
                    "read_bytes", "written_bytes")
 
 
@@ -341,11 +341,11 @@ def markdown_report(data):
                         if x.get("cefrium_startup_resources")]
     if resource_samples:
         lines += ["", "## Velocity startup CPU, page faults and storage I/O", "",
-                  "Process-wide resource deltas across Cefrium provider, Java Activity,",
-                  "and the complete native Surface creation interval. -1 means unavailable;",
+                  "Process-wide CPU/fault deltas plus MAIN THREAD CPU across Cefrium provider,",
+                  "Java Activity and native Surface creation. -1 means unavailable;",
                   "read_bytes counts actual disk reads, NOT all cached file reads.", "",
-                  "| Phase | Wall (ms) | CPU (ms) | CPU/wall | Minor faults | Major faults | Physical read (KiB) |",
-                  "|---|---:|---:|---:|---:|---:|---:|"]
+                  "| Phase | Wall (ms) | Process CPU (ms) | Main thread CPU (ms) | Process CPU/wall | Main CPU/wall | Minor faults | Major faults | Physical read (KiB) |",
+                  "|---|---:|---:|---:|---:|---:|---:|---:|---:|"]
         for phase in ("provider", "activity", "total"):
             def median_value(field):
                 values = [r[f"{phase}_{field}"] for r in resource_samples
@@ -353,18 +353,23 @@ def markdown_report(data):
                 return statistics.median(values) if values else None
             wall = median_value("wall_ms")
             cpu = median_value("cpu_ms")
+            thread_cpu = median_value("thread_cpu_ms")
             minflt = median_value("minor_faults")
             majflt = median_value("major_faults")
             disk = median_value("read_bytes")
             ratio = (cpu / wall if wall and cpu is not None else None)
+            thread_ratio = (thread_cpu / wall if wall and thread_cpu is not None else None)
             def formatted(value, digits=0):
                 return "—" if value is None else f"{value:.{digits}f}"
             lines.append(f"| {phase} | {formatted(wall)} | {formatted(cpu)} | "
-                         f"{formatted(ratio, 2)} | {formatted(minflt)} | "
+                         f"{formatted(thread_cpu)} | {formatted(ratio, 2)} | "
+                         f"{formatted(thread_ratio, 2)} | {formatted(minflt)} | "
                          f"{formatted(majflt)} | "
                          f"{formatted(disk / 1024 if disk is not None else None)} |")
-        lines += ["", "Low CPU/wall suggests blocked or descheduled work but does not",
-                  "identify I/O by itself. A major page fault suggests a disk-backed",
+        lines += ["", "Low main-thread CPU/wall suggests descheduling or waiting on",
+                  "work such as I/O. Process CPU/wall includes workers and can exceed",
+                  "1.0 on multiple cores. Neither proves I/O by itself.",
+                  "A major page fault suggests a disk-backed",
                   "page must be brought in; page faults and read_bytes may be unavailable",
                   "on some Android versions. Full native CPU call stacks and off-CPU",
                   "time still require a Perfetto/simpleperf trace.", ""]

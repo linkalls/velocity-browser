@@ -49,6 +49,25 @@ class ParseTest(unittest.TestCase):
                               "CEFNativePrefetch status=completed"))
         self.assertIsNone(bench.parse_native_prefetch("unrelated")["requested_mib"])
 
+    def test_main_thread_cpu_delta_is_reported_separately_from_process_cpu(self):
+        periods = ("provider", "activity", "total")
+        resources = {f"{period}_{field}": -1 for period in periods
+                     for field in bench.RESOURCE_FIELDS}
+        resources.update(provider_wall_ms=1000, provider_cpu_ms=650,
+                         provider_thread_cpu_ms=170,
+                         total_wall_ms=1250, total_cpu_ms=780,
+                         total_thread_cpu_ms=240)
+        parsed = bench.parse_velocity_resources(
+            "CEFStartupResource " + " ".join(f"{k}={v}" for k, v in resources.items()))
+        self.assertEqual(170, parsed["provider_thread_cpu_ms"])
+        result = bench.markdown_report({"browsers": {"Velocity": {
+            "status": "measured", "samples": [{"cefrium_startup_resources": parsed}]
+        }}})
+        self.assertIn("Main thread CPU (ms)", result)
+        self.assertIn("| provider | 1000 | 650 | 170 | 0.65 | 0.17 |", result)
+        self.assertIn("| total | 1250 | 780 | 240 | 0.62 | 0.19 |", result)
+        self.assertIn("Process CPU/wall includes workers", result)
+
     def test_cold_cache_measurement_refuses_denied_root_operation(self):
         # An emulator without root cannot silently fall back to a warm trial.
         with mock.patch.object(bench, "run_adb", return_value=(0, "")):
@@ -81,7 +100,8 @@ class ParseTest(unittest.TestCase):
             "I/VelocityCefStartup: " + line)
         self.assertEqual(-1, result["provider_read_bytes"])
         self.assertEqual(0, result["provider_wall_ms"])
-        self.assertEqual(17, result["total_written_bytes"])
+        self.assertEqual(len(sample) - 1, result["total_written_bytes"])
+        self.assertIn("provider_thread_cpu_ms", result)
         self.assertIsNone(bench.parse_velocity_resources("no resources"))
         self.assertIsNone(bench.parse_velocity_resources(
             "CEFStartupResource provider_wall_ms=200"))
@@ -98,6 +118,8 @@ class ParseTest(unittest.TestCase):
             "samples": [{"cefrium_startup_resources": r}]}}}
         report = bench.markdown_report(d)
         self.assertIn("CPU, page faults and storage I/O", report)
+        self.assertIn("Main thread CPU", report)
+        self.assertIn("—", report)
         self.assertIn("0.29", report)
         self.assertIn("unavailable", report)
 

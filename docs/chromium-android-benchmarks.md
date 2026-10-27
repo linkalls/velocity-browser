@@ -382,6 +382,21 @@ is running on CPU versus blocked on storage/CPU scheduling, not merely
 make a placeholder splash screen appear earlier.
 
 
+## Main-thread CPU accounting in the startup phases
+
+The next instrumentation version records the UI/main thread's CPU time using
+`SystemClock.currentThreadTimeMillis()` alongside the whole process's
+`Process.getElapsedCpuTime()` snapshots at Application attachment, Activity
+creation, and native Surface readiness. The extra `*_thread_cpu_ms` fields
+are never treated as zero when absent; reporting displays the ratio of
+main-thread CPU to elapsed wall time separately from the existing whole-process
+CPU/wall ratio (which can exceed 1 with background workers).
+
+Both capture sites run on the main thread. A small main-thread CPU/wall ratio
+suggests the provider waited or was descheduled, but it **does not** prove
+native-library I/O was responsible; Perfetto/simpleperf is still needed for
+attribution. The new metrics are diagnostic only and do not shorten startup.
+
 ## Bounded experimental prefetch of executable ELF pages
 
 A controlled, separate workflow builds two disposable-signed x86_64 R8

@@ -31,15 +31,18 @@ public final class StartupResourceProbeTest {
 
     @Test public void deltaDoesNotInventMissingOrNegativeNumbers() {
         StartupResourceProbe.Snapshot first = new StartupResourceProbe.Snapshot(
-            100, 30, 400, 5, -1, 1000);
+            100, 30, 12, 400, 5, -1, 1000);
         StartupResourceProbe.Snapshot last = new StartupResourceProbe.Snapshot(
-            900, 530, 780, 6, -1, 800);
+            900, 530, 111, 780, 6, -1, 800);
         String timing = StartupResourceProbe.describe(first, last, "provider");
         assertTrue(timing.contains("provider_wall_ms=800"));
         assertTrue(timing.contains("provider_cpu_ms=500"));
+        assertTrue(timing.contains("provider_thread_cpu_ms=99"));
         assertTrue(timing.contains("provider_minor_faults=380"));
         assertTrue(timing.contains("provider_major_faults=1"));
         assertTrue(timing.contains("provider_read_bytes=-1"));
         assertTrue(timing.contains("provider_written_bytes=-1"));
+        assertTrue(StartupResourceProbe.describe(null, last, "provider")
+            .contains("provider_thread_cpu_ms=-1"));
     }
 }
