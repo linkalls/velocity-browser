@@ -102,6 +102,18 @@ class NativePrefetchTest(unittest.TestCase):
         self.assertEqual([(mode, True) for mode in mod.ORDER], calls)
         self.assertIn("Rooted AOSP emulator", report)
 
+    def test_aosp_emulator_script_uses_portable_posix_shell(self):
+        # Regression for run 40442623968: the emulator runner invokes /bin/sh.
+        workflow = (Path(__file__).resolve().parents[4] / ".github" /
+                    "workflows" / "chromium-native-prefetch-experiment.yml")
+        source = workflow.read_text()
+        section = source.split("name: Controlled cold-cache three-way benchmark", 1)[1]
+        section = section.split("name: Results and limitations", 1)[0]
+        self.assertIn("set -eu", section)
+        self.assertNotIn("set -euo pipefail", section)
+        self.assertIn("adb root", section)
+        self.assertIn("--cold-cache", section)
+
     def test_settle_seconds_refuses_invalid_values(self):
         # Avoid marking an unvalidated, not-yet-initialized CEF process as ready.
         for value in ("0", "-1", "61"):

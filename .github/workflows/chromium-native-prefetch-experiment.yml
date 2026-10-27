@@ -135,7 +135,9 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 4
           script: |
-            set -euo pipefail
+            # The emulator action executes this through /bin/sh, not Bash.
+            # Only POSIX shell flags are valid here.
+            set -eu
             adb root
             adb wait-for-device
             test "$(adb shell id -u | tr -d '\r')" = "0"
