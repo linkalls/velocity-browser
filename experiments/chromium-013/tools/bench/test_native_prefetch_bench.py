@@ -31,6 +31,25 @@ class NativePrefetchTest(unittest.TestCase):
         self.assertIn("incomplete, no win claim", result)
 
 
+    def test_report_exposes_pss_and_failure_reason_without_converting_to_zero(self):
+        records = [
+            {"block": 1, "variant": "off", "status": "measured",
+             "activity_median_ms": 1500, "pss_median_kib": 122880},
+            {"block": 2, "variant": "prefetch16", "status": "unavailable",
+             "reason": "Renderer smoke failed", "pss_median_kib": None},
+            {"block": 3, "variant": "prefetch16", "status": "measured",
+             "activity_median_ms": 1200, "pss_median_kib": 143360},
+            {"block": 4, "variant": "off", "status": "measured",
+             "activity_median_ms": 1450, "pss_median_kib": 123904},
+        ]
+        report, medians = mod.summarize(records)
+        self.assertIn("PSS median (MiB)", report)
+        self.assertIn("120.0", report)
+        self.assertIn("140.0", report)
+        self.assertIn("Renderer smoke failed", report)
+        self.assertIn("—", report)
+        self.assertIsNone(medians["prefetch16"])
+
     def test_workflow_cli_accepts_settle_seconds_and_passes_it_to_sampler(self):
         # Regression for workflow run 40353287367: --settle-seconds was rejected
         # before the emulator could execute any of the ABBA measurements.

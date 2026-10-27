@@ -20,8 +20,8 @@ def summarize(records):
         "R8, package identity and disposable CI signing key for both variants.",
         "Only difference is the experimental, bounded async 16-MiB ELF hint.",
         "",
-        "| Block | Mode | Activity median | Provider median | Major faults (per trial) | Status |",
-        "|---:|---|---:|---:|---|---|",
+        "| Block | Mode | Activity median (ms) | Provider median (ms) | PSS median (MiB) | Major faults (per trial) | Status / reason |",
+        "|---:|---|---:|---:|---:|---|---|",
     ]
     for rec in records:
         if rec.get("status") == "measured":
@@ -29,10 +29,17 @@ def summarize(records):
         faults = ",".join(str(x.get("cefrium_startup_resources", {})
                                 .get("provider_major_faults", "—"))
                           for x in rec.get("samples", [])) or "—"
+        pss = rec.get("pss_median_kib")
+        pss_text = f"{pss / 1024:.1f}" if pss is not None else "—"
+        # Keep unavailable experiments visible, including the actual reason.
+        # Never silently turn a failed native renderer into a fast data point.
+        status = rec["status"]
+        if rec.get("reason"):
+            status += ": " + str(rec["reason"]).replace("|", "/").replace("\n", " ")[:180]
         rows.append(f"| {rec['block']} | {rec['variant']} | "
                     f"{rec.get('activity_median_ms', '—')} | "
                     f"{rec.get('provider_median_ms', '—')} | "
-                    f"{faults} | {rec['status']} |")
+                    f"{pss_text} | {faults} | {status} |")
     medians = {}
     for mode in ("off", "prefetch16"):
         medians[mode] = (statistics.median(groups[mode])
