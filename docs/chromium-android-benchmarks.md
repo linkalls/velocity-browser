@@ -412,3 +412,33 @@ and native-library layouts limit generalizability. An apparent win here
 is NOT an automatic production feature or a Brave performance win.
 Replicate under truly cold device conditions and check physical Pixel
 power/memory and Android 17 correctness before considering a default.
+
+## Buffered file-cache prefetch experiment (October 27, 2026)
+
+The completed native mmap-based 16-MiB prefetch ABBA run
+[40431157838](https://github.com/linkalls/velocity-browser/actions/runs/40431157838)
+reported OFF block median 1617 ms and mmap prefetch median 1598.5 ms
+in four two-sample blocks: no meaningful demonstrated benefit. The mmap
+variant's settled PSS was roughly 10 MiB higher, which is undesirable
+on devices with limited RAM. Another four-browser run at the same head
+[40431157775](https://github.com/linkalls/velocity-browser/actions/runs/40431157775)
+was markedly slower than Brave; emulator cache/host noise makes isolated
+startup claims particularly unsafe.
+
+A follow-up experiment keeps exactly the same 48-MiB ELF offset and
+16-MiB maximum hint, but adds a buffered sequential read variant using
+one reusable 64-KiB buffer. This should warm *file* page cache without
+faulting another mapped window into the process, although it can still
+consume I/O bandwidth, CPU time and global page-cache memory. The
+head-to-head workflow now builds three unsigned, x86_64-only disposable
+APK variants (OFF, mmap16, read16), signs all with the same temporary
+key, and measures them on one emulator in the palindromic
+OFF/mmap/read/read/mmap/OFF order. Every block checks native Surface,
+real offline DOM+JavaScript, actual prefetch mode/status and PSS.
+These six blocks still do NOT simulate a fresh installation or prove
+first paint. Reject a faster activity timestamp if renderer
+correctness, memory or physical-device stability regress.
+
+The regular signed Preview retains zero prefetch and its existing
+renderer/OS isolation configuration. No new optimization should be
+promoted on the basis of this single emulator experiment alone.

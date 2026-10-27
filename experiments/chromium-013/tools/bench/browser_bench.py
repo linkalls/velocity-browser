@@ -91,9 +91,11 @@ RESOURCE_FIELDS = ("wall_ms", "cpu_ms", "minor_faults", "major_faults",
 
 
 def parse_native_prefetch(log):
-    modes = re.findall(r"CEFNativePrefetch requested_mib=(\d+)", log)
+    modes = re.findall(
+        r"CEFNativePrefetch requested_mib=(\d+)(?: mode=(mmap|read))?", log)
     statuses = re.findall(r"CEFNativePrefetch status=([a-z_]+)", log)
-    return {"requested_mib": int(modes[-1]) if modes else None,
+    return {"requested_mib": int(modes[-1][0]) if modes else None,
+            "mode": modes[-1][1] or None if modes else None,
             "status": statuses[-1] if statuses else None}
 
 

@@ -7,18 +7,20 @@ from pathlib import Path
 
 from native_packaging_bench import run_block
 
-ORDER = ("off", "prefetch16", "prefetch16", "off")
-EXPECTED = {"off": 0, "prefetch16": 16}
+ORDER = ("off", "prefetch16", "read16", "read16", "prefetch16", "off")
+EXPECTED = {"off": 0, "prefetch16": 16, "read16": 16}
+MODES = {"off": "mmap", "prefetch16": "mmap", "read16": "read"}
 
 
 def summarize(records):
-    groups = {"off": [], "prefetch16": []}
+    groups = {mode: [] for mode in EXPECTED}
     rows = [
-        "# CEF native executable pages: bounded prefetch A/B",
+        "# CEF native executable pages: bounded three-way palindrome experiment",
         "",
         "Same Android emulator, source, native library extraction, fast attach,",
-        "R8, package identity and disposable CI signing key for both variants.",
-        "Only difference is the experimental, bounded async 16-MiB ELF hint.",
+        "R8, package identity and disposable CI signing key for all three variants.",
+        "OFF versus mmap(16 MiB) versus buffered read(16 MiB); every mode",
+        "appears twice in symmetrical order to reduce linear warmup bias.",
         "",
         "| Block | Mode | Activity median (ms) | Provider median (ms) | PSS median (MiB) | Major faults (per trial) | Status / reason |",
         "|---:|---|---:|---:|---:|---|---|",
@@ -41,15 +43,15 @@ def summarize(records):
                     f"{rec.get('provider_median_ms', '—')} | "
                     f"{pss_text} | {faults} | {status} |")
     medians = {}
-    for mode in ("off", "prefetch16"):
+    for mode in EXPECTED:
         medians[mode] = (statistics.median(groups[mode])
                          if len(groups[mode]) == ORDER.count(mode) else None)
         result = medians[mode]
         rows.append(f"- {mode} block median: {result:.1f} ms"
                     if result is not None else f"- {mode}: incomplete, no win claim")
-    rows += ["", "These are *not* necessarily fresh-device cold starts. ",
-             "Linux may ignore load hints and cached pages may be evicted; the",
-             "extra mapping has its own CPU, page-cache and memory costs.",
+    rows += ["", "These are *not* necessarily fresh-device cold starts.",
+             "Linux may evict or reuse pages independently of these hints.",
+             "Both workers use CPU and I/O; mmap may also increase PSS.",
              "This is NOT a user-facing default, Brave win or first paint result.",
              "Never adopt prefetch unless it improves replicated cold-start",
              "medians without damaging Android 16/17 JS rendering, power or PSS.", ""]
@@ -60,6 +62,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--off", required=True, type=Path)
     parser.add_argument("--prefetch16", required=True, type=Path)
+    parser.add_argument("--read16", required=True, type=Path)
     parser.add_argument("--out", default=Path("dist/native-prefetch/results"), type=Path)
     parser.add_argument("--repetitions", type=int, default=2)
     parser.add_argument("--settle-seconds", type=float, default=4.0,
@@ -70,7 +73,8 @@ def main(argv=None):
     if not 1 <= args.settle_seconds <= 60:
         parser.error("settle-seconds must be in [1, 60]")
     args.out.mkdir(parents=True, exist_ok=True)
-    paths = {"off": args.off, "prefetch16": args.prefetch16}
+    paths = {"off": args.off, "prefetch16": args.prefetch16,
+             "read16": args.read16}
     records = []
     for i, mode in enumerate(ORDER, 1):
         try:
@@ -82,11 +86,15 @@ def main(argv=None):
                        != requested for s in rec.get("samples", [])):
                     rec["status"] = "unavailable"
                     rec["reason"] = "Runtime logs do not prove configured prefetch setting"
+                if any(s.get("cefrium_native_prefetch", {}).get("mode")
+                       != MODES[mode] for s in rec.get("samples", [])):
+                    rec["status"] = "unavailable"
+                    rec["reason"] = "Runtime log does not prove the requested prefetch method"
                 if requested and any(
                         s.get("cefrium_native_prefetch", {}).get("status") != "completed"
                         for s in rec.get("samples", [])):
                     rec["status"] = "unavailable"
-                    rec["reason"] = "Kernel prefetch advice did not complete in every sample"
+                    rec["reason"] = "Kernel prefetch window did not complete in every sample"
         except Exception as e:
             rec = {"block": i, "variant": mode, "status": "unavailable",
                    "reason": f"{type(e).__name__}: {e}"}

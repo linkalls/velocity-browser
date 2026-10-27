@@ -21,4 +21,27 @@ public final class NativeCodePrefetchTest {
         assertEquals(0, NativeCodePrefetch.boundedLength(238619136L, 64));
         assertEquals(0, NativeCodePrefetch.boundedLength(238619136L, -1));
     }
+
+    @Test public void boundedBufferedReadHandlesOffsetAndShortFinalChunk()
+            throws Exception {
+        java.nio.file.Path file = java.nio.file.Files.createTempFile("native-elf-test", ".bin");
+        try {
+            java.nio.file.Files.write(file, new byte[] {10, 20, 30, 40, 50});
+            try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(
+                    file, java.nio.file.StandardOpenOption.READ)) {
+                // Consuming a subrange must not seek past the end or grow a buffer.
+                NativeCodePrefetch.readWindow(channel, 1, 3);
+                NativeCodePrefetch.readWindow(channel, 0, 5);
+                NativeCodePrefetch.readWindow(channel, 5, 0);
+                assertThrows(java.io.IOException.class,
+                    () -> NativeCodePrefetch.readWindow(channel, 2, 4));
+                assertThrows(IllegalArgumentException.class,
+                    () -> NativeCodePrefetch.readWindow(channel, -1, 1));
+                assertThrows(IllegalArgumentException.class,
+                    () -> NativeCodePrefetch.readWindow(channel, 0, -1));
+            }
+        } finally {
+            java.nio.file.Files.deleteIfExists(file);
+        }
+    }
 }

@@ -25,6 +25,16 @@ val velocityMmapNative = providers.gradleProperty("velocityMmapNative")
     .orElse("false").get().toBooleanStrict()
 val velocityNativePrefetchMiB = providers.gradleProperty("velocityNativePrefetchMiB")
     .orElse("0").get().toInt()
+// The buffered-read path is opt-in in disposable emulator builds only.
+// Release Preview defaults to zero bytes and never starts either worker.
+val velocityNativePrefetchMode = providers.gradleProperty("velocityNativePrefetchMode")
+    .orElse("mmap").get()
+require(velocityNativePrefetchMode == "mmap" || velocityNativePrefetchMode == "read") {
+    "Unsupported native ELF prefetch mode"
+}
+require(velocityNativePrefetchMode == "mmap" || velocityNativePrefetchMiB > 0) {
+    "Buffered-read mode requires a nonzero, experimental prefetch window"
+}
 require(velocityNativePrefetchMiB in 0..32 &&
         (velocityNativePrefetchMiB == 0 ||
          (chromiumAbi == "x86_64" && velocityMinify && !previewCanSign && !velocityMmapNative))) {
@@ -55,6 +65,7 @@ android {
         ndk { abiFilters += chromiumAbi }
         resValue("bool", "velocity_benchmark_fast_attach", benchmarkFastAttach.toString())
         resValue("integer", "velocity_native_prefetch_mib", velocityNativePrefetchMiB.toString())
+        resValue("string", "velocity_native_prefetch_mode", velocityNativePrefetchMode)
     }
     signingConfigs {
         if (previewCanSign) {

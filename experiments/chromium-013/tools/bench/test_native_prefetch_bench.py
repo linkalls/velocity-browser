@@ -12,8 +12,10 @@ spec.loader.exec_module(mod)
 
 class NativePrefetchTest(unittest.TestCase):
     def test_cross_over_and_bounds(self):
-        self.assertEqual(("off", "prefetch16", "prefetch16", "off"), mod.ORDER)
-        self.assertEqual({"off": 0, "prefetch16": 16}, mod.EXPECTED)
+        self.assertEqual(("off", "prefetch16", "read16", "read16",
+                          "prefetch16", "off"), mod.ORDER)
+        self.assertEqual({"off": 0, "prefetch16": 16, "read16": 16}, mod.EXPECTED)
+        self.assertEqual("read", mod.MODES["read16"])
 
     def test_missing_prefetch_is_not_presented_as_a_win(self):
         records = [
@@ -63,28 +65,55 @@ class NativePrefetchTest(unittest.TestCase):
                 "activity_median_ms": 1200,
                 "samples": [{"cefrium_native_prefetch": {
                     "requested_mib": requested,
+                    "mode": mod.MODES[variant],
                     "status": "completed" if requested else None,
                 }}],
             }
 
         with tempfile.TemporaryDirectory() as temp:
             with mock.patch.object(mod, "run_block", side_effect=fake_block):
-                mod.main(["--off", "off.apk", "--prefetch16", "on.apk",
+                mod.main(["--off", "off.apk", "--prefetch16", "map.apk",
+                          "--read16", "read.apk",
                           "--out", temp, "--repetitions", "1",
                           "--settle-seconds", "5.5"])
-        self.assertEqual(["off", "prefetch16", "prefetch16", "off"],
-                         [x[1] for x in observed])
-        self.assertEqual([5.5] * 4, [x[4] for x in observed])
-        self.assertEqual([1] * 4, [x[3] for x in observed])
+        self.assertEqual(list(mod.ORDER), [x[1] for x in observed])
+        self.assertEqual([5.5] * 6, [x[4] for x in observed])
+        self.assertEqual([1] * 6, [x[3] for x in observed])
 
     def test_settle_seconds_refuses_invalid_values(self):
         # Avoid marking an unvalidated, not-yet-initialized CEF process as ready.
         for value in ("0", "-1", "61"):
             with self.subTest(value=value):
                 with self.assertRaises(SystemExit) as caught:
-                    mod.main(["--off", "off.apk", "--prefetch16", "on.apk",
+                    mod.main(["--off", "off.apk", "--prefetch16", "map.apk",
+                              "--read16", "read.apk",
                               "--settle-seconds", value])
                 self.assertEqual(2, caught.exception.code)
+
+    def test_read_variant_without_runtime_read_log_fails_closed(self):
+        """Reject misleading fast results if the buffered mode did not run."""
+        def fake_block(number, variant, path, directory, repetitions, settle):
+            return {
+                "block": number, "variant": variant, "status": "measured",
+                "activity_median_ms": 500,
+                "samples": [{"cefrium_native_prefetch": {
+                    "requested_mib": mod.EXPECTED[variant],
+                    # Pretend the APK incorrectly kept the mmap mode.
+                    "mode": "mmap",
+                    "status": "completed" if variant != "off" else None,
+                }}],
+            }
+
+        with tempfile.TemporaryDirectory() as temp:
+            with mock.patch.object(mod, "run_block", side_effect=fake_block):
+                with self.assertRaises(SystemExit):
+                    mod.main(["--off", "off.apk", "--prefetch16", "map.apk",
+                              "--read16", "read.apk", "--out", temp,
+                              "--repetitions", "1"])
+            result = (Path(temp) / "results.json").read_text()
+            self.assertIn("Runtime log does not prove the requested prefetch method",
+                          result)
+            self.assertIn('"status": "unavailable"', result)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-name: Chromium CEF native page-cache prefetch A-B experiment
+name: Chromium CEF native page-cache prefetch three-way experiment
 
 on:
   workflow_dispatch:
@@ -10,8 +10,12 @@ on:
     paths:
       - '.github/workflows/chromium-native-prefetch-experiment.yml'
       - 'experiments/chromium-013/tools/bench/native_prefetch_bench.py'
+      - 'experiments/chromium-013/tools/bench/browser_bench.py'
       - 'experiments/chromium-013/tools/bench/test_native_prefetch_bench.py'
       - 'experiments/chromium-013/app/src/main/java/dev/velocity/chromium/NativeCodePrefetch.java'
+      - 'experiments/chromium-013/app/src/main/java/dev/velocity/chromium/ChromiumDiagnosticApplication.java'
+      - 'experiments/chromium-013/app/src/test/java/dev/velocity/chromium/NativeCodePrefetchTest.java'
+      - 'experiments/chromium-013/app/build.gradle.kts'
 
 permissions:
   contents: read
@@ -33,31 +37,40 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6.4.0
         with:
           gradle-version: '9.7.1'
-      - name: Unit tests
+      - name: Python benchmark harness tests
         run: python3 -m unittest discover -s experiments/chromium-013/tools/bench -p 'test_*.py' -v
-      - name: Build both APKs with identical ABI R8 and startup options
+      - name: Android Java unit tests
+        working-directory: experiments/chromium-013
+        run: gradle --no-daemon --max-workers=2 -PchromiumAbi=x86_64 :app:testDebugUnitTest
+      - name: Build three APKs with identical ABI R8 and startup options
         shell: bash
         working-directory: experiments/chromium-013
         run: |
           set -euo pipefail
           mkdir -p ../../dist/native-prefetch
-          for variant in off prefetch16; do
+          for variant in off prefetch16 read16; do
             amount=0
-            if [[ "$variant" == prefetch16 ]]; then amount=16; fi
+            mode=mmap
+            if [[ "$variant" != off ]]; then amount=16; fi
+            if [[ "$variant" == read16 ]]; then mode=read; fi
             gradle --no-daemon --max-workers=2 \
               -PchromiumAbi=x86_64 -PvelocityMinify=true \
-              -PvelocityBenchmarkFastAttach=true -PvelocityNativePrefetchMiB="$amount" \
+              -PvelocityBenchmarkFastAttach=true \
+              -PvelocityNativePrefetchMiB="$amount" \
+              -PvelocityNativePrefetchMode="$mode" \
               :app:assembleRelease
             original='app/build/outputs/apk/release/app-release-unsigned.apk'
             test -s "$original"
             cp "$original" "../../dist/native-prefetch/$variant-unsigned.apk"
             sha256sum "$original" | cut -d' ' -f1 > "../../dist/native-prefetch/$variant-unsigned.sha256"
           done
-          if cmp -s ../../dist/native-prefetch/off-unsigned.apk ../../dist/native-prefetch/prefetch16-unsigned.apk; then
-            echo 'Native prefetch resource flag did not change the APK; experiment invalid' >&2
+          if cmp -s ../../dist/native-prefetch/off-unsigned.apk ../../dist/native-prefetch/prefetch16-unsigned.apk ||
+             cmp -s ../../dist/native-prefetch/off-unsigned.apk ../../dist/native-prefetch/read16-unsigned.apk ||
+             cmp -s ../../dist/native-prefetch/prefetch16-unsigned.apk ../../dist/native-prefetch/read16-unsigned.apk; then
+            echo 'Prefetch variants produced identical APKs; experiment invalid' >&2
             exit 1
           fi
-      - name: Sign both variants with the same disposable CI key
+      - name: Sign all three variants with the same disposable CI key
         shell: bash
         run: |
           set -euo pipefail
@@ -67,7 +80,7 @@ jobs:
             -dname 'CN=Velocity Native Prefetch Experiment ONLY,O=CI,C=JP' \
             -noprompt >/dev/null 2>&1
           sdk="$ANDROID_HOME/build-tools/36.0.0"
-          for variant in off prefetch16; do
+          for variant in off prefetch16 read16; do
             input="dist/native-prefetch/$variant-unsigned.apk"
             aligned="$RUNNER_TEMP/native-$variant-aligned.apk"
             output="dist/native-prefetch/$variant.apk"
@@ -80,11 +93,11 @@ jobs:
             "$sdk/zipalign" -c -P 16 4 "$output"
             sha256sum "$output"
           done
-      - name: Verify both variants retain legacy compressed native packaging
+      - name: Verify all three variants retain legacy compressed native packaging
         run: |
           python3 - <<'PYZIP'
           import zipfile
-          for mode in ('off', 'prefetch16'):
+          for mode in ('off', 'prefetch16', 'read16'):
               with zipfile.ZipFile(f'dist/native-prefetch/{mode}.apk') as a:
                   elf = a.getinfo('lib/x86_64/libcef.so')
                   if elf.compress_type != zipfile.ZIP_DEFLATED:
@@ -96,7 +109,7 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: A-B test bounded prefetch on Android 16 emulator
+      - name: Palindromic three-way prefetch test on Android 16 emulator
         uses: reactivecircus/android-emulator-runner@v2.38.0
         with:
           api-level: 36
@@ -109,6 +122,7 @@ jobs:
             python3 experiments/chromium-013/tools/bench/native_prefetch_bench.py
             --off dist/native-prefetch/off.apk
             --prefetch16 dist/native-prefetch/prefetch16.apk
+            --read16 dist/native-prefetch/read16.apk
             --out dist/native-prefetch/results
             --repetitions 2 --settle-seconds 4
       - name: Results and limitations
