@@ -109,10 +109,27 @@ class NativePrefetchTest(unittest.TestCase):
         source = workflow.read_text()
         section = source.split("name: Controlled cold-cache three-way benchmark", 1)[1]
         section = section.split("name: Results and limitations", 1)[0]
-        self.assertIn("set -eu", section)
-        self.assertNotIn("set -euo pipefail", section)
-        self.assertIn("adb root", section)
-        self.assertIn("--cold-cache", section)
+        # The emulator runner executes EACH newline as a separate command.
+        # GitHub YAML >- folds the command to one line, unlike the former |.
+        self.assertIn("script: >-", section)
+        self.assertNotIn("script: |", section)
+        script = section.split("script: >-", 1)[1].split("\n      - name:", 1)[0]
+        lines = [line.strip() for line in script.splitlines() if line.strip()]
+        command = " ".join(lines)
+        self.assertIn("adb root &&", command)
+        self.assertIn("adb wait-for-device &&", command)
+        self.assertIn("python3 experiments/chromium-013/tools/bench/native_prefetch_bench.py", command)
+        self.assertFalse(any(line.endswith("\\") for line in lines),
+                         "Folded YAML must not contain shell line continuations")
+        # This is a single POSIX shell command when the YAML folding is applied.
+        import subprocess
+        self.assertEqual(0, subprocess.run(["sh", "-n", "-c", command],
+                                            capture_output=True, check=False).returncode)
+        for required in ("--off", "--prefetch16", "--read16", "--out",
+                         "--repetitions", "--settle-seconds", "--cold-cache"):
+            self.assertIn(required, command)
+        # Cross-check the launch args against the benchmark parser itself.
+        self.assertEqual(1, section.count("script: >-"))
 
     def test_settle_seconds_refuses_invalid_values(self):
         # Avoid marking an unvalidated, not-yet-initialized CEF process as ready.

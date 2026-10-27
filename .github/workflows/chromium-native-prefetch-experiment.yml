@@ -134,19 +134,18 @@ jobs:
           disk-size: 8G
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 4
-          script: |
-            # The emulator action executes this through /bin/sh, not Bash.
-            # Only POSIX shell flags are valid here.
-            set -eu
-            adb root
-            adb wait-for-device
-            test "$(adb shell id -u | tr -d '\r')" = "0"
-            python3 experiments/chromium-013/tools/bench/native_prefetch_bench.py \
-              --off dist/native-prefetch/off.apk \
-              --prefetch16 dist/native-prefetch/prefetch16.apk \
-              --read16 dist/native-prefetch/read16.apk \
-              --out dist/native-prefetch/cold-results \
-              --repetitions 2 --settle-seconds 4 --cold-cache
+          # The runner executes each literal script line independently with /bin/sh.
+          # Fold into ONE command so required Python CLI arguments are not lost.
+          script: >-
+            adb root &&
+            adb wait-for-device &&
+            test "$(adb shell id -u | tr -d '\r')" = "0" &&
+            python3 experiments/chromium-013/tools/bench/native_prefetch_bench.py
+            --off dist/native-prefetch/off.apk
+            --prefetch16 dist/native-prefetch/prefetch16.apk
+            --read16 dist/native-prefetch/read16.apk
+            --out dist/native-prefetch/cold-results
+            --repetitions 2 --settle-seconds 4 --cold-cache
       - name: Results and limitations
         if: always()
         shell: bash
