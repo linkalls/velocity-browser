@@ -125,15 +125,37 @@ jobs:
             --read16 dist/native-prefetch/read16.apk
             --out dist/native-prefetch/results
             --repetitions 2 --settle-seconds 4
+      - name: Controlled cold-cache three-way benchmark (rooted AOSP emulator)
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 36
+          target: default
+          arch: x86_64
+          disk-size: 8G
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 4
+          script: |
+            set -euo pipefail
+            adb root
+            adb wait-for-device
+            test "$(adb shell id -u | tr -d '\r')" = "0"
+            python3 experiments/chromium-013/tools/bench/native_prefetch_bench.py \
+              --off dist/native-prefetch/off.apk \
+              --prefetch16 dist/native-prefetch/prefetch16.apk \
+              --read16 dist/native-prefetch/read16.apk \
+              --out dist/native-prefetch/cold-results \
+              --repetitions 2 --settle-seconds 4 --cold-cache
       - name: Results and limitations
         if: always()
         shell: bash
         run: |
-          if [[ -f dist/native-prefetch/results/summary.md ]]; then
-            cat dist/native-prefetch/results/summary.md >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo 'No validated prefetch trial results.' >> "$GITHUB_STEP_SUMMARY"
-          fi
+          for directory in results cold-results; do
+            if [[ -f "dist/native-prefetch/$directory/summary.md" ]]; then
+              cat "dist/native-prefetch/$directory/summary.md" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "No validated $directory measurements." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
       - name: Upload lightweight evidence, not unsigned APKs
         if: always()
         uses: actions/upload-artifact@v7.0.2
@@ -141,5 +163,6 @@ jobs:
           name: Cefrium-Native-ELF-Prefetch-ABBA-Results
           path: |
             dist/native-prefetch/results/**
+            dist/native-prefetch/cold-results/**
             dist/native-prefetch/*-unsigned.sha256
           if-no-files-found: warn

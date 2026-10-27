@@ -142,12 +142,31 @@ def installed_version(package):
     return found.group(1) if found else "unknown"
 
 
-def sample_browser(package, launcher, repetitions, settle_seconds, output_dir=None, name=None):
+def drop_kernel_page_cache():
+    """Reset file page cache on a disposable *rooted emulator only*.
+
+    Play Store and physical production devices cannot perform this. If a
+    system image refuses the operation, fail the cold-cache measurement
+    instead of accidentally reporting warm-cache starts as cold starts.
+    """
+    rc, output = run_adb("shell", "sh", "-c",
+                         "sync && echo 3 > /proc/sys/vm/drop_caches")
+    return rc == 0, output[-500:]
+
+
+def sample_browser(package, launcher, repetitions, settle_seconds, output_dir=None,
+                   name=None, cold_cache=False):
     samples = []
     for idx in range(repetitions):
         run_adb("shell", "am", "force-stop", package)
         if package == BROWSERS["Velocity"]:
             run_adb("logcat", "-c")
+        if cold_cache:
+            ok, diagnostic = drop_kernel_page_cache()
+            if not ok:
+                return {"status": "unavailable", "samples": samples,
+                        "reason": "Rooted emulator could not drop kernel page cache",
+                        "diagnostic": diagnostic}
         time.sleep(1.0)
         rc, launch = run_adb("shell", "am", "start", "-W", "-n", launcher)
         launch_ms = parse_launch(launch, package) if rc == 0 else None
@@ -159,7 +178,8 @@ def sample_browser(package, launcher, repetitions, settle_seconds, output_dir=No
         pss = parse_pss(meminfo)
         entry = {"iteration": idx + 1, "activity_launch_ms": launch_ms,
                  "launch_state": parse_launch_state(launch),
-                 "pss_kib_after_settle": pss}
+                 "pss_kib_after_settle": pss,
+                 "kernel_page_cache_dropped": cold_cache}
         if package == BROWSERS["Velocity"]:
             _, log = run_adb("logcat", "-d", "-s", "VelocityCefStartup:I", "*:S")
             entry["cefrium_startup_phases_ms"] = parse_velocity_timing(log)

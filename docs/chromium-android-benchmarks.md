@@ -442,3 +442,38 @@ correctness, memory or physical-device stability regress.
 The regular signed Preview retains zero prefetch and its existing
 renderer/OS isolation configuration. No new optimization should be
 promoted on the basis of this single emulator experiment alone.
+
+## Controlled cold-file-cache validation
+
+At head fd00dde, the six-block three-way emulator run
+[40439065961](https://github.com/linkalls/velocity-browser/actions/runs/40439065961)
+reported OFF 2074.5 ms, mmap16 2145.5 ms, and read16 1919.0 ms for
+the medians of their two block medians. This nominal 7.5% improvement
+for buffered reads is **not causally established**: OFF's first block
+was 3283.5 ms, but its last block was only 865.5 ms, a strikingly
+strong chronological cache warming trend. Settled PSS was higher for
+both prefetch modes. The same-head ordinary four-browser comparison
+[40439065976](https://github.com/linkalls/velocity-browser/actions/runs/40439065976)
+was Velocity 4099.5 ms versus Brave 1591.5 ms, so there is no Brave
+win or reliably met 1400-ms launch target.
+
+A separate second phase now runs the exact same signed experimental
+APKs and offline native-Surface/DOM+JS gates under a **rooted AOSP
+Android 16 emulator**, not the Play Store signed image used by the
+ordinary four-browser comparison. Before each measured launch it
+force-stops the package, executes sync and requires successful
+drop_caches=3 on the emulator kernel. Denied root access, a read-only
+kernel setting, or any failed cache reset fails the controlled result;
+it never silently substitutes a warm trial. The warmed and
+controlled-cold results have separate artifacts and are not compared
+as equivalent hardware configurations. This operation is **never**
+attempted in production, the user's Pixel, or ordinary CI browser
+comparison. AOSP image choice follows Android's official distinction
+between release-signed Play Store images and rootable development
+images.
+
+Even with dropped Linux page cache, the AOSP experiment is not a
+factory-reset or real-device cold start: app installation, ART
+compilation, global OS state and temperature are uncontrolled. Use
+repeated physical-device validation before promoting any performance
+optimization.

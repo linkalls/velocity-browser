@@ -103,7 +103,8 @@ def synthetic_js_smoke(timeout_seconds=22):
     return False, "No DOM+JavaScript completion: " + log[-1600:]
 
 
-def run_block(number, variant, path, directory, repetitions, settle):
+def run_block(number, variant, path, directory, repetitions, settle,
+              cold_cache=False):
     result = {"block": number, "variant": variant, "status": "unavailable"}
     rc, output = bench.run_adb("install", "-r", str(path), timeout=180)
     (directory / f"block-{number}-{variant}-install.txt").write_text(output)
@@ -126,12 +127,14 @@ def run_block(number, variant, path, directory, repetitions, settle):
     time.sleep(2)
     bench.run_adb("shell", "am", "force-stop", PACKAGE)
 
-    readings = bench.sample_browser(PACKAGE, launcher, repetitions, settle)
+    readings = bench.sample_browser(PACKAGE, launcher, repetitions, settle,
+                                    cold_cache=cold_cache)
     result["samples"] = readings.get("samples", [])
     if readings.get("status") != "measured" or len(result["samples"]) != repetitions:
         result["reason"] = readings.get("reason", "Incomplete Activity trials")
         return result
-    if not all(x.get("cefrium_surface_created")
+    if not all((not cold_cache or x.get("kernel_page_cache_dropped"))
+               and x.get("cefrium_surface_created")
                and x.get("process_alive_after_settle")
                and x.get("cefrium_start_strategy") == "attach"
                and x.get("cefrium_startup_phases_ms")

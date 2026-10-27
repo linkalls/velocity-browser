@@ -12,11 +12,14 @@ EXPECTED = {"off": 0, "prefetch16": 16, "read16": 16}
 MODES = {"off": "mmap", "prefetch16": "mmap", "read16": "read"}
 
 
-def summarize(records):
+def summarize(records, cold_cache=False):
     groups = {mode: [] for mode in EXPECTED}
     rows = [
         "# CEF native executable pages: bounded three-way palindrome experiment",
         "",
+        ("Rooted AOSP emulator: sync + drop_caches=3 before EVERY measured"
+         " launch." if cold_cache else
+         "No kernel cache reset; results can be affected by ELF cache warming."),
         "Same Android emulator, source, native library extraction, fast attach,",
         "R8, package identity and disposable CI signing key for all three variants.",
         "OFF versus mmap(16 MiB) versus buffered read(16 MiB); every mode",
@@ -65,6 +68,8 @@ def main(argv=None):
     parser.add_argument("--read16", required=True, type=Path)
     parser.add_argument("--out", default=Path("dist/native-prefetch/results"), type=Path)
     parser.add_argument("--repetitions", type=int, default=2)
+    parser.add_argument("--cold-cache", action="store_true",
+                        help="Require successful kernel page cache reset per launch on rooted AOSP emulator")
     parser.add_argument("--settle-seconds", type=float, default=4.0,
                         help="Time to allow native CEF and memory to settle before each PSS reading")
     args = parser.parse_args(argv)
@@ -78,8 +83,12 @@ def main(argv=None):
     records = []
     for i, mode in enumerate(ORDER, 1):
         try:
-            rec = run_block(i, mode, paths[mode], args.out, args.repetitions,
-                            args.settle_seconds)
+            if args.cold_cache:
+                rec = run_block(i, mode, paths[mode], args.out, args.repetitions,
+                                args.settle_seconds, cold_cache=True)
+            else:
+                rec = run_block(i, mode, paths[mode], args.out, args.repetitions,
+                                args.settle_seconds)
             if rec.get("status") == "measured":
                 requested = EXPECTED[mode]
                 if any(s.get("cefrium_native_prefetch", {}).get("requested_mib")
@@ -102,7 +111,7 @@ def main(argv=None):
         print("prefetch block", i, mode, rec["status"],
               rec.get("activity_median_ms"), flush=True)
         (args.out / "results.json").write_text(json.dumps(records, indent=2) + "\n")
-    summary, medians = summarize(records)
+    summary, medians = summarize(records, cold_cache=args.cold_cache)
     (args.out / "summary.md").write_text(summary)
     (args.out / "medians.json").write_text(json.dumps(medians, indent=2) + "\n")
     print(summary)

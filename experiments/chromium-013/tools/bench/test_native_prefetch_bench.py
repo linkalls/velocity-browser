@@ -80,6 +80,28 @@ class NativePrefetchTest(unittest.TestCase):
         self.assertEqual([5.5] * 6, [x[4] for x in observed])
         self.assertEqual([1] * 6, [x[3] for x in observed])
 
+    def test_cold_cache_flag_reaches_every_real_block_and_is_labeled(self):
+        calls = []
+
+        def fake_block(number, variant, path, directory, repetitions, settle,
+                       cold_cache=False):
+            calls.append((variant, cold_cache))
+            return {"block": number, "variant": variant, "status": "measured",
+                    "activity_median_ms": 2000,
+                    "samples": [{"cefrium_native_prefetch": {
+                        "requested_mib": mod.EXPECTED[variant],
+                        "mode": mod.MODES[variant],
+                        "status": "completed" if variant != "off" else None}}]}
+
+        with tempfile.TemporaryDirectory() as temp:
+            with mock.patch.object(mod, "run_block", side_effect=fake_block):
+                mod.main(["--off", "off.apk", "--prefetch16", "map.apk",
+                          "--read16", "read.apk", "--out", temp,
+                          "--repetitions", "1", "--cold-cache"])
+            report = (Path(temp) / "summary.md").read_text()
+        self.assertEqual([(mode, True) for mode in mod.ORDER], calls)
+        self.assertIn("Rooted AOSP emulator", report)
+
     def test_settle_seconds_refuses_invalid_values(self):
         # Avoid marking an unvalidated, not-yet-initialized CEF process as ready.
         for value in ("0", "-1", "61"):

@@ -1,6 +1,7 @@
 import importlib.util
 import pathlib
 import unittest
+from unittest import mock
 
 path = pathlib.Path(__file__).with_name('browser_bench.py')
 spec = importlib.util.spec_from_file_location('browser_bench', path)
@@ -47,6 +48,26 @@ class ParseTest(unittest.TestCase):
                               "CEFNativePrefetch requested_mib=16 mode=read\n"
                               "CEFNativePrefetch status=completed"))
         self.assertIsNone(bench.parse_native_prefetch("unrelated")["requested_mib"])
+
+    def test_cold_cache_measurement_refuses_denied_root_operation(self):
+        # An emulator without root cannot silently fall back to a warm trial.
+        with mock.patch.object(bench, "run_adb", return_value=(0, "")):
+            with mock.patch.object(bench, "drop_kernel_page_cache",
+                                   return_value=(False, "Read-only file system")):
+                result = bench.sample_browser("dev.velocity.browser.chromium013",
+                                              "dev.velocity.browser.chromium013/.Main",
+                                              2, 1.0, cold_cache=True)
+        self.assertEqual("unavailable", result["status"])
+        self.assertEqual([], result["samples"])
+        self.assertIn("could not drop", result["reason"])
+        self.assertIn("Read-only", result["diagnostic"])
+
+    def test_cold_cache_operation_never_claims_success_when_shell_denies_it(self):
+        with mock.patch.object(bench, "run_adb",
+                               return_value=(1, "Permission denied")):
+            ok, output = bench.drop_kernel_page_cache()
+        self.assertFalse(ok)
+        self.assertIn("Permission denied", output)
 
     def test_startup_resource_parsing_with_unknown_procfs_values(self):
         fields = bench.RESOURCE_FIELDS
