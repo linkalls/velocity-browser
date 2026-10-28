@@ -383,7 +383,7 @@ public final class ChromiumTestActivity extends Activity {
                         view.removeOnAttachStateChangeListener(this);
                         if (!destroyed) startChromium();
                     }
-    
+
                     @Override public void onViewDetachedFromWindow(View view) {}
                 });
             }
