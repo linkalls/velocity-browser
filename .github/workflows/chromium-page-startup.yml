@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/chromium-page-startup.yml'
       - 'experiments/chromium-013/tools/bench/page_startup_bench.py'
+      - 'experiments/chromium-013/app/**'
 permissions:
   contents: read
 jobs:
