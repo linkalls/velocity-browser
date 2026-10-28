@@ -276,6 +276,7 @@ public final class ChromiumTestActivity extends Activity {
         address.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         address.setImeOptions(EditorInfo.IME_ACTION_GO | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
         address.setOnEditorActionListener((view, actionId, event) -> {
+            if (!view.hasFocus()) return false;
             if (actionId == EditorInfo.IME_ACTION_GO ||
                 event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER) {
                 loadAddress();
@@ -296,10 +297,10 @@ public final class ChromiumTestActivity extends Activity {
         footer.addView(toolbarActions, toolbarLp);
 
         back = makeButton("‹", "前のページへ戻る", () -> {
-            if (engine != null && engine.canGoBack()) engine.goBack();
+            if (engine != null && !tabRegistry.isStartupHomeCurrent() && engine.canGoBack()) engine.goBack();
         });
         forward = makeButton("›", "次のページへ進む", () -> {
-            if (engine != null) engine.goForward();
+            if (engine != null && !tabRegistry.isStartupHomeCurrent()) engine.goForward();
         });
         Button reload = makeButton("↻", "ページを再読み込み", () -> {
             if (engine != null) engine.reload();
@@ -393,6 +394,17 @@ public final class ChromiumTestActivity extends Activity {
         }
     }
 
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        if (Intent.ACTION_MAIN.equals(intent.getAction())
+                && intent.hasCategory(Intent.CATEGORY_LAUNCHER) && chromiumReady) {
+            tabRegistry.selectStartupHome();
+            activateCurrentTab();
+            saveRegularTabs();
+        }
+    }
+
     /** A native home never fetches remote data during cold start. */
     private void buildHome(FrameLayout parent) {
         FrameLayout overlay = new FrameLayout(this);
@@ -453,13 +465,8 @@ public final class ChromiumTestActivity extends Activity {
     }
 
     private void openHomeLink(int index) {
-        if (index < 0 || index >= SITE_URLS.length || engine == null) return;
-        TabRegistry.Tab current = tabRegistry.current();
-        if (current == null) return;
-        current.url = SITE_URLS[index];
-        updateHomeState();
-        engine.loadUrl(current.url);
-        saveRegularTabs();
+        if (index < 0 || index >= SITE_URLS.length) return;
+        navigateCurrentTab(SITE_URLS[index]);
     }
 
     private void updateHomeState() {
@@ -593,14 +600,17 @@ public final class ChromiumTestActivity extends Activity {
             Trace.beginSection("Velocity CEF create Surface");
             try {
                 restoreRegularTabs();
-                // Do not fetch a remote homepage at cold startup.
-                if (tabRegistry.current() == null) tabRegistry.add("about:blank", false);
+                // Restoring metadata must not automatically navigate the last
+                // selected Google/search/other remote page when opening the app.
+                tabRegistry.selectStartupHome();
                 String benchmarkUrl = getIntent() == null ? null
                     : getIntent().getStringExtra("velocity_benchmark_url");
                 if (getResources().getBoolean(R.bool.velocity_page_benchmark)
                         && benchmarkUrl != null
                         && (PageTimingProbe.allows(benchmarkUrl) || benchmarkUrl.matches("http://127\\.0\\.0\\.1:8765/fixture\\?trial=[a-zA-Z0-9_-]{1,80}"))) {
-                    tabRegistry.current().url = benchmarkUrl;
+                    if (tabRegistry.add(benchmarkUrl, false) == null) {
+                        throw new IllegalStateException("No room for controlled benchmark page");
+                    }
                 }
                 activateCurrentTab();
             } finally {
@@ -764,12 +774,12 @@ public final class ChromiumTestActivity extends Activity {
             if (normal == null) return;
             int selected = state.optInt("selected", 0);
             String selectedId = null;
-            for (int i = 0; i < normal.length() && i < TabRegistry.MAX_TABS; i++) {
+            for (int i = 0; i < normal.length() && i < TabRegistry.MAX_PERSISTED_TABS; i++) {
                 JSONObject item = normal.optJSONObject(i);
                 if (item == null) continue;
                 String url = item.optString("url", "");
                 if (!isPersistable(url)) continue;
-                TabRegistry.Tab tab = tabRegistry.add(url, false);
+                TabRegistry.Tab tab = tabRegistry.restoreRegularTab(url, item.optBoolean("home", false));
                 if (tab == null) break;
                 tab.title = item.optString("title", "");
                 if (i == selected) selectedId = tab.id;
@@ -809,6 +819,7 @@ public final class ChromiumTestActivity extends Activity {
                 if (tab == current) selected = regularIndex;
                 normal.put(new JSONObject()
                     .put("url", tab.url)
+                    .put("home", tab.startupHome)
                     .put("title", tab.title == null ? "" : tab.title.substring(
                         0, Math.min(tab.title.length(), 120))));
                 regularIndex++;
@@ -991,8 +1002,8 @@ public final class ChromiumTestActivity extends Activity {
         if (back == null || forward == null) return;
         TabRegistry.Tab tab = tabRegistry.current();
         boolean ready = tab != null && engine != null;
-        back.setEnabled(ready && tab.canGoBack);
-        forward.setEnabled(ready && tab.canGoForward);
+        back.setEnabled(ready && !tab.startupHome && tab.canGoBack);
+        forward.setEnabled(ready && !tab.startupHome && tab.canGoForward);
         if (tabsButton != null) tabsButton.setText("□ " + tabRegistry.all().size());
         if (tab != null) {
             updateHomeState();
@@ -1003,20 +1014,37 @@ public final class ChromiumTestActivity extends Activity {
         }
     }
 
+    private boolean navigateCurrentTab(String url) {
+        TabRegistry.Tab current = tabRegistry.current();
+        if (engine == null || current == null) return false;
+        if (current.startupHome) {
+            // Keep a reusable offline home and every saved page. Navigation from
+            // home is a new user tab, never an automatic restored-page load.
+            if (tabRegistry.add(url, false) == null) {
+                Toast.makeText(this, "タブがいっぱいです。不要なタブを閉じてから開いてください。",
+                    Toast.LENGTH_LONG).show();
+                return false;
+            }
+            activateCurrentTab();
+        } else {
+            current.url = url;
+            updateHomeState();
+            engine.loadUrl(url);
+        }
+        saveRegularTabs();
+        return true;
+    }
+
     private void loadAddress() {
-        if (engine == null) return;
         String parsed = NavigationPolicy.parse(address.getText().toString());
         if (parsed == null) {
             Toast.makeText(this, "HTTP(S) URLか検索語を入力", Toast.LENGTH_LONG).show();
             return;
         }
+        if (!navigateCurrentTab(parsed)) return;
         hideKeyboard();
         address.clearFocus();
-        TabRegistry.Tab current = tabRegistry.current();
-        if (current != null) current.url = parsed;
-        updateHomeState();
-        engine.loadUrl(parsed);
-        saveRegularTabs();
+        updateNavigation();
     }
 
     private void showSites() {
@@ -1024,14 +1052,7 @@ public final class ChromiumTestActivity extends Activity {
             .setTitle("同一サイトでスクロール比較")
             .setItems(SITE_NAMES, (dialog, item) -> {
                 address.clearFocus();
-                address.setText(SITE_URLS[item]);
-                if (engine != null) {
-                    TabRegistry.Tab current = tabRegistry.current();
-                    if (current != null) current.url = SITE_URLS[item];
-                    updateHomeState();
-                    engine.loadUrl(SITE_URLS[item]);
-                    saveRegularTabs();
-                }
+                navigateCurrentTab(SITE_URLS[item]);
             })
             .setNegativeButton("閉じる", null).show();
     }
@@ -1403,7 +1424,7 @@ public final class ChromiumTestActivity extends Activity {
         if (address.hasFocus()) {
             hideKeyboard();
             address.clearFocus();
-        } else if (engine != null && engine.canGoBack()) {
+        } else if (engine != null && !tabRegistry.isStartupHomeCurrent() && engine.canGoBack()) {
             engine.goBack();
         } else super.onBackPressed();
     }

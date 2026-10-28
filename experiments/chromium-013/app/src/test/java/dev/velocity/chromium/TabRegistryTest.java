@@ -51,4 +51,58 @@ public final class TabRegistryTest {
         assertNull(model.add("about:blank", true));
         assertSame(current, model.current());
     }
+    @Test public void startupKeepsGoogleSavedButSelectsOfflineHome() {
+        TabRegistry model = new TabRegistry();
+        TabRegistry.Tab google = model.restoreRegularTab("https://www.google.com/");
+        TabRegistry.Tab home = model.selectStartupHome();
+        assertEquals("about:blank", model.current().url);
+        assertSame(google, model.find(google.id));
+        assertEquals("https://www.google.com/", google.url);
+        assertFalse(home.privateMode);
+        assertSame(home, model.selectStartupHome());
+        assertEquals(2, model.all().size());
+        assertTrue(model.select(google.id));
+        assertEquals("https://www.google.com/", model.current().url);
+    }
+
+    @Test public void fullSavedSessionIsNotDiscardedForStartupHome() {
+        TabRegistry model = new TabRegistry();
+        for (int i = 0; i < TabRegistry.MAX_TABS; i++) {
+            assertNotNull(model.restoreRegularTab("https://saved.example/" + i));
+        }
+        model.selectStartupHome();
+        assertEquals(TabRegistry.MAX_PERSISTED_TABS, model.all().size());
+        assertTrue(model.isStartupHomeCurrent());
+        TabRegistry restored = new TabRegistry();
+        for (TabRegistry.Tab tab : model.regularTabs()) {
+            assertNotNull(restored.restoreRegularTab(tab.url, tab.startupHome));
+        }
+        restored.selectStartupHome();
+        assertEquals(TabRegistry.MAX_PERSISTED_TABS, restored.all().size());
+        assertEquals("about:blank", restored.current().url);
+        long saved = restored.regularTabs().stream().filter(t -> t.url.startsWith("https://saved.example/")).count();
+        assertEquals(TabRegistry.MAX_TABS, saved);
+        TabRegistry.Tab victim = restored.all().get(1);
+        restored.close(victim.id);
+        assertNotNull(restored.add("https://new.example/", false));
+    }
+
+    @Test public void privateBlankIsNotSelectedAsRegularStartupHome() {
+        TabRegistry model = new TabRegistry();
+        TabRegistry.Tab secret = model.add("about:blank", true);
+        assertNotSame(secret, model.selectStartupHome());
+        assertFalse(model.current().privateMode);
+        assertEquals(1, model.regularTabs().size());
+    }
+
+    @Test public void reservedHomeAllowsTwelveUserTabsAndRemainsReusable() {
+        TabRegistry model = new TabRegistry();
+        TabRegistry.Tab home = model.selectStartupHome();
+        for (int i = 0; i < TabRegistry.MAX_TABS; i++) {
+            assertNotNull(model.add("https://saved.example/" + i, false));
+        }
+        assertNull(model.add("https://overflow.example/", false));
+        assertSame(home, model.selectStartupHome());
+        assertTrue(model.isStartupHomeCurrent());
+    }
 }
