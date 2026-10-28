@@ -34,8 +34,17 @@ public final class ProbeActivity extends Activity {
             // Receive the loss/duck callback rather than having Android silently
             // duck the player. The test observes ownership; it does not pause.
             .setWillPauseWhenDucked(true)
-            .setOnAudioFocusChangeListener(change ->
-                Log.i("VelocityAudioProbe", role + " focus_change=" + change)).build();
+            .setOnAudioFocusChangeListener(new AudioManager.OnAudioFocusChangeListener() {
+                @Override public void onAudioFocusChange(int change) {
+                    Log.i("VelocityAudioProbe", role + " focus_change=" + change);
+                }
+                @Override public String toString() {
+                    // AudioManager uses listener.toString() in its focus client ID.
+                    // Forked fixture apps can otherwise produce identical identity
+                    // hashes and overwrite each other's focus instead of ducking.
+                    return getPackageName() + ":" + role + ":" + android.os.Process.myPid();
+                }
+            }).build();
         int result = manager.requestAudioFocus(focus);
         if (result != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
             Log.e("VelocityAudioProbe", role + " focus_request_failed=" + result);

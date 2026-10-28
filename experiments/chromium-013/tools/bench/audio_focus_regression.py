@@ -78,6 +78,7 @@ def run_case(name, apk, out):
     time.sleep(2)
     control = collect()
     (dest / 'positive-control-logcat.txt').write_text(control)
+    (dest / 'positive-control-audio-service.txt').write_text(adb('shell', 'dumpsys', 'audio'))
     result['positive_control_detected_loss'] = bool(audio_losses(control))
     if 'ducker ready focus=granted' not in control or not result['positive_control_detected_loss']:
         raise RuntimeError('MAY_DUCK positive control failed; no trustworthy focus result')
