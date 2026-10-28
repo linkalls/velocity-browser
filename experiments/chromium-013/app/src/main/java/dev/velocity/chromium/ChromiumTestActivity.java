@@ -471,7 +471,7 @@ public final class ChromiumTestActivity extends Activity {
             throw new IllegalStateException("Cefrium native initialization failed");
         }
         if (!CommandLine.isInitialized()) CommandLine.init(null);
-        // Cefrium 0.14 has native Android 17 renderer entrypoints. Do not
+        // Cefrium 0.16 retains native Android 17 renderer entrypoints. Do not
         // force javaless renderers off: doing so would mask SDK integration
         // regressions and prevent testing the current Android process model.
         try {
@@ -515,7 +515,7 @@ public final class ChromiumTestActivity extends Activity {
             }
             Log.i(TAG, "Verified Java renderer pool: 40 isolated services; API "
                 + Build.VERSION.SDK_INT + "; selected=" + selected);
-            // 0.14's Gradle plugin declares native-only child renderer
+            // 0.16's Gradle plugin declares native-only child renderer
             // services for compileSdk >= 37. Test the actual packaged
             // package-manager view when running on Android 17+.
             if (usingNative) {
@@ -559,6 +559,10 @@ public final class ChromiumTestActivity extends Activity {
             } finally {
                 Trace.endSection();
             }
+            // Cefrium 0.16 no longer adds YouTube heuristics with the first
+            // filter list. Explicitly load these SDK-owned rules before the
+            // first navigation, including restored YouTube sessions.
+            Cefrium.loadYouTubeAdRules();
             long rulesReadyAt = SystemClock.elapsedRealtime();
             chromiumReady = true;
             Trace.beginSection("Velocity CEF create Surface");

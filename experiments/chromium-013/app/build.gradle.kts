@@ -23,6 +23,11 @@ val benchmarkFastAttach = providers.gradleProperty("velocityBenchmarkFastAttach"
 // defaults before proving CEF can bootstrap and load pages on-device.
 val velocityMmapNative = providers.gradleProperty("velocityMmapNative")
     .orElse("false").get().toBooleanStrict()
+// Cefrium 0.16 provides its own page-cache-aware native library read-ahead.
+// Keep that official implementation enabled in every real Preview. Only
+// unsigned x86_64/R8 experiments may turn it off to isolate our older probe.
+val velocitySdkPrefetch = providers.gradleProperty("velocitySdkPrefetch")
+    .orElse("true").get().toBooleanStrict()
 val velocityNativePrefetchMiB = providers.gradleProperty("velocityNativePrefetchMiB")
     .orElse("0").get().toInt()
 // The buffered-read path is opt-in in disposable emulator builds only.
@@ -39,6 +44,13 @@ require(velocityNativePrefetchMiB in 0..32 &&
         (velocityNativePrefetchMiB == 0 ||
          (chromiumAbi == "x86_64" && velocityMinify && !previewCanSign && !velocityMmapNative))) {
     "Bounded native ELF prefetch is restricted to unsigned x86_64, R8, legacy JNI benchmarks"
+}
+require(velocitySdkPrefetch ||
+        (chromiumAbi == "x86_64" && velocityMinify && !previewCanSign)) {
+    "Cefrium native prefetch can only be disabled in disposable x86_64/R8 benchmarks"
+}
+require(velocityNativePrefetchMiB == 0 || !velocitySdkPrefetch) {
+    "Do not run Velocity ELF prefetch and Cefrium 0.16 built-in prefetch together"
 }
 require(!velocityMmapNative || (chromiumAbi == "x86_64" && velocityMinify && !previewCanSign)) {
     "Native-mmap experiment is limited to unsigned x86_64 R8 CI builds"
@@ -65,6 +77,7 @@ android {
         ndk { abiFilters += chromiumAbi }
         resValue("bool", "velocity_benchmark_fast_attach", benchmarkFastAttach.toString())
         resValue("integer", "velocity_native_prefetch_mib", velocityNativePrefetchMiB.toString())
+        resValue("bool", "velocity_sdk_prefetch_enabled", velocitySdkPrefetch.toString())
         resValue("string", "velocity_native_prefetch_mode", velocityNativePrefetchMode)
     }
     signingConfigs {

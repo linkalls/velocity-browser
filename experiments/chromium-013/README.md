@@ -43,3 +43,18 @@ Validation gates remain APK build, packaged renderer-manifest audit, and real
 DOM+JavaScript smoke tests on Android 16 and 17, followed by physical-device
 regular/private-tab, profile migration and network checks. Production readiness
 and full browser feature parity are still pending.
+
+## Prefetch strategy and privacy diagnostics
+
+The signed arm64 Preview keeps Cefrium 0.16's native cold-start read-ahead ON,
+while Velocity's older custom page warming remains OFF. To avoid misleading
+benchmarks, Gradle rejects builds that would run both prefetchers together.
+Only unsigned, minified x86_64 benchmarking APKs may use
+`-PvelocitySdkPrefetch=false`; the historical four-way prefetch workflow
+now makes this explicit for every variant. It is not an SDK-on comparison.
+
+Cefrium's YouTube ad heuristics are loaded explicitly before the first
+navigation because they are no longer added implicitly with a filter list.
+The SDK's NetLog feature is not enabled in ordinary or private browsing:
+raw logs contain request URLs and socket endpoints. Any future privacy
+audit must use a purpose-built test profile and protect or discard raw logs.

@@ -20,7 +20,7 @@ import java.nio.MappedByteBuffer;
  */
 public final class NativeCodePrefetch {
     private static final String TAG = "VelocityCefStartup";
-    // Official Cefrium 0.14 x86_64 ELF starts .text at ~45 MiB. This
+    // Historical Cefrium 0.14 x86_64 ELF started .text near 45 MiB. This
     // experimental window is intentionally well into the executable pages,
     // not a promise that future ELF link orders preserve that position.
     static final long EXECUTABLE_WINDOW_OFFSET = 48L * 1024 * 1024;

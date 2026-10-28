@@ -42,7 +42,9 @@ jobs:
       - name: Android Java unit tests
         working-directory: experiments/chromium-013
         run: gradle --no-daemon --max-workers=2 -PchromiumAbi=x86_64 :app:testDebugUnitTest
-      - name: Build four APKs with identical ABI R8 and startup options
+      # All four variants disable the new Cefrium 0.16 prefetch so only
+      # Velocity's historical read-ahead strategy varies.
+      - name: Build four SDK-prefetch-OFF APKs with identical ABI R8 and startup options
         shell: bash
         working-directory: experiments/chromium-013
         run: |
@@ -58,6 +60,7 @@ jobs:
               -PchromiumAbi=x86_64 -PvelocityMinify=true \
               -PvelocityBenchmarkFastAttach=true \
               -PvelocityNativePrefetchMiB="$amount" \
+              -PvelocitySdkPrefetch=false \
               -PvelocityNativePrefetchMode="$mode" \
               :app:assembleRelease
             original='app/build/outputs/apk/release/app-release-unsigned.apk'

@@ -1,7 +1,7 @@
 package dev.velocity.chromium;
 
 /**
- * Pure-Java guard for Cefrium 0.14 renderer selection. Android 17 can select
+ * Pure-Java guard for Cefrium 0.16 renderer selection. Android 17 can select
  * Java-less native services, while earlier releases use Java child services.
  * Validation rejects unrecognized names rather than disabling sandboxing.
  */

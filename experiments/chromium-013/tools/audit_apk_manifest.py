@@ -26,7 +26,7 @@ def validate(manifest):
         errors.append('Renderer services must not be exported')
     if not any(s['slot'] == 0 and s['use_app_zygote'] for s in result['java_services']):
         errors.append('Service 0 must use the app zygote')
-    # SDK 0.14 adds native-only Android 17 renderers while keeping all forty
+    # SDK 0.14+ declares native-only Android 17 renderers while keeping all forty
     # Java slots for older Android releases. Validate *both* pools, rather
     # than rejecting the very services Android 17 needs to load pages.
     native_names = {'com.cefrium.ChildServices$NativeSandboxed0',

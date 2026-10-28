@@ -8,6 +8,8 @@ import android.os.SystemClock;
 import android.os.Trace;
 import android.util.Log;
 
+import com.cefrium.Cefrium;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
@@ -31,6 +33,18 @@ public final class ChromiumDiagnosticApplication extends Application {
     // perf tests measure native/provider startup independently of Activity UI.
     static volatile long mainProcessAttachedAtMs;
     static volatile StartupResourceProbe.Snapshot mainProcessStartedResources;
+
+    @Override public void onCreate() {
+        super.onCreate();
+        // Cefrium 0.16 initializes Chromium only at first use. Configure
+        // its prefetch before the Activity calls Cefrium.initialize(this).
+        // Signed arm64 Preview builds always retain the SDK default.
+        if (getPackageName().equals(Application.getProcessName())
+                && !getResources().getBoolean(R.bool.velocity_sdk_prefetch_enabled)) {
+            Cefrium.setLibraryPrefetchEnabled(false);
+            Log.i(TAG, "CEF SDK built-in prefetch OFF for isolated benchmark");
+        }
+    }
 
     @Override protected void attachBaseContext(Context base) {
         super.attachBaseContext(base);

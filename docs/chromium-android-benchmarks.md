@@ -518,3 +518,19 @@ block for the cold-cache experiment. The same executable ELF offset and
 limited x86_64 benchmark-only configuration are retained. The 8-MiB
 variant is a hypothesis, **not** an established optimization. Never switch
 the arm64 permanent-key Preview automatically based on these results.
+
+## Cefrium 0.16 migration (2026-10-28)
+
+The experiment now pins the Gradle plugin and SDK to 0.16.0. This version
+initializes only when first used, disables three background Google requests,
+and provides page-cache-sensitive native ELF read-ahead plus arm64 PGO.
+These are upstream claims, not independently measured Velocity improvements.
+The signed arm64 Preview retains the SDK's read-ahead ON. In the legacy
+Velocity native-prefetch four-way benchmark, all APK variants explicitly use
+`-PvelocitySdkPrefetch=false`; do not compare those figures with an SDK-ON
+Preview as if prefetch were the only varying factor.
+
+Repeat the Android 16/17 full renderer/DOM smoke and cold-cache benchmarks
+before publishing any speed or sandbox conclusions. Cefrium NetLog records
+request URLs and socket endpoints: do not upload raw NetLog artifacts or
+record user/private sessions without explicit opt-in.
