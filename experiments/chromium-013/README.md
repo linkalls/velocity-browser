@@ -58,3 +58,15 @@ navigation because they are no longer added implicitly with a filter list.
 The SDK's NetLog feature is not enabled in ordinary or private browsing:
 raw logs contain request URLs and socket endpoints. Any future privacy
 audit must use a purpose-built test profile and protect or discard raw logs.
+
+## Measured Preview optimization (2026-10-28)
+
+Release builds now enable R8 by default using the SDK consumer rules. Android 16
+Preview defaults to attach startup, while a saved user preference still overrides
+that default; other Android versions keep post. The diagnostic reset remains
+available. Paired actual-page measurements and limitations are recorded in
+[the page-speed report](../../docs/cefrium-page-speed-2026-10-28.md).
+
+The `velocityEarlyEngineInit` flag remains restricted to disposable x86_64/R8
+APKs. It now tests Activity initialization plus pre-draw Surface creation;
+it is not enabled in signed Preview or background process wakes.

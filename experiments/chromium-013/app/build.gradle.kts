@@ -10,10 +10,10 @@ require(chromiumAbi == "arm64-v8a" || chromiumAbi == "x86_64") { "Unsupported AB
 val previewKeystorePath = providers.environmentVariable("VELOCITY_CEF_KEYSTORE_PATH").orNull
 val previewSigningPassword = providers.environmentVariable("VELOCITY_CEF_SIGNING_PASSWORD").orNull
 val previewCanSign = !previewKeystorePath.isNullOrBlank() && !previewSigningPassword.isNullOrBlank()
-// Opt-in R8 experiment: signed Preview remains non-minified by default
-// until renderer isolation, lifecycle and app UX are validated.
+// Shrink Preview DEX/resources with the SDK consumer rules. The paired page
+// benchmark explicitly builds a non-minified baseline for comparison.
 val velocityMinify = providers.gradleProperty("velocityMinify")
-    .orElse("false").get().toBooleanStrict()
+    .orElse("true").get().toBooleanStrict()
 // This resource is true ONLY in the disposable x86_64 CI comparison APK.
 // Real signed Preview binaries and default builds always ship with false.
 val benchmarkFastAttach = providers.gradleProperty("velocityBenchmarkFastAttach")

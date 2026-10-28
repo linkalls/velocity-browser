@@ -201,6 +201,12 @@ public final class ChromiumTestActivity extends Activity {
         activityStartedResources = StartupResourceProbe.capture();
         Trace.endAsyncSection("Velocity CEF provider startup", 6421);
         super.onCreate(state);
+        // Benchmark-only next hypothesis: initialize at Activity creation,
+        // then create the Surface after layout. Background process wakes stay lazy.
+        if (getResources().getBoolean(R.bool.velocity_early_engine_init)
+                && !Cefrium.initialize(this)) {
+            throw new IllegalStateException("Early Activity engine initialization failed");
+        }
         getWindow().setStatusBarColor(CANVAS);
         getWindow().setNavigationBarColor(CANVAS);
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
@@ -344,16 +350,25 @@ public final class ChromiumTestActivity extends Activity {
         updateNavigation();
         address.clearFocus();
         // The SDK's WindowAndroid requires an attached Activity view. The
-        // early attachment path is now an explicitly opt-in Preview experiment;
-        // release defaults to the older, verified root.post() strategy.
-        // Debug smoke tests can also request attach without persisting it.
+        // Android 16 Preview uses the measured attach path by default; a saved
+        // user choice overrides it. Other Android versions retain posted startup.
+        // Debug smoke requests keep explicit control of post versus attach.
         uiPreparedAtMs = SystemClock.elapsedRealtime();
         boolean explicitlyEnabled = getResources().getBoolean(R.bool.velocity_benchmark_fast_attach)
-            || getSharedPreferences(StartupModePolicy.PREFS,
-                MODE_PRIVATE).getBoolean(StartupModePolicy.KEY_FAST_ATTACH, false);
+            || (!syntheticSmokeRequested && isFastAttachEnabled());
         boolean attachRequested = getIntent() != null &&
             "attach".equals(getIntent().getStringExtra("cefrium_start_strategy"));
-        if (StartupModePolicy.onAttach(
+        if (getResources().getBoolean(R.bool.velocity_early_engine_init)) {
+            Log.i(TAG, "CEFStartupStrategy strategy=predraw");
+            root.getViewTreeObserver().addOnPreDrawListener(
+                new android.view.ViewTreeObserver.OnPreDrawListener() {
+                    @Override public boolean onPreDraw() {
+                        root.getViewTreeObserver().removeOnPreDrawListener(this);
+                        if (!destroyed) startChromium();
+                        return true;
+                    }
+                });
+        } else if (StartupModePolicy.onAttach(
                 explicitlyEnabled, syntheticSmokeRequested,
                 (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0,
                 attachRequested)) {
@@ -1204,9 +1219,15 @@ public final class ChromiumTestActivity extends Activity {
             }).setNegativeButton("キャンセル", null).show();
     }
 
+    private boolean isFastAttachEnabled() {
+        return getSharedPreferences(StartupModePolicy.PREFS, MODE_PRIVATE).getBoolean(
+            StartupModePolicy.KEY_FAST_ATTACH, StartupModePolicy.defaultOnAttach(
+                Build.VERSION.SDK_INT, getResources().getBoolean(R.bool.velocity_page_benchmark)));
+    }
+
     private void toggleExperimentalFastStartup() {
         SharedPreferences prefs = getSharedPreferences(StartupModePolicy.PREFS, MODE_PRIVATE);
-        boolean enabled = !prefs.getBoolean(StartupModePolicy.KEY_FAST_ATTACH, false);
+        boolean enabled = !isFastAttachEnabled();
         prefs.edit().putBoolean(StartupModePolicy.KEY_FAST_ATTACH, enabled).apply();
         Toast.makeText(this, enabled
             ? "高速起動の実験モードを有効化。次回の起動から適用します。起動できなければ診断画面で解除。"
@@ -1243,8 +1264,7 @@ public final class ChromiumTestActivity extends Activity {
             blockDomainsEnabled ? "追加遮断 ON" : "追加遮断 OFF",
             cosmeticEnabled ? "要素非表示 ON" : "要素非表示 OFF",
             "サイト別の例外設定（非公開モードは保存しない）",
-            getSharedPreferences(StartupModePolicy.PREFS, MODE_PRIVATE).getBoolean(
-                StartupModePolicy.KEY_FAST_ATTACH, false)
+            isFastAttachEnabled()
                     ? "ON · 失敗時は起動診断から解除できる" : "OFF · 標準起動を使用中",
             "GitHub Actionsの署名済みビルド", "クラッシュ・起動状態を確認",
             "Cefrium 0.16.0 · 開発版"
