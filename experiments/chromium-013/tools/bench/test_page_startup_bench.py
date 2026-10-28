@@ -47,3 +47,29 @@ class PageStartupTest(unittest.TestCase):
         finally:
             server.shutdown()
             server.server_close()
+
+
+class AdbTransportTest(unittest.TestCase):
+    def test_exit_zero_broken_pipe_is_retried_for_force_stop(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        bad = SimpleNamespace(returncode=0, stdout=b'cmd: Failure calling service activity: Broken pipe (32)', stderr=b'')
+        good = SimpleNamespace(returncode=0, stdout=b'', stderr=b'')
+        with mock.patch.object(bench.subprocess, 'run', side_effect=[bad, good]) as run, mock.patch.object(bench.time, 'sleep'):
+            self.assertEqual('', bench.adb('shell', 'am', 'force-stop', bench.PACKAGE))
+            self.assertEqual(2, run.call_count)
+
+    def test_launch_is_never_retried_as_a_warm_intent(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        bad = SimpleNamespace(returncode=0, stdout=b'cmd: Failure calling service activity: Broken pipe (32)', stderr=b'')
+        with mock.patch.object(bench.subprocess, 'run', return_value=bad) as run:
+            with self.assertRaises(RuntimeError):
+                bench.adb('shell', 'am', 'start', '-W', '-n', bench.ACTIVITY)
+            self.assertEqual(1, run.call_count)
+
+    def test_three_variant_order_balances_linear_time_effects(self):
+        for variant in bench.VARIANTS:
+            positions = [i for i, name in enumerate(bench.ORDER) if name == variant]
+            self.assertEqual(4, len(positions))
+            self.assertEqual(5.5, sum(positions) / len(positions))

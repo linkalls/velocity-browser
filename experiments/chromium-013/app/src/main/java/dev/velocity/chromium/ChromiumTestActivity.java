@@ -98,6 +98,7 @@ public final class ChromiumTestActivity extends Activity {
     private final Runnable deferredTabSave = this::saveRegularTabs;
     private Runnable undoTimeout;
     private boolean chromiumReady;
+    private boolean externalBenchmarkRequested;
     private boolean activityResumed;
     private long activityCreateStartedAtMs;
     private StartupResourceProbe.Snapshot activityStartedResources;
@@ -193,6 +194,9 @@ public final class ChromiumTestActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         syntheticSmokeRequested = getIntent() != null
             && getIntent().getBooleanExtra("cefrium_render_smoke", false);
+        externalBenchmarkRequested = getResources().getBoolean(R.bool.velocity_page_benchmark)
+            && getIntent() != null && PageTimingProbe.allows(
+                getIntent().getStringExtra("velocity_benchmark_url"));
         activityCreateStartedAtMs = SystemClock.elapsedRealtime();
         activityStartedResources = StartupResourceProbe.capture();
         Trace.endAsyncSection("Velocity CEF provider startup", 6421);
@@ -574,7 +578,7 @@ public final class ChromiumTestActivity extends Activity {
                     : getIntent().getStringExtra("velocity_benchmark_url");
                 if (getResources().getBoolean(R.bool.velocity_page_benchmark)
                         && benchmarkUrl != null
-                        && benchmarkUrl.matches("http://127\\.0\\.0\\.1:8765/fixture\\?trial=[a-zA-Z0-9_-]{1,80}")) {
+                        && (PageTimingProbe.allows(benchmarkUrl) || benchmarkUrl.matches("http://127\\.0\\.0\\.1:8765/fixture\\?trial=[a-zA-Z0-9_-]{1,80}"))) {
                     tabRegistry.current().url = benchmarkUrl;
                 }
                 activateCurrentTab();
@@ -858,7 +862,12 @@ public final class ChromiumTestActivity extends Activity {
                     tab.loading = loading;
                     tab.canGoBack = canBack;
                     tab.canGoForward = canForward;
-                    if (!loading) refreshCosmetics(browser, tab);
+                    if (!loading) {
+                        refreshCosmetics(browser, tab);
+                        if (externalBenchmarkRequested) {
+                            browser.evaluateJavaScript(PageTimingProbe.script());
+                        }
+                    }
                     if (tabRegistry.current() == tab) {
                         if (progressLine != null) progressLine.setVisibility(
                             loading ? View.VISIBLE : View.INVISIBLE);
@@ -877,6 +886,16 @@ public final class ChromiumTestActivity extends Activity {
             }));
             browser.setOnTitleChangedListener(name -> runOnUiThread(() -> {
                 if (destroyed || tabRegistry.find(tab.id) != tab) return;
+                if (externalBenchmarkRequested) {
+                    int[] timings = PageTimingProbe.parse(name);
+                    if (timings != null) {
+                        externalBenchmarkRequested = false;
+                        Log.i(TAG, "CEFExternalTiming fcp_ms=" + timings[0]
+                            + " dom_ms=" + timings[1] + " ready_ms=" + timings[2]
+                            + " process_ready_ms=" + (SystemClock.elapsedRealtime()
+                                - ChromiumDiagnosticApplication.mainProcessAttachedAtMs));
+                    }
+                }
                 tab.title = name == null ? "" : name;
                 if (syntheticSmokeRequested && syntheticLoadStartedAtMs > 0
                         && SyntheticRenderFixture.READY_TITLE.equals(name)) {

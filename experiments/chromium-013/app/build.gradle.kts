@@ -66,6 +66,12 @@ require(!velocityPageBenchmark || (chromiumAbi == "x86_64" && !previewCanSign)) 
     "Page benchmark is limited to disposable x86_64 APKs"
 }
 
+val velocityEarlyEngineInit = providers.gradleProperty("velocityEarlyEngineInit")
+    .orElse("false").get().toBooleanStrict()
+require(!velocityEarlyEngineInit || (chromiumAbi == "x86_64" && velocityMinify && !previewCanSign)) {
+    "Early engine initialization is a disposable R8 experiment"
+}
+
 android {
     namespace = "dev.velocity.chromium"
     // Required for per-build benchmark-only resValue() flags on AGP 9.
@@ -76,6 +82,7 @@ android {
         manifestPlaceholders["velocityNetworkSecurity"] = if (velocityPageBenchmark)
             "@xml/benchmark_network_security" else "@xml/network_security"
         resValue("bool", "velocity_page_benchmark", velocityPageBenchmark.toString())
+        resValue("bool", "velocity_early_engine_init", velocityEarlyEngineInit.toString())
         applicationId = "dev.velocity.browser.chromium013"
         minSdk = 29
         targetSdk = 35

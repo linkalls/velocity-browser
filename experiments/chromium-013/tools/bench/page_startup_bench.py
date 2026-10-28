@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import math
+import re
 import statistics
 import subprocess
 import threading
@@ -20,7 +21,10 @@ from urllib.parse import parse_qs, urlparse
 
 PACKAGE = 'dev.velocity.browser.chromium013'
 ACTIVITY = PACKAGE + '/dev.velocity.chromium.ChromiumTestActivity'
-ORDER = ('baseline', 'candidate', 'candidate', 'baseline') * 2
+EXTERNAL_URLS = ('https://www.wikipedia.org/',
+                 'https://developer.mozilla.org/en-US/docs/Web/JavaScript')
+VARIANTS = ('baseline', 'candidate', 'eager')
+ORDER = ('baseline', 'candidate', 'eager', 'eager', 'candidate', 'baseline') * 2
 FIXTURE = b'''<!doctype html><html><head><meta name="viewport" content="width=device-width">
 <title>Velocity page benchmark</title><style>
 body{font:18px system-ui;background:#101820;color:#eef5f7;padding:24px}
@@ -46,15 +50,43 @@ observer.observe({type:'paint',buffered:true});
 </script></body></html>'''
 
 
+TRANSPORT_EVENTS = []
+
+
 def adb(*args, timeout=60):
-    result = subprocess.run(['adb', *args], capture_output=True, timeout=timeout)
-    output = (result.stdout + result.stderr).decode(errors='replace')
-    if result.returncode:
-        raise RuntimeError('adb failed: ' + output[-500:])
-    return output
+    # API 37 can return shell-service Broken pipe with exit status zero.
+    # Repeating am start is unsafe: it can deliver an intent to a warm Activity.
+    launch = 'start' in args and 'am' in args
+    for attempt in range(3):
+        result = subprocess.run(['adb', *args], capture_output=True, timeout=timeout)
+        output = (result.stdout + result.stderr).decode(errors='replace')
+        broken = 'Broken pipe' in output or 'Failure calling service' in output
+        if not result.returncode and not broken:
+            return output
+        TRANSPORT_EVENTS.append({'command': list(args), 'attempt': attempt + 1,
+                                 'diagnostic': output[-500:]})
+        if launch or not broken or attempt == 2:
+            raise RuntimeError('adb failed: ' + output[-500:])
+        time.sleep(0.3)
+    raise RuntimeError('adb transport retries exhausted')
+
+
+def capture_screen(dest):
+    # exec-out emits empty PNGs on some API 37 images. File + pull avoids
+    # treating a shell transport limitation as an app rendering success.
+    for attempt in range(3):
+        remote = '/data/local/tmp/velocity-page-screen.png'
+        adb('shell', 'screencap', '-p', remote)
+        adb('pull', remote, str(dest))
+        if dest.exists() and dest.read_bytes().startswith(b'\x89PNG'):
+            return
+        time.sleep(0.2)
+    raise RuntimeError('No screenshot after file/pull capture')
 
 
 def validate_payload(data):
+    if not isinstance(data, dict):
+        raise ValueError('Page report must be an object')
     for key in ('fcp_ms', 'ready_ms', 'dom_ms'):
         value = data.get(key)
         if isinstance(value, bool) or not isinstance(value, (float, int)) or not math.isfinite(value) or not 0 < value < 60000:
@@ -110,11 +142,16 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(400)
 
 
-def one_trial(server, variant, apk, out, number, cold):
+def one_trial(server, variant, apk, out, number, cold, external_url=None):
     dest = out / f'{number:02d}-{variant}'
     dest.mkdir(parents=True)
     adb('install', '-r', str(apk), timeout=180)
+    if external_url:
+        adb('shell', 'pm', 'clear', PACKAGE)  # Disposable emulator profile only.
     adb('shell', 'am', 'force-stop', PACKAGE)
+    alive = subprocess.run(['adb', 'shell', 'pidof', PACKAGE], capture_output=True, timeout=20)
+    if alive.stdout.strip():
+        raise RuntimeError('Force-stop did not stop the previous browser process')
     adb('reverse', 'tcp:8765', 'tcp:8765')
     adb('logcat', '-c')
     if cold:
@@ -123,10 +160,29 @@ def one_trial(server, variant, apk, out, number, cold):
     token = uuid.uuid4().hex
     record = {'event': threading.Event(), 'started': time.monotonic()}
     server.trials[token] = record
+    url = external_url or 'http://127.0.0.1:8765/fixture?trial=' + token
     launch = adb('shell', 'am', 'start', '-W', '-n', ACTIVITY, '--es',
-                 'velocity_benchmark_url', 'http://127.0.0.1:8765/fixture?trial=' + token)
+                 'velocity_benchmark_url', url)
     (dest / 'activity.txt').write_text(launch)
-    if not record['event'].wait(30):
+    if 'LaunchState: COLD' not in launch or 'intent has been delivered' in launch:
+        raise RuntimeError('Not a cold Activity launch; refusing warm-intent timing')
+    if external_url:
+        deadline = time.monotonic() + 45
+        while time.monotonic() < deadline:
+            log = adb('logcat', '-d', '-s', 'VelocityCefStartup:I', '*:S')
+            match = re.search(r'CEFExternalTiming fcp_ms=(\d+) dom_ms=(\d+) ready_ms=(\d+) process_ready_ms=(\d+)', log)
+            if match:
+                fcp, dom, ready, process = map(int, match.groups())
+                record['page'] = {'fcp_ms': fcp, 'dom_ms': dom, 'ready_ms': ready,
+                                  'process_ready_ms': process, 'read_only_page_probe': True}
+                record['host_ready_ms'] = (time.monotonic() - record['started']) * 1000
+                break
+            time.sleep(0.2)
+        else:
+            (dest / 'logcat.txt').write_text(log)
+            capture_screen(dest / 'failed-screen.png')
+            raise RuntimeError('No valid public-page FCP and JS acknowledgement')
+    elif not record['event'].wait(30):
         raise RuntimeError('No painted, interactive page report within 30 seconds')
     if not adb('shell', 'pidof', PACKAGE).strip():
         raise RuntimeError('Browser process exited')
@@ -134,10 +190,7 @@ def one_trial(server, variant, apk, out, number, cold):
     (dest / 'logcat.txt').write_text(log)
     if 'CEF surface created and page navigation started' not in log:
         raise RuntimeError('Missing native Surface')
-    screen = subprocess.run(['adb', 'exec-out', 'screencap', '-p'], capture_output=True, timeout=25, check=True).stdout
-    if not screen.startswith(b'\x89PNG'):
-        raise RuntimeError('No screenshot')
-    (dest / 'screen.png').write_bytes(screen)
+    capture_screen(dest / 'screen.png')
     time.sleep(3)
     mem = adb('shell', 'dumpsys', 'meminfo', PACKAGE)
     (dest / 'meminfo.txt').write_text(mem)
@@ -147,11 +200,11 @@ def one_trial(server, variant, apk, out, number, cold):
 
 def summary(records):
     lines = ['# Same-page startup experiment', '',
-             'Local HTTP fixture over adb reverse, real FCP + DOM button handler.',
+             'Local fixture: FCP + DOM button handler; public HTTPS pages: FCP + read-only JS acknowledgement.',
              'Host ready includes process launch, adb and HTTP callback overhead.', '',
              '| Variant | Valid trials | Host ready median / max (ms) | Page FCP median (ms) |',
              '|---|---:|---:|---:|']
-    for variant in ('baseline', 'candidate'):
+    for variant in VARIANTS:
         selected = [r for r in records if r['variant'] == variant and r['status'] == 'measured']
         if len(selected) == ORDER.count(variant):
             ready = [r['host_ready_ms'] for r in selected]
@@ -159,7 +212,7 @@ def summary(records):
         else:
             lines.append(f'| {variant} | {len(selected)} | INCOMPLETE | INCOMPLETE |')
     lines += ['', 'No real-site, physical-device, energy or cross-browser superiority claim.',
-              'Eight balanced trials do not establish a population tail percentile.', '']
+              'Twelve balanced trials do not establish a population tail percentile.', '']
     return '\n'.join(lines)
 
 
@@ -167,8 +220,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--baseline', type=Path, required=True)
     parser.add_argument('--candidate', type=Path, required=True)
+    parser.add_argument('--eager', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--cold-cache', action='store_true')
+    parser.add_argument('--external-url', choices=EXTERNAL_URLS)
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     server = FixtureServer()
@@ -177,14 +232,24 @@ def main():
     try:
         for number, variant in enumerate(ORDER, 1):
             try:
-                record = one_trial(server, variant, getattr(args, variant), args.out, number, args.cold_cache)
+                record = one_trial(server, variant, getattr(args, variant), args.out, number, args.cold_cache, args.external_url)
             except (OSError, RuntimeError, subprocess.SubprocessError) as error:
                 record = {'variant': variant, 'trial': number, 'status': 'failed', 'reason': str(error)}
+                dest = args.out / f'{number:02d}-{variant}'
+                dest.mkdir(parents=True, exist_ok=True)
+                try:
+                    diagnostic = subprocess.run(['adb', 'logcat', '-d', '-t', '400'],
+                        capture_output=True, timeout=20)
+                    (dest / 'failure-logcat.txt').write_bytes(diagnostic.stdout + diagnostic.stderr)
+                    capture_screen(dest / 'failed-screen.png')
+                except (OSError, RuntimeError, subprocess.SubprocessError):
+                    pass
             records.append(record)
             print(json.dumps(record), flush=True)
             (args.out / 'results.json').write_text(json.dumps({'cold_cache_requested': args.cold_cache,
+                'adb_transport_events': TRANSPORT_EVENTS, 'external_url': args.external_url, 'fresh_profile_each_trial': bool(args.external_url),
                 'fixture_sha256': hashlib.sha256(FIXTURE).hexdigest(),
-                'apk_sha256': {v: hashlib.sha256(getattr(args, v).read_bytes()).hexdigest() for v in ('baseline', 'candidate')},
+                'apk_sha256': {v: hashlib.sha256(getattr(args, v).read_bytes()).hexdigest() for v in VARIANTS},
                 'records': records}, indent=2))
             (args.out / 'summary.md').write_text(summary(records))
     finally:

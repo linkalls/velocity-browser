@@ -44,6 +44,15 @@ public final class ChromiumDiagnosticApplication extends Application {
             Cefrium.setLibraryPrefetchEnabled(false);
             Log.i(TAG, "CEF SDK built-in prefetch OFF for isolated benchmark");
         }
+        // Test whether native setup can overlap later Activity/window work.
+        // The page benchmark includes this cost in its end-to-end clock.
+        if (getPackageName().equals(Application.getProcessName())
+                && getResources().getBoolean(R.bool.velocity_early_engine_init)) {
+            if (!Cefrium.initialize(this)) {
+                throw new IllegalStateException("Early Cefrium initialization failed");
+            }
+            Log.i(TAG, "CEF early Application engine initialization completed");
+        }
     }
 
     @Override protected void attachBaseContext(Context base) {
