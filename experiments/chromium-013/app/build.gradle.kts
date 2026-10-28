@@ -59,6 +59,13 @@ require(!benchmarkFastAttach || (chromiumAbi == "x86_64" && velocityMinify && !p
     "Early-start benchmark build requires x86_64, R8 release and NO permanent Preview signing key"
 }
 
+// Only disposable emulator APKs can navigate the local performance fixture.
+val velocityPageBenchmark = providers.gradleProperty("velocityPageBenchmark")
+    .orElse("false").get().toBooleanStrict()
+require(!velocityPageBenchmark || (chromiumAbi == "x86_64" && !previewCanSign)) {
+    "Page benchmark is limited to disposable x86_64 APKs"
+}
+
 android {
     namespace = "dev.velocity.chromium"
     // Required for per-build benchmark-only resValue() flags on AGP 9.
@@ -66,6 +73,9 @@ android {
     compileSdk { version = release(37) { minorApiLevel = 1 } }
     buildToolsVersion = "36.0.0"
     defaultConfig {
+        manifestPlaceholders["velocityNetworkSecurity"] = if (velocityPageBenchmark)
+            "@xml/benchmark_network_security" else "@xml/network_security"
+        resValue("bool", "velocity_page_benchmark", velocityPageBenchmark.toString())
         applicationId = "dev.velocity.browser.chromium013"
         minSdk = 29
         targetSdk = 35

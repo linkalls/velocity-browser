@@ -1,0 +1,107 @@
+name: Chromium same-page painted interactive startup
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/cefrium-tabs-core]
+    paths:
+      - '.github/workflows/chromium-page-startup.yml'
+      - 'experiments/chromium-013/tools/bench/page_startup_bench.py'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: android-actions/setup-android@v4.0.4
+        with:
+          packages: platform-tools
+      - run: sdkmanager 'platforms;android-37.1' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v6.4.0
+        with:
+          gradle-version: '9.7.1'
+      - run: python3 -m unittest discover -s experiments/chromium-013/tools/bench -p 'test_*.py' -v
+      - name: Build baseline and optimized candidate from the same source
+        working-directory: experiments/chromium-013
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ../../dist/page-apks
+          for mode in baseline candidate; do
+            optimized=false
+            if [[ "$mode" == candidate ]]; then optimized=true; fi
+            gradle --no-daemon --max-workers=2 -PchromiumAbi=x86_64 \
+              -PvelocityPageBenchmark=true -PvelocityMinify="$optimized" \
+              -PvelocityBenchmarkFastAttach="$optimized" :app:testDebugUnitTest :app:assembleRelease
+            cp app/build/outputs/apk/release/app-release-unsigned.apk "../../dist/page-apks/$mode-unsigned.apk"
+          done
+      - name: Sign both APKs with one disposable emulator key
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -keystore "$RUNNER_TEMP/page.jks" -storetype JKS \
+            -alias bench -storepass android -keypass android -keyalg RSA -keysize 2048 \
+            -validity 1 -dname 'CN=Page Benchmark Only' -noprompt >/dev/null 2>&1
+          sdk="$ANDROID_HOME/build-tools/36.0.0"
+          for mode in baseline candidate; do
+            "$sdk/zipalign" -f -p 4 "dist/page-apks/$mode-unsigned.apk" "$RUNNER_TEMP/$mode.apk"
+            "$sdk/apksigner" sign --ks "$RUNNER_TEMP/page.jks" --ks-pass pass:android \
+              --key-pass pass:android --ks-key-alias bench --out "dist/page-apks/$mode.apk" "$RUNNER_TEMP/$mode.apk"
+            "$sdk/apksigner" verify "dist/page-apks/$mode.apk"
+          done
+          rm dist/page-apks/*-unsigned.apk
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: Same-Page-Disposable-APKs
+          path: dist/page-apks/*.apk
+          compression-level: 0
+          retention-days: 3
+  measure:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        api: ['36', '37.0']
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: android-actions/setup-android@v4.0.4
+        with:
+          packages: platform-tools
+      - uses: actions/download-artifact@v7.0.0
+        with:
+          name: Same-Page-Disposable-APKs
+          path: dist/page-apks
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Measure painted interactive pages with controlled kernel cache reset
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          disk-size: 8G
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 4
+          script: >-
+            adb root && adb wait-for-device &&
+            python3 experiments/chromium-013/tools/bench/page_startup_bench.py
+            --baseline dist/page-apks/baseline.apk --candidate dist/page-apks/candidate.apk
+            --out dist/page-startup/cold --cold-cache
+      - name: Record result
+        if: always()
+        run: cat dist/page-startup/cold/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: Same-Page-Startup-API${{ matrix.api }}
+          path: dist/page-startup/**
+          if-no-files-found: error

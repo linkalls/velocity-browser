@@ -570,6 +570,13 @@ public final class ChromiumTestActivity extends Activity {
                 restoreRegularTabs();
                 // Do not fetch a remote homepage at cold startup.
                 if (tabRegistry.current() == null) tabRegistry.add("about:blank", false);
+                String benchmarkUrl = getIntent() == null ? null
+                    : getIntent().getStringExtra("velocity_benchmark_url");
+                if (getResources().getBoolean(R.bool.velocity_page_benchmark)
+                        && benchmarkUrl != null
+                        && benchmarkUrl.matches("http://127\\.0\\.0\\.1:8765/fixture\\?trial=[a-zA-Z0-9_-]{1,80}")) {
+                    tabRegistry.current().url = benchmarkUrl;
+                }
                 activateCurrentTab();
             } finally {
                 Trace.endSection();
