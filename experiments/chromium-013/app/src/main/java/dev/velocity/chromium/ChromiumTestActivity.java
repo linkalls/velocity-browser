@@ -373,14 +373,20 @@ public final class ChromiumTestActivity extends Activity {
                 (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0,
                 attachRequested)) {
             Log.i(TAG, "CEFStartupStrategy strategy=attach");
-            root.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
-                @Override public void onViewAttachedToWindow(View view) {
-                    view.removeOnAttachStateChangeListener(this);
-                    if (!destroyed) startChromium();
-                }
-
-                @Override public void onViewDetachedFromWindow(View view) {}
-            });
+            // A recreated Activity can receive an already attached decor tree.
+            // Do not wait for an attachment event that has already happened.
+            if (root.isAttachedToWindow()) {
+                startChromium();
+            } else {
+                root.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                    @Override public void onViewAttachedToWindow(View view) {
+                        view.removeOnAttachStateChangeListener(this);
+                        if (!destroyed) startChromium();
+                    }
+    
+                    @Override public void onViewDetachedFromWindow(View view) {}
+                });
+            }
         } else {
             Log.i(TAG, "CEFStartupStrategy strategy=post");
             root.post(this::startChromium);
