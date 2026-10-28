@@ -105,7 +105,7 @@ jobs:
           arch: x86_64
           disk-size: 8G
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 4
+          emulator-options: -no-window -gpu swiftshader -feature -Vulkan -no-snapshot -memory 4096 -cores 4
           script: bash experiments/chromium-013/tools/bench/run_page_startup.sh
       - name: Record result
         if: always()
