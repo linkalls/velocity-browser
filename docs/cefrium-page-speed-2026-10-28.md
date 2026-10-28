@@ -38,7 +38,8 @@ latency or exact app-launch-to-FCP measurement.
 | MDN JavaScript article | 4190.1 → 3958.7 | 3045.1 → 2937.6 |
 
 Candidate is 9–11% quicker on the local fixture, 7–17% on Wikipedia, and
-4–6% on MDN in these two executions. Network and CI variability remain material.
+4–6% on MDN in these two executions. A third execution below shows the MDN
+total-time difference can be negligible. Network and CI variability remain material.
 Navigation-relative FCP did not consistently improve: for example, the first
 local run was 730 ms baseline versus 990 ms candidate, even though the overall
 launch-to-ack interval fell. Do not claim uniformly faster rendering or engine
@@ -68,3 +69,45 @@ included in the host clock. It remains off in real Preview until measured.
 Physical-device startup, actual touch response, scrolling/jank, battery, real
 site tail latency and Speedometer are still unmeasured. These results establish
 modest measured improvements, not an "instant" browser or a win over Brave/Chrome.
+
+## Third experiment and shipping validation
+
+[Run 40660689022](https://github.com/linkalls/velocity-browser/actions/runs/40660689022)
+built source `31d5c7f` and tested the Activity-init + pre-draw hypothesis. Android
+16 completed all 36 local/Wikipedia/MDN trials with screenshots.
+
+| Workload | Baseline median (ms) | R8 + attach (ms) | Activity-init + pre-draw (ms) |
+|---|---:|---:|---:|
+| Local fixture | 1680.9 | 1539.5 | 1593.3 |
+| Wikipedia | 3245.1 | 3054.4 | 4261.7 |
+| MDN | 3940.2 | 3933.8 | 3768.0 |
+
+Pre-draw is slower than the accepted candidate on the local fixture and
+Wikipedia, so it is **not adopted**. It stays a disposable-only experimental
+flag. Across the three executions, attach/R8's launch-to-ack advantage is roughly
+8–11% locally, 6–17% on Wikipedia and 0–6% on MDN; network and VM effects remain.
+This is not evidence of a uniformly faster rendering engine.
+
+The application changes through `e27c1bc` passed packaged APK/renderer CI
+[40662533601](https://github.com/linkalls/velocity-browser/actions/runs/40662533601),
+including mandatory Android 16/17 DOM+JS smoke, and permanent-key arm64 R8 Preview
+build/signature/package checks
+[40662524578](https://github.com/linkalls/velocity-browser/actions/runs/40662524578).
+The attach path also handles an already attached view during Activity recreation.
+
+### Android 17 infrastructure diagnosis
+
+Failure artifacts from
+[40661934492](https://github.com/linkalls/velocity-browser/actions/runs/40661934492)
+show the system server aborting in `TaskSnapshotConvertUtil.copyToSwBitmapDirect`
+via `android.media.ImageReader`/graphics-buffer readback. Package/activity
+services then disappear or restart. This explains failures beyond the app's own
+screenshot command. Host-console frame capture can work, but the OS's own task
+snapshot path still invalidates paired APK-swap trials. No Android 17 speed
+comparison is accepted, and attach remains opt-in there. Resolving this image/host
+emulator incompatibility or moving the paired test to a real device is required.
+
+The result is a measured, smaller-memory Preview improvement, not a demonstrated
+"blazing fast" result. Further useful optimization needs physical-device
+measurements of the user's actual slow pages rather than more unproven launch
+switches.
