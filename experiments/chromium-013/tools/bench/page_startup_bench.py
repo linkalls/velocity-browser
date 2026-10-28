@@ -76,12 +76,21 @@ def capture_screen(dest):
     # treating a shell transport limitation as an app rendering success.
     for attempt in range(3):
         remote = '/data/local/tmp/velocity-page-screen.png'
+        dest.unlink(missing_ok=True)
+        adb('shell', 'rm', '-f', remote)
         adb('shell', 'screencap', '-p', remote)
         adb('pull', remote, str(dest))
         if dest.exists() and dest.read_bytes().startswith(b'\x89PNG'):
             return
         time.sleep(0.2)
     raise RuntimeError('No screenshot after file/pull capture')
+
+
+def require_emulator():
+    serial = adb('get-serialno').strip()
+    qemu = adb('shell', 'getprop', 'ro.kernel.qemu').strip()
+    if not serial.startswith('emulator-') or qemu != '1':
+        raise RuntimeError('Requires a disposable Android emulator; physical profiles must never be cleared')
 
 
 def validate_payload(data):
@@ -225,6 +234,7 @@ def main():
     parser.add_argument('--cold-cache', action='store_true')
     parser.add_argument('--external-url', choices=EXTERNAL_URLS)
     args = parser.parse_args()
+    require_emulator()
     args.out.mkdir(parents=True, exist_ok=True)
     server = FixtureServer()
     threading.Thread(target=server.serve_forever, daemon=True).start()

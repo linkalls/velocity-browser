@@ -1,6 +1,12 @@
 name: Chromium same-page painted interactive startup
 on:
   workflow_dispatch:
+    inputs:
+      apk_run:
+        description: 'Reuse Same-Page-Disposable-APKs from this repository run (empty builds fresh)'
+        required: false
+        default: ''
+        type: string
   push:
     branches: [feat/cefrium-tabs-core]
     paths:
@@ -10,8 +16,10 @@ on:
       - 'experiments/chromium-013/app/**'
 permissions:
   contents: read
+  actions: read
 jobs:
   build:
+    if: ${{ inputs.apk_run == '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     steps:
@@ -62,11 +70,14 @@ jobs:
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: Same-Page-Disposable-APKs
-          path: dist/page-apks/*.apk
+          path: dist/page-apks
+          run-id: ${{ inputs.apk_run || github.run_id }}
+          github-token: ${{ github.token }}/*.apk
           compression-level: 0
           retention-days: 3
   measure:
     needs: build
+    if: ${{ always() && (needs.build.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.apk_run != '')) }}
     strategy:
       fail-fast: false
       matrix:

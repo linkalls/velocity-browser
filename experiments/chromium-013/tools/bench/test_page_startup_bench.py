@@ -73,3 +73,14 @@ class AdbTransportTest(unittest.TestCase):
             positions = [i for i, name in enumerate(bench.ORDER) if name == variant]
             self.assertEqual(4, len(positions))
             self.assertEqual(5.5, sum(positions) / len(positions))
+
+
+class EmulatorBoundaryTest(unittest.TestCase):
+    def test_physical_device_profile_cannot_be_cleared(self):
+        from unittest import mock
+        for answers in (['physical-phone', '0'], ['emulator-5554', '0'], ['physical-phone', '1']):
+            with self.subTest(answers=answers), mock.patch.object(bench, 'adb', side_effect=answers):
+                with self.assertRaises(RuntimeError):
+                    bench.require_emulator()
+        with mock.patch.object(bench, 'adb', side_effect=['emulator-5554', '1']):
+            bench.require_emulator()
