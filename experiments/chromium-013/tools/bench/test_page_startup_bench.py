@@ -84,3 +84,35 @@ class EmulatorBoundaryTest(unittest.TestCase):
                     bench.require_emulator()
         with mock.patch.object(bench, 'adb', side_effect=['emulator-5554', '1']):
             bench.require_emulator()
+
+
+class PackageReplacementTest(unittest.TestCase):
+    def test_foreground_browser_is_stopped_before_apk_replacement(self):
+        import tempfile
+        from types import SimpleNamespace
+        from unittest import mock
+        server = SimpleNamespace(trials={})
+        commands = []
+
+        def fake_adb(*args, **kwargs):
+            commands.append(args)
+            if args[:3] == ('shell', 'am', 'start'):
+                record = next(iter(server.trials.values()))
+                record['page'] = {'fcp_ms': 20, 'dom_ms': 10, 'ready_ms': 30, 'interaction_ok': True}
+                record['host_ready_ms'] = 100
+                record['event'].set()
+                return 'Status: ok\nLaunchState: COLD\nTotalTime: 100'
+            if args[:2] == ('shell', 'pidof'):
+                return '1234'
+            if args[0] == 'logcat':
+                return 'CEF surface created and page navigation started'
+            return ''
+
+        with tempfile.TemporaryDirectory() as temp, mock.patch.object(bench, 'adb', side_effect=fake_adb), \
+                mock.patch.object(bench, 'capture_screen'), mock.patch.object(bench.time, 'sleep'), \
+                mock.patch.object(bench.subprocess, 'run', return_value=SimpleNamespace(stdout=b'')):
+            record = bench.one_trial(server, 'baseline', Path(temp) / 'base.apk', Path(temp), 1, False)
+        self.assertEqual('measured', record['status'])
+        self.assertEqual(('shell', 'am', 'force-stop', bench.PACKAGE), commands[0])
+        self.assertEqual('install', commands[1][0])
+        self.assertGreater(sum(c[:3] == ('shell', 'am', 'force-stop') for c in commands), 1)

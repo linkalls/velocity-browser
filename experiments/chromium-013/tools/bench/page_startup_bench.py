@@ -160,9 +160,15 @@ class Handler(BaseHTTPRequestHandler):
 def one_trial(server, variant, apk, out, number, cold, external_url=None):
     dest = out / f'{number:02d}-{variant}'
     dest.mkdir(parents=True)
+    # Do not replace a foreground APK: API 37 can automatically relaunch
+    # its old top task after replacement, turning the next start into a warm intent.
+    adb('shell', 'am', 'force-stop', PACKAGE)
     adb('install', '-r', str(apk), timeout=180)
     if external_url:
-        adb('shell', 'pm', 'clear', PACKAGE)  # Disposable emulator profile only.
+        cleared = adb('shell', 'pm', 'clear', PACKAGE)  # Disposable emulator only.
+        if 'Success' not in cleared:
+            raise RuntimeError('Disposable profile clear did not report Success')
+    time.sleep(1.0)  # Finish package replacement before the final force-stop.
     adb('shell', 'am', 'force-stop', PACKAGE)
     alive = subprocess.run(['adb', 'shell', 'pidof', PACKAGE], capture_output=True, timeout=20)
     if alive.stdout.strip():
