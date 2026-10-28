@@ -81,7 +81,7 @@ jobs:
           gradle --no-daemon --max-workers=2 \
             -PchromiumAbi=arm64-v8a \
             "-PvelocityVersionCode=$VERSION_CODE" \
-            "-PvelocityVersionName=0.14.0-preview.$VERSION_CODE" \
+            "-PvelocityVersionName=0.16.0-preview.$VERSION_CODE" \
             :app:testDebugUnitTest :app:assembleRelease
 
       - name: Refuse incorrect certificate, package or version

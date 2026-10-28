@@ -461,12 +461,15 @@ public final class ChromiumTestActivity extends Activity {
     }
 
 
-    /** Verify isolated Java renderer services after the SDK provider initializes. */
+    /** Initialize the engine, then verify isolated renderer services before a browser. */
     private void configureRendererLauncher() {
         Cefrium.setupProcess(this);
-        // CefriumInitProvider in SDK 0.14.0 initializes native Chromium before
-        // the first Activity. This is an idempotent compatibility check, not
-        // a means to defer or bypass sandbox initialization.
+        // SDK 0.16 no longer initializes the native engine in its provider.
+        // Launcher selection is configured during initialization, so complete
+        // it before inspecting the selected sandboxed service prefix.
+        if (!Cefrium.initialize(this)) {
+            throw new IllegalStateException("Cefrium native initialization failed");
+        }
         if (!CommandLine.isInitialized()) CommandLine.init(null);
         // Cefrium 0.14 has native Android 17 renderer entrypoints. Do not
         // force javaless renderers off: doing so would mask SDK integration
@@ -1214,7 +1217,7 @@ public final class ChromiumTestActivity extends Activity {
                 StartupModePolicy.KEY_FAST_ATTACH, false)
                     ? "ON · 失敗時は起動診断から解除できる" : "OFF · 標準起動を使用中",
             "GitHub Actionsの署名済みビルド", "クラッシュ・起動状態を確認",
-            "Cefrium 0.14.0 · 開発版"
+            "Cefrium 0.16.0 · 開発版"
         };
         LinearLayout panel = sheetPanel();
         TextView header = text("Velocity", 21, PRIMARY, true);
@@ -1286,7 +1289,7 @@ public final class ChromiumTestActivity extends Activity {
 
     private void showInfo() {
         new AlertDialog.Builder(this).setTitle("Velocity Chromium 実験版")
-            .setMessage("エンジン：Chromium（Cefrium 0.14.0）\n\n" +
+            .setMessage("エンジン：Chromium（Cefrium 0.16.0）\n\n" +
                 "これはAndroid標準WebViewではありません。\n\n" +
                 "Gecko/WPE版とは別アプリとしてインストールできます。\n\n" +
                 "通常・非公開タブ、URL復元、戻る・進む、検索と共有を追加しました。\n\n" +

@@ -41,7 +41,7 @@ public final class ChromiumDiagnosticApplication extends Application {
             return;
         }
         mainProcessAttachedAtMs = SystemClock.elapsedRealtime();
-        // Capture BEFORE CefriumInitProvider runs native initialization.
+        // Capture before provider setup and Activity-triggered native initialization.
         // These counters help distinguish CPU-bound startup from blocked I/O.
         mainProcessStartedResources = StartupResourceProbe.capture();
         // The normal arm64 Preview always receives zero. Experimental
@@ -49,8 +49,8 @@ public final class ChromiumDiagnosticApplication extends Application {
         NativeCodePrefetch.start(base, base.getResources().getInteger(
             R.integer.velocity_native_prefetch_mib), base.getResources().getString(
             R.string.velocity_native_prefetch_mode));
-        // Visible in optional Perfetto traces across CefriumInitProvider's
-        // expensive synchronous native startup before Activity.onCreate().
+        // Pre-Activity process interval; SDK 0.16 initializes the native engine
+        // later in the Activity, outside this trace interval.
         Trace.beginAsyncSection("Velocity CEF provider startup", 6421);
         final Thread.UncaughtExceptionHandler original =
             Thread.getDefaultUncaughtExceptionHandler();
@@ -61,7 +61,7 @@ public final class ChromiumDiagnosticApplication extends Application {
                         new FileOutputStream(target, false), StandardCharsets.UTF_8))) {
                     String time = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS Z", Locale.JAPAN)
                         .format(new Date());
-                    writer.println("Velocity Chromium 0.14.0 - Java crash at " + time);
+                    writer.println("Velocity Chromium 0.16.0 - Java crash at " + time);
                     writer.println("process=" + process + " thread=" + thread.getName());
                     writer.println("Android=" + Build.VERSION.SDK_INT);
                     error.printStackTrace(writer);
