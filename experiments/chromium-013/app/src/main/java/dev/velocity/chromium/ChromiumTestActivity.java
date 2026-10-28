@@ -864,6 +864,7 @@ public final class ChromiumTestActivity extends Activity {
         CefriumBrowser browser = CefriumBrowser.createWithSurface(this, tab.privateMode);
         try {
             attachSurface(browser);
+            browser.setMediaPlaybackRequiresUserGesture(true);
             // Per-browser origin snapshot avoids carrying a site's exemption
             // across the earliest subrequests of a top-level navigation.
             // Parse the top-level host once per navigation, not for every
@@ -973,7 +974,7 @@ public final class ChromiumTestActivity extends Activity {
             engine = active;
             engine.getSurfaceContainer().setVisibility(View.VISIBLE);
             engine.setPageVisible(true);
-            if (activityResumed && oldEngine != active) engine.onResume();
+            if (activityResumed && oldEngine != active) showForegroundBrowser(engine);
             engine.getSurfaceContainer().bringToFront();
             browserRoot.bringToFront();
             updateHomeState();
@@ -1360,10 +1361,19 @@ public final class ChromiumTestActivity extends Activity {
         super.onPause();
     }
 
+    private static void showForegroundBrowser(CefriumBrowser browser) {
+        // Cefrium.onResume() also calls MediaSession.resume(), which can request
+        // Android audio focus. Showing a tab must not start audio or duck music
+        // playing in another app. Media paused on background stays paused until
+        // the user explicitly plays it in the page.
+        browser.setAudioMuted(false);
+        browser.setPageVisible(true);
+    }
+
     @Override protected void onResume() {
         super.onResume();
         activityResumed = true;
-        if (engine != null) engine.onResume();
+        if (engine != null) showForegroundBrowser(engine);
     }
 
     @Override public void onTrimMemory(int level) {
