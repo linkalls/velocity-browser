@@ -7,6 +7,11 @@ on:
         required: false
         default: ''
         type: string
+      api:
+        description: 'Android API to measure'
+        type: choice
+        options: ['both', '36', '37.0']
+        default: 'both'
   push:
     branches: [feat/cefrium-tabs-core]
     paths:
@@ -79,7 +84,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api: ['36', '37.0']
+        api: ${{ fromJSON(inputs.api == '36' && '["36"]' || inputs.api == '37.0' && '["37.0"]' || '["36","37.0"]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:

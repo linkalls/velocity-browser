@@ -72,6 +72,12 @@ def adb(*args, timeout=60):
 
 
 def capture_screen(dest):
+    # Host console capture avoids the API 37 guest gralloc DMA readback assert.
+    dest.unlink(missing_ok=True)
+    host = subprocess.run(['adb', 'emu', 'screenrecord', 'screenshot', str(dest.resolve())],
+                          capture_output=True, timeout=25)
+    if host.returncode == 0 and dest.exists() and dest.read_bytes().startswith(b'\x89PNG'):
+        return
     # exec-out emits empty PNGs on some API 37 images. File + pull avoids
     # treating a shell transport limitation as an app rendering success.
     for attempt in range(3):
@@ -161,6 +167,9 @@ def one_trial(server, variant, apk, out, number, cold, external_url=None):
     alive = subprocess.run(['adb', 'shell', 'pidof', PACKAGE], capture_output=True, timeout=20)
     if alive.stdout.strip():
         raise RuntimeError('Force-stop did not stop the previous browser process')
+    # Let ActivityManager finish removing the old task before a new launch.
+    # This delay is outside the measured interval.
+    time.sleep(1.0)
     adb('reverse', 'tcp:8765', 'tcp:8765')
     adb('logcat', '-c')
     if cold:
