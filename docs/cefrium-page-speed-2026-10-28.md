@@ -97,6 +97,22 @@ The attach path also handles an already attached view during Activity recreation
 
 ### Android 17 infrastructure diagnosis
 
+On 2026-10-31 the Cefrium 0.17.0 [paired benchmark run 41205260471](https://github.com/linkalls/velocity-browser/actions/runs/41205260471)
+built all three variants successfully; Android 16 finished its measurements.
+The Android 17 emulator recorded one successful local trial, then
+`Failed to find ColorBuffer` / `Failed to bind to texture` followed by
+`Can't find service: package` and `Can't find service: activity` while
+replacing APKs. Its trial results are **invalid**, not proof of a Velocity
+regression or a successful Android 17 speed test.
+
+Routine branch-push paired-speed CI now runs **Android 16 only**.
+Android 17 paired-speed diagnostics remain explicitly selectable through
+`workflow_dispatch` (`api: 37.0` or `both`), retain failure/artifact
+reporting, and must not be interpreted as green benchmarks if incomplete.
+The separate renderer experiment continues to require Android 16/17 DOM+JS
+smoke tests. Re-enable automatic Android 17 paired benchmarks only after
+a reproducible emulator/host fix or a reliable physical-device runner.
+
 Failure artifacts from
 [40661934492](https://github.com/linkalls/velocity-browser/actions/runs/40661934492)
 show the system server aborting in `TaskSnapshotConvertUtil.copyToSwBitmapDirect`
