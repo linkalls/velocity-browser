@@ -1,0 +1,179 @@
+name: Chromium CEF native page-cache prefetch four-way experiment
+
+on:
+  workflow_dispatch:
+  # A newly added workflow cannot be manually dispatched until it exists on
+  # the default branch. Allow only the feature-branch workflow edit to start
+  # its first correctness/performance trial; later runs are manual.
+  push:
+    branches: [feat/cefrium-tabs-core]
+    paths:
+      - '.github/workflows/chromium-native-prefetch-experiment.yml'
+      - 'experiments/chromium-013/tools/bench/native_prefetch_bench.py'
+      - 'experiments/chromium-013/tools/bench/browser_bench.py'
+      - 'experiments/chromium-013/tools/bench/test_native_prefetch_bench.py'
+      - 'experiments/chromium-013/app/src/main/java/dev/velocity/chromium/NativeCodePrefetch.java'
+      - 'experiments/chromium-013/app/src/main/java/dev/velocity/chromium/ChromiumDiagnosticApplication.java'
+      - 'experiments/chromium-013/app/src/test/java/dev/velocity/chromium/NativeCodePrefetchTest.java'
+      - 'experiments/chromium-013/app/build.gradle.kts'
+
+permissions:
+  contents: read
+
+jobs:
+  native-prefetch-abba:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: android-actions/setup-android@v4.0.4
+        with:
+          packages: platform-tools
+      - run: sdkmanager 'platforms;android-37.1' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v6.4.0
+        with:
+          gradle-version: '9.7.1'
+      - name: Python benchmark harness tests
+        run: python3 -m unittest discover -s experiments/chromium-013/tools/bench -p 'test_*.py' -v
+      - name: Android Java unit tests
+        working-directory: experiments/chromium-013
+        run: gradle --no-daemon --max-workers=2 -PchromiumAbi=x86_64 :app:testDebugUnitTest
+      # All four variants disable the new Cefrium 0.16 prefetch so only
+      # Velocity's historical read-ahead strategy varies.
+      - name: Build four SDK-prefetch-OFF APKs with identical ABI R8 and startup options
+        shell: bash
+        working-directory: experiments/chromium-013
+        run: |
+          set -euo pipefail
+          mkdir -p ../../dist/native-prefetch
+          for variant in off prefetch16 read8 read16; do
+            amount=0
+            mode=mmap
+            if [[ "$variant" == prefetch16 ]]; then amount=16; fi
+            if [[ "$variant" == read8 ]]; then amount=8; mode=read; fi
+            if [[ "$variant" == read16 ]]; then amount=16; mode=read; fi
+            gradle --no-daemon --max-workers=2 \
+              -PchromiumAbi=x86_64 -PvelocityMinify=true \
+              -PvelocityBenchmarkFastAttach=true \
+              -PvelocityNativePrefetchMiB="$amount" \
+              -PvelocitySdkPrefetch=false \
+              -PvelocityNativePrefetchMode="$mode" \
+              :app:assembleRelease
+            original='app/build/outputs/apk/release/app-release-unsigned.apk'
+            test -s "$original"
+            cp "$original" "../../dist/native-prefetch/$variant-unsigned.apk"
+            sha256sum "$original" | cut -d' ' -f1 > "../../dist/native-prefetch/$variant-unsigned.sha256"
+          done
+          for first in off prefetch16 read8 read16; do
+            for second in off prefetch16 read8 read16; do
+              if [[ "$first" < "$second" ]] && cmp -s \
+                  "../../dist/native-prefetch/$first-unsigned.apk" \
+                  "../../dist/native-prefetch/$second-unsigned.apk"; then
+                echo "Prefetch variants $first/$second produced identical APKs" >&2
+                exit 1
+              fi
+            done
+          done
+      - name: Sign all four variants with the same disposable CI key
+        shell: bash
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -keystore "$RUNNER_TEMP/native-prefetch-only.jks" \
+            -storetype JKS -alias experiment -storepass android -keypass android \
+            -keyalg RSA -keysize 2048 -validity 1 \
+            -dname 'CN=Velocity Native Prefetch Experiment ONLY,O=CI,C=JP' \
+            -noprompt >/dev/null 2>&1
+          sdk="$ANDROID_HOME/build-tools/36.0.0"
+          for variant in off prefetch16 read8 read16; do
+            input="dist/native-prefetch/$variant-unsigned.apk"
+            aligned="$RUNNER_TEMP/native-$variant-aligned.apk"
+            output="dist/native-prefetch/$variant.apk"
+            "$sdk/zipalign" -f -P 16 4 "$input" "$aligned"
+            "$sdk/apksigner" sign \
+              --ks "$RUNNER_TEMP/native-prefetch-only.jks" \
+              --ks-pass pass:android --key-pass pass:android \
+              --ks-key-alias experiment --out "$output" "$aligned"
+            "$sdk/apksigner" verify --verbose "$output"
+            "$sdk/zipalign" -c -P 16 4 "$output"
+            sha256sum "$output"
+          done
+      - name: Verify all four variants retain legacy compressed native packaging
+        run: |
+          python3 - <<'PYZIP'
+          import zipfile
+          for mode in ('off', 'prefetch16', 'read8', 'read16'):
+              with zipfile.ZipFile(f'dist/native-prefetch/{mode}.apk') as a:
+                  elf = a.getinfo('lib/x86_64/libcef.so')
+                  if elf.compress_type != zipfile.ZIP_DEFLATED:
+                      raise SystemExit('Unexpected native packaging mode: '+mode)
+                  print(mode, 'compressed ELF bytes:', elf.compress_size)
+          PYZIP
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Palindromic four-way prefetch test on Android 16 emulator
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 36
+          target: google_apis_playstore
+          arch: x86_64
+          disk-size: 8G
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 4
+          script: >-
+            python3 experiments/chromium-013/tools/bench/native_prefetch_bench.py
+            --off dist/native-prefetch/off.apk
+            --prefetch16 dist/native-prefetch/prefetch16.apk
+            --read8 dist/native-prefetch/read8.apk
+            --read16 dist/native-prefetch/read16.apk
+            --out dist/native-prefetch/results
+            --repetitions 2 --settle-seconds 4
+      - name: Controlled cold-cache four-way benchmark (rooted AOSP emulator)
+        uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 36
+          target: default
+          arch: x86_64
+          disk-size: 8G
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 4
+          # The runner executes each literal script line independently with /bin/sh.
+          # Fold into ONE command so required Python CLI arguments are not lost.
+          script: >-
+            adb root &&
+            adb wait-for-device &&
+            test "$(adb shell id -u | tr -d '\r')" = "0" &&
+            python3 experiments/chromium-013/tools/bench/native_prefetch_bench.py
+            --off dist/native-prefetch/off.apk
+            --prefetch16 dist/native-prefetch/prefetch16.apk
+            --read8 dist/native-prefetch/read8.apk
+            --read16 dist/native-prefetch/read16.apk
+            --out dist/native-prefetch/cold-results
+            --repetitions 3 --settle-seconds 4 --cold-cache
+      - name: Results and limitations
+        if: always()
+        shell: bash
+        run: |
+          for directory in results cold-results; do
+            if [[ -f "dist/native-prefetch/$directory/summary.md" ]]; then
+              cat "dist/native-prefetch/$directory/summary.md" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "No validated $directory measurements." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+      - name: Upload lightweight evidence, not unsigned APKs
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: Cefrium-Native-ELF-Prefetch-ABBA-Results
+          path: |
+            dist/native-prefetch/results/**
+            dist/native-prefetch/cold-results/**
+            dist/native-prefetch/*-unsigned.sha256
+          if-no-files-found: warn

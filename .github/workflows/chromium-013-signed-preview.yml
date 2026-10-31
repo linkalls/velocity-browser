@@ -1,0 +1,155 @@
+name: Velocity Cefrium signed preview
+
+on:
+  push:
+    branches: [feat/cefrium-tabs-core]
+    paths:
+      - 'experiments/chromium-013/**'
+      - '.github/workflows/chromium-013-signed-preview.yml'
+  workflow_dispatch:
+    inputs:
+      publish_prerelease:
+        description: 'Publish APK as a GitHub prerelease'
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: velocity-cefrium-preview-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  signed-preview:
+    # Never sign APKs for pull requests, especially untrusted forks.
+    if: github.repository == 'linkalls/velocity-browser' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      version_code: ${{ steps.version.outputs.code }}
+      apk_filename: ${{ steps.version.outputs.apk }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: temurin
+          java-version: '25'
+      - uses: android-actions/setup-android@v4.0.4
+        with:
+          packages: platform-tools
+      - run: sdkmanager 'platforms;android-37.1' 'build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v6.4.0
+        with:
+          gradle-version: '9.7.1'
+      - id: version
+        name: Monotonic preview version code
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(( 200000 + GITHUB_RUN_NUMBER ))
+          test "$code" -gt 200000
+          test "$code" -lt 2100000000
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "apk=Velocity-Cefrium-Preview-$code-arm64.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Restore permanent signing identity
+        env:
+          KEYSTORE_BASE64: ${{ secrets.VELOCITY_CEF_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.VELOCITY_CEF_STORE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$KEYSTORE_BASE64" || { echo "::error::Missing key secret"; exit 1; }
+          test -n "$STORE_PASSWORD" || { echo "::error::Missing password secret"; exit 1; }
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/velocity-preview.p12"
+          test -s "$RUNNER_TEMP/velocity-preview.p12"
+          keytool -list -keystore "$RUNNER_TEMP/velocity-preview.p12" \
+            -storetype PKCS12 -storepass "$STORE_PASSWORD" -alias velocity-cefrium > /dev/null
+
+      - name: Test and build signed release APK
+        working-directory: experiments/chromium-013
+        env:
+          VELOCITY_CEF_KEYSTORE_PATH: ${{ runner.temp }}/velocity-preview.p12
+          VELOCITY_CEF_SIGNING_PASSWORD: ${{ secrets.VELOCITY_CEF_STORE_PASSWORD }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --max-workers=2 \
+            -PchromiumAbi=arm64-v8a \
+            "-PvelocityVersionCode=$VERSION_CODE" \
+            "-PvelocityVersionName=0.17.0-preview.$VERSION_CODE" \
+            :app:testDebugUnitTest :app:assembleRelease
+
+      - name: Refuse incorrect certificate, package or version
+        env:
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          APK_NAME: ${{ steps.version.outputs.apk }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk="$ANDROID_HOME/build-tools/36.0.0"
+          apk="experiments/chromium-013/app/build/outputs/apk/release/app-release.apk"
+          test -s "$apk"
+          "$sdk/apksigner" verify --verbose --print-certs "$apk" > "$RUNNER_TEMP/apk-signature.txt"
+          expected_sha="2e082da9c39f1b8942251cf2d6af2e0cd70dda2bb4966200b2c6376da90c5032"
+          actual_sha="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/apk-signature.txt" | head -1)"
+          test "$actual_sha" = "$expected_sha" || {
+            echo "::error::Wrong signing certificate"; exit 1;
+          }
+          manifest="$("$sdk/aapt" dump badging "$apk" | grep '^package:')"
+          [[ "$manifest" == *"name='dev.velocity.browser.chromium013'"* ]] || exit 1
+          [[ "$manifest" == *"versionCode='$VERSION_CODE'"* ]] || exit 1
+          mkdir -p dist
+          cp "$apk" "dist/$APK_NAME"
+          sha256sum "dist/$APK_NAME" > dist/SHA256SUMS.txt
+
+      - name: Remove ephemeral signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/velocity-preview.p12" "$RUNNER_TEMP/apk-signature.txt"
+
+      # archive:false makes the signed APK a directly installable download,
+      # without the old Actions artifact ZIP wrapper.
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          path: dist/${{ steps.version.outputs.apk }}
+          archive: false
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          path: dist/SHA256SUMS.txt
+          archive: false
+          if-no-files-found: error
+
+  publish-prerelease:
+    # Intentionally opt-in to avoid spamming public releases per commit.
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_prerelease
+    needs: signed-preview
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: ${{ needs.signed-preview.outputs.apk_filename }}
+          path: dist
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: SHA256SUMS.txt
+          path: dist
+      - name: Publish experimental signed release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_CODE: ${{ needs.signed-preview.outputs.version_code }}
+          APK_NAME: ${{ needs.signed-preview.outputs.apk_filename }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "cefrium-preview-$VERSION_CODE" \
+            "dist/$APK_NAME" dist/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --prerelease --title "Velocity Cefrium preview $VERSION_CODE" \
+            --notes "Experimental Cefrium 0.17.0 preview, Android arm64. Not production-grade; avoid sensitive logins until device and security tests pass."
