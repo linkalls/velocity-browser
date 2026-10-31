@@ -81,7 +81,7 @@ jobs:
           gradle --no-daemon --max-workers=2 \
             -PchromiumAbi=arm64-v8a \
             "-PvelocityVersionCode=$VERSION_CODE" \
-            "-PvelocityVersionName=0.16.0-preview.$VERSION_CODE" \
+            "-PvelocityVersionName=0.17.0-preview.$VERSION_CODE" \
             :app:testDebugUnitTest :app:assembleRelease
 
       - name: Refuse incorrect certificate, package or version
@@ -152,4 +152,4 @@ jobs:
             "dist/$APK_NAME" dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --prerelease --title "Velocity Cefrium preview $VERSION_CODE" \
-            --notes "Experimental Cefrium 0.13.0 preview, Android arm64. Not production-grade; avoid sensitive logins until device and security tests pass."
+            --notes "Experimental Cefrium 0.17.0 preview, Android arm64. Not production-grade; avoid sensitive logins until device and security tests pass."

@@ -1,9 +1,9 @@
-# Velocity Chromium · Cefrium 0.16.0
+# Velocity Chromium · Cefrium 0.17.0
 
 Independent Java-renderer experiment; applicationId `dev.velocity.browser.chromium013`.
 
 See [migration, build instructions and verification](../../docs/chromium-cefrium-013.md).
-The 0.9.4 baseline is in `../chromium/`; this root uses the 0.16.0 SDK and Gradle plugin.
+The 0.9.4 baseline is in `../chromium/`; this root uses the 0.17.0 SDK and Gradle plugin.
 
 The tabbed/private Cefrium migration is tracked in
 [the migration tracker](../../docs/chromium-cefrium-013-migration.md).
@@ -18,6 +18,25 @@ The Preview browser now has a compact bottom address bar and native tab
 management. See the [UX plan](../../docs/velocity-cefrium-preview-ux.md)
 and [signed APK update guide](../../docs/velocity-cefrium-signing.md).
 The fixed-key APK is not upgrade-compatible with older debug-signed builds.
+
+## Cefrium 0.17.0 upgrade (2026-10-31)
+
+Following the [upstream release](https://cefrium.com/releases/#v0.17.0) and
+maintainer feedback on PR #11, the SDK and Gradle plugin are pinned together to
+0.17.0 (Chromium 156.0.8078.73, from 156.0.8078.17).
+Upstream reports additional Chromium security fixes, no API changes from
+0.16.0, and a revised arm64 startup read-ahead. Earlier benchmark numbers and
+APK artifacts belong to 0.16.0 and **must not be attributed to 0.17.0**.
+Existing Android 16/17 DOM+JS, release-signature, and physical-device gates
+must be rerun on the new version before any stability or performance claim.
+
+The upstream 0.16.0 release removed three automatic Google connections,
+but this is not yet independently verified for Velocity. Preview still does
+not enable NetLog during ordinary or private browsing: NetLog is sensitive
+browsing history. A privacy audit must use a disposable, consented test
+profile and local-only capture, distinguish documented component updates
+from user navigation, and delete raw logs after analysis. Passing an offline
+home-screen test alone does not prove the absence of background connections.
 
 ## Cefrium 0.16.0 update (2026-10-28)
 
@@ -46,7 +65,7 @@ and full browser feature parity are still pending.
 
 ## Prefetch strategy and privacy diagnostics
 
-The signed arm64 Preview keeps Cefrium 0.16's native cold-start read-ahead ON,
+The signed arm64 Preview keeps Cefrium's native cold-start read-ahead ON,
 while Velocity's older custom page warming remains OFF. To avoid misleading
 benchmarks, Gradle rejects builds that would run both prefetchers together.
 Only unsigned, minified x86_64 benchmarking APKs may use

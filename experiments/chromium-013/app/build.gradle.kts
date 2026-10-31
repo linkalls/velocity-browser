@@ -23,7 +23,7 @@ val benchmarkFastAttach = providers.gradleProperty("velocityBenchmarkFastAttach"
 // defaults before proving CEF can bootstrap and load pages on-device.
 val velocityMmapNative = providers.gradleProperty("velocityMmapNative")
     .orElse("false").get().toBooleanStrict()
-// Cefrium 0.16 provides its own page-cache-aware native library read-ahead.
+// Cefrium SDK provides its own page-cache-aware native library read-ahead.
 // Keep that official implementation enabled in every real Preview. Only
 // unsigned x86_64/R8 experiments may turn it off to isolate our older probe.
 val velocitySdkPrefetch = providers.gradleProperty("velocitySdkPrefetch")
@@ -50,7 +50,7 @@ require(velocitySdkPrefetch ||
     "Cefrium native prefetch can only be disabled in disposable x86_64/R8 benchmarks"
 }
 require(velocityNativePrefetchMiB == 0 || !velocitySdkPrefetch) {
-    "Do not run Velocity ELF prefetch and Cefrium 0.16 built-in prefetch together"
+    "Do not run Velocity ELF prefetch and Cefrium built-in prefetch together"
 }
 require(!velocityMmapNative || (chromiumAbi == "x86_64" && velocityMinify && !previewCanSign)) {
     "Native-mmap experiment is limited to unsigned x86_64 R8 CI builds"
@@ -90,7 +90,7 @@ android {
         // Legacy diagnostic/debug builds retain versionCode 1 by default.
         versionCode = providers.gradleProperty("velocityVersionCode").orElse("1").get().toInt()
         versionName = providers.gradleProperty("velocityVersionName")
-            .orElse("0.16.0-experiment").get()
+            .orElse("0.17.0-experiment").get()
         ndk { abiFilters += chromiumAbi }
         resValue("bool", "velocity_benchmark_fast_attach", benchmarkFastAttach.toString())
         resValue("integer", "velocity_native_prefetch_mib", velocityNativePrefetchMiB.toString())
@@ -131,6 +131,6 @@ android {
 }
 dependencies {
     // Full Chromium via an Android CEF port, not the Android OS WebView.
-    implementation("com.cefrium:cefrium-sdk:0.16.0")
+    implementation("com.cefrium:cefrium-sdk:0.17.0")
     testImplementation("junit:junit:4.13.2")
 }

@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 ENGINE = ROOT / "experiments" / "chromium-013"
 APP = ENGINE / "app" / "src" / "main" / "java" / "dev" / "velocity" / "chromium"
-VERSION = "0.16.0"
+VERSION = "0.17.0"
 
 
 class CefriumReleaseTest(unittest.TestCase):
@@ -28,9 +28,12 @@ class CefriumReleaseTest(unittest.TestCase):
         preview = (ROOT / ".github" / "workflows" /
                    "chromium-013-signed-preview.yml").read_text()
         activity = (APP / "ChromiumTestActivity.java").read_text()
-        self.assertIn("-PvelocityVersionName=0.16.0-preview.", preview)
-        self.assertIn("Cefrium 0.16.0", activity)
-        self.assertNotIn("Cefrium 0.14.0", activity)
+        self.assertIn("-PvelocityVersionName=0.17.0-preview.", preview)
+        self.assertIn("Cefrium 0.17.0", activity)
+        self.assertNotIn("Cefrium 0.16.0", activity)
+        app_build = (ENGINE / "app" / "build.gradle.kts").read_text()
+        self.assertIn('.orElse("0.17.0-experiment")', app_build)
+        self.assertIn("Experimental Cefrium 0.17.0 preview", preview)
 
     def test_sdk_prefetch_enabled_by_default_and_protects_signed_preview(self):
         gradle = (ENGINE / "app" / "build.gradle.kts").read_text()
