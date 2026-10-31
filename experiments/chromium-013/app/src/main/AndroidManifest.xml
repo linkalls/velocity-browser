@@ -3,28 +3,33 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:name=".ChromiumDiagnosticApplication"
-        android:label="Velocity Chromium 0.13 (Test)"
+        android:label="Velocity Preview"
+        android:icon="@drawable/ic_velocity"
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:networkSecurityConfig="${velocityNetworkSecurity}"
+        android:theme="@android:style/Theme.Material.NoActionBar"
         android:supportsRtl="true"
         android:hardwareAccelerated="true">
         <!-- Cefrium SDK contributes its own Chromium process services and init provider. -->
         <!-- Runs in a separate process so provider/native failures in the
              primary Chromium process cannot prevent the diagnostic launcher. -->
+        <!-- The browser is now the actual launcher. The isolated diagnostic
+             Activity remains explicitly addressable by ADB/CI and its menu. -->
         <activity
             android:name=".StartupDiagnosticActivity"
             android:process=":diagnostic"
-            android:exported="true">
+            android:exported="true" />
+        <activity
+            android:name=".ChromiumTestActivity"
+            android:launchMode="singleTop"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="uiMode|screenSize|orientation">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity
-            android:name=".ChromiumTestActivity"
-            android:exported="false"
-            android:windowSoftInputMode="adjustResize"
-            android:configChanges="uiMode|screenSize|orientation" />
     </application>
 </manifest>
