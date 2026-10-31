@@ -11,3 +11,6 @@ dependencyResolutionManagement {
 }
 rootProject.name = "VelocityChromium013Experiment"
 include(":app")
+
+// Disposable Android audio-focus fixtures are never part of normal Preview builds.
+if (providers.gradleProperty("audioFocusProbe").orNull == "true") include(":audio-probe")

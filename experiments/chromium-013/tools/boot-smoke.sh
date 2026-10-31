@@ -19,6 +19,15 @@ sleep 12
 adb shell pidof "$APP" | tee dist/cefrium-pid.txt || true
 adb shell dumpsys activity activities > dist/cefrium-activities.txt || true
 adb logcat -d -v threadtime > dist/cefrium-logcat-full.txt || true
+# Preserve a visual artifact for UI regressions even if startup later fails.
+# Emulator captures are diagnostic only, not a substitute for Pixel tests.
+adb exec-out screencap -p > dist/cefrium-screen.png || true
+adb shell dumpsys window windows > dist/cefrium-window.txt || true
+# Accessibility hierarchy evidence for the new native offline start page.
+# A frame showing "Cefrium initialized" is not enough if UI is blank.
+if timeout 30s adb shell uiautomator dump /sdcard/velocity-ui-smoke.xml   > dist/cefrium-ui-dump-command.txt 2>&1; then
+  adb shell cat /sdcard/velocity-ui-smoke.xml     > dist/cefrium-ui-hierarchy.xml || true
+fi
 grep -E 'VelocityCefStartup|AndroidRuntime|FATAL EXCEPTION|Fatal signal|DEBUG *:|libcef|com.cefrium|Cefrium' \
     dist/cefrium-logcat-full.txt > dist/cefrium-logcat-filtered.txt || true
 if ! test -s dist/cefrium-pid.txt; then
@@ -46,4 +55,39 @@ if ! grep -F 'Verified Java renderer pool: 40 isolated services' dist/cefrium-lo
   echo "FAIL: Java renderer service selection was not verified" >&2
   exit 1
 fi
+if ! grep -Fq 'CEF synthetic document title observed' dist/cefrium-logcat-filtered.txt; then
+  echo "FAIL: Cefrium never executed JavaScript after DOMContentLoaded" >&2
+  exit 1
+fi
+if ! grep -Eq 'CEFPageTiming synthetic_dom_ready_ms=[0-9]+' dist/cefrium-logcat-filtered.txt; then
+  echo "FAIL: JavaScript DOM readiness timing is missing" >&2
+  exit 1
+fi
+grep 'CEFPageTiming synthetic_dom_ready_ms=' dist/cefrium-logcat-filtered.txt
+if ! grep -Eq 'CEFStartupResource provider_wall_ms=[0-9]+ provider_cpu_ms=[0-9]+' dist/cefrium-logcat-filtered.txt; then
+  echo "FAIL: provider/resource profiler log is missing" >&2
+  exit 1
+fi
+grep 'CEFStartupResource ' dist/cefrium-logcat-filtered.txt | tail -1
+if grep -q 'CEFPageTiming synthetic_fcp_browser_ms=' dist/cefrium-logcat-filtered.txt; then
+  grep 'CEFPageTiming synthetic_fcp_browser_ms=' dist/cefrium-logcat-filtered.txt
+else
+  echo "INFO: paint timing API did not emit an FCP entry for this local page"
+fi
+# The native home is used for regular startups, while the synthetic content
+# is used for renderer smoke tests. Accessibility for CEF's Surface can differ
+# by Android version; retain hierarchy/screenshot without false assertions.
 echo "PASS: Chromium main process survived foreground launch (emulator only)"
+if [[ "$(printenv VELOCITY_STARTUP_EXPERIMENT || true)" == "1" ]]; then
+  if ! python3 experiments/chromium-013/tools/bench/startup_strategy.py; then
+    echo "WARN: optional attach-vs-post experiment did not complete" >&2
+  fi
+fi
+
+
+# This optional trace is taken against a synthetic offline fixture only;
+# never capture logged-in browsing, private tabs or unredacted URL activity.
+if [[ "$(printenv VELOCITY_CAPTURE_PERFETTO || true)" == "1" ]]; then
+  python3 experiments/chromium-013/tools/bench/perfetto_startup.py ||
+    echo "WARN: optional Perfetto startup probe unavailable" >&2
+fi

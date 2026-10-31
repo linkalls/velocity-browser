@@ -1,4 +1,4 @@
-name: Chromium Cefrium 0.13 Java experiment APK
+name: Chromium Cefrium 0.17 renderer experiment APK
 on:
   push:
     branches: [feat/chromium-cefrium-0.13]
@@ -71,6 +71,29 @@ jobs:
           compression-level: 0
           if-no-files-found: error
 
+      - name: Build one x86_64 APK shared by both emulator jobs
+        working-directory: experiments/chromium-013
+        run: gradle --no-daemon --max-workers=2 -PchromiumAbi=x86_64 :app:assembleDebug
+      - name: Verify emulator native ABI is x86_64 only
+        run: |
+          set -euo pipefail
+          apk='experiments/chromium-013/app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$apk"
+          unzip -Z1 "$apk" > "$RUNNER_TEMP/velocity-apk-entries.txt"
+          grep -q '^lib/x86_64/libcef.so$' "$RUNNER_TEMP/velocity-apk-entries.txt"
+          if grep -q '^lib/arm64-v8a/libcef.so$' "$RUNNER_TEMP/velocity-apk-entries.txt"; then
+            echo 'Unexpected arm64 lib in x86_64 emulator APK' >&2
+            exit 1
+          fi
+          sha256sum "$apk" > dist/emulator-x86_64-sha256.txt
+      - name: Share exact same x86_64 APK with Android 16 and 17
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: Chromium-Cefrium-x86_64-Emulator-APK
+          path: experiments/chromium-013/app/build/outputs/apk/debug/app-debug.apk
+          compression-level: 0
+          if-no-files-found: error
+
   chromium-emulator-smoke:
     strategy:
       fail-fast: false
@@ -82,20 +105,20 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7.0.1
-      - uses: actions/setup-java@v6.0.1
-        with:
-          distribution: temurin
-          java-version: '25'
       - uses: android-actions/setup-android@v4.0.4
         with:
           packages: platform-tools
-      - run: sdkmanager 'platforms;android-37.1' 'build-tools;36.0.0'
-      - uses: gradle/actions/setup-gradle@v6.4.0
+      - name: Download built x86_64 APK (identical across API 36/37)
+        uses: actions/download-artifact@v7.0.0
         with:
-          gradle-version: '9.7.1'
-      - name: Build x86_64 Chromium diagnostic APK
-        working-directory: experiments/chromium-013
-        run: gradle --no-daemon --max-workers=2 -PchromiumAbi=x86_64 :app:assembleDebug
+          name: Chromium-Cefrium-x86_64-Emulator-APK
+          path: experiments/chromium-013/app/build/outputs/apk/debug/
+      - name: Verify shared emulator APK was downloaded
+        run: |
+          set -euo pipefail
+          apk='experiments/chromium-013/app/build/outputs/apk/debug/app-debug.apk'
+          test -s "$apk"
+          echo "Emulator APK SHA256: $(sha256sum "$apk" | cut -d' ' -f1)"
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -109,7 +132,43 @@ jobs:
           disk-size: 6G
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 4
-          script: bash experiments/chromium-013/tools/boot-smoke.sh
+          script: VELOCITY_STARTUP_EXPERIMENT=1 VELOCITY_CAPTURE_PERFETTO=1 bash experiments/chromium-013/tools/boot-smoke.sh
+      - name: Report actual DOM+JS readiness (not visual paint)
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f dist/cefrium-logcat-filtered.txt ]]; then
+            echo "## Cefrium emulator smoke DOM test" >> "$GITHUB_STEP_SUMMARY"
+            if grep -Eo 'CEFPageTiming synthetic_dom_ready_ms=[0-9]+'                 dist/cefrium-logcat-filtered.txt | tail -1 >> "$GITHUB_STEP_SUMMARY"; then
+              echo "Local HTML DOM+JS title callback, not first contentful paint." >> "$GITHUB_STEP_SUMMARY"
+              if grep -Eo 'CEFPageTiming synthetic_fcp_browser_ms=[0-9]+ synthetic_fcp_observed_ms=[0-9]+'                   dist/cefrium-logcat-filtered.txt | tail -1 >> "$GITHUB_STEP_SUMMARY"; then
+                echo "Chromium Paint Timing API on synthetic HTML only; NOT an external site benchmark." >> "$GITHUB_STEP_SUMMARY"
+              else
+                echo "Synthetic FCP Paint Timing API result unavailable; not treated as zero." >> "$GITHUB_STEP_SUMMARY"
+              fi
+            else
+              echo "DOM and JS readiness not observed." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+      - name: Summarize experimental startup scheduling
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f dist/cefrium-startup-strategy/summary.md ]]; then
+            cat dist/cefrium-startup-strategy/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Optional startup strategy experiment unavailable." >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Summarize CPU and fault probes
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f dist/cefrium-perfetto-startup/metadata.json ]]; then
+            echo '## Native CPU + page-fault startup diagnosis' >> "$GITHUB_STEP_SUMMARY"
+            echo 'Captured a bounded Perfetto trace of a synthetic, offline DOM+JS fixture.' >> "$GITHUB_STEP_SUMMARY"
+            cat dist/cefrium-perfetto-startup/startup-phases.txt >> "$GITHUB_STEP_SUMMARY" || true
+            echo 'A native trace is NOT a first paint or cross-browser performance ranking.' >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Upload logcat and Activity results even when failed
         if: always()
         uses: actions/upload-artifact@v7.0.2
@@ -123,4 +182,10 @@ jobs:
             dist/cefrium-pid.txt
             dist/cefrium-activities.txt
             dist/cefrium-logcat-filtered.txt
+            dist/cefrium-screen.png
+            dist/cefrium-window.txt
+            dist/cefrium-ui-dump-command.txt
+            dist/cefrium-ui-hierarchy.xml
+            dist/cefrium-startup-strategy/**
+            dist/cefrium-perfetto-startup/**
           if-no-files-found: warn
