@@ -1,0 +1,351 @@
+{
+  "aar_sha256": "18f52c00e1e6b75e75668042ad56c1e9e58442cce3800fc4d98d427ac7f40f83",
+  "entry": "NativeChildProcessService_onCreate",
+  "abis": {
+    "arm64-v8a": {
+      "member": "jni/arm64-v8a/libcef.so",
+      "sha256": "b0097b5289909027948d4edabcdd13317cea4edff15d15df36b04a973ae6a310",
+      "entry_defined_and_exported": false
+    },
+    "x86_64": {
+      "member": "jni/x86_64/libcef.so",
+      "sha256": "823867daa807abc926fb305cbdd8003bbd7adb57e88e24b9987c5d0bd579408e",
+      "entry_defined_and_exported": false
+    }
+  },
+  "runtime": "NOT TESTED",
+  "apk": "NOT BUILT",
+  "aar_manifest": {
+    "sandboxed_services_base": "com.cefrium.ChildServices$Sandboxed",
+    "declared_sandboxed_service_count": 40,
+    "java_sandboxed_services": 40,
+    "java_services": [
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed0",
+        "slot": 0,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": true
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed1",
+        "slot": 1,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed2",
+        "slot": 2,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed3",
+        "slot": 3,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed4",
+        "slot": 4,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed5",
+        "slot": 5,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed6",
+        "slot": 6,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed7",
+        "slot": 7,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed8",
+        "slot": 8,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed9",
+        "slot": 9,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed10",
+        "slot": 10,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed11",
+        "slot": 11,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed12",
+        "slot": 12,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed13",
+        "slot": 13,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed14",
+        "slot": 14,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed15",
+        "slot": 15,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed16",
+        "slot": 16,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed17",
+        "slot": 17,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed18",
+        "slot": 18,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed19",
+        "slot": 19,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed20",
+        "slot": 20,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed21",
+        "slot": 21,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed22",
+        "slot": 22,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed23",
+        "slot": 23,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed24",
+        "slot": 24,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed25",
+        "slot": 25,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed26",
+        "slot": 26,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed27",
+        "slot": 27,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed28",
+        "slot": 28,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed29",
+        "slot": 29,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed30",
+        "slot": 30,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed31",
+        "slot": 31,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed32",
+        "slot": 32,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed33",
+        "slot": 33,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed34",
+        "slot": 34,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed35",
+        "slot": 35,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed36",
+        "slot": 36,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed37",
+        "slot": 37,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed38",
+        "slot": 38,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      },
+      {
+        "name": "com.cefrium.ChildServices$Sandboxed39",
+        "slot": 39,
+        "isolated": true,
+        "exported": "false",
+        "external_service": null,
+        "use_app_zygote": false
+      }
+    ],
+    "java_service_pool_gate": "PASS",
+    "native_services": 0,
+    "scope": "AAR source manifest; not a merged APK audit"
+  },
+  "export_gate": "FAIL",
+  "native_renderer_ready": false,
+  "observed_date": "2026-10-24"
+}

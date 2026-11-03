@@ -1,0 +1,8 @@
+Peter Lowe's ad and tracking server list
+Provider: Peter Lowe <pgl@yoyo.org>
+Homepage: https://pgl.yoyo.org/adservers/
+Source: https://pgl.yoyo.org/adservers/serverlist.php?hostformat=adblockplus&showintro=1&mimetype=plaintext
+Snapshot: Last modified Sat, 10 Oct 2026 15:15:08 GMT
+Public redistribution statement at https://pgl.yoyo.org/adservers/:
+"Feel free to combine this list with yours or lists from other sites and put it up on the web, though!"
+No SPDX license is inferred. This notice and the original list credit are retained.

@@ -1,0 +1,35 @@
+diff --git a/BUILD.gn b/BUILD.gn
+index 2420e36..eff350a 100644
+--- a/BUILD.gn
++++ b/BUILD.gn
+@@ -2382,9 +2382,9 @@ if (is_mac) {
+     if (is_android) {
+       ldflags = [
+         "-Wl,--allow-multiple-definition",
+-        # Export cef_* symbols for consumers of libcef.so.
++        # Preserve CEF/JNI exports and expose the Android Native Service entry.
+         "-Wl,--version-script=" +
+-            rebase_path("//cef/libcef_dll/libcef.lst"),
++            rebase_path("//cef/libcef_dll/libcef_android.lst"),
+       ]
+     }
+   }
+diff --git a/libcef_dll/libcef_android.lst b/libcef_dll/libcef_android.lst
+new file mode 100644
+index 0000000..dbe9f89
+--- /dev/null
++++ b/libcef_dll/libcef_android.lst
+@@ -0,0 +1,13 @@
++# Copyright 2016 The Chromium Embedded Framework Authors. All rights reserved.
++# Use of this source code is governed by a BSD-style license that can be
++# found in the LICENSE file.
++
++{
++  /* Export CEF C API and Android JNI and Native Service entry points from libcef.so. */
++  global:
++    cef_*;
++    Java_*;
++    JNI_OnLoad;
++    NativeChildProcessService_onCreate;
++  local: *;
++};

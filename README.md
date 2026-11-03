@@ -46,3 +46,9 @@ AdGuard公式署名XPIの追加は実験機能です。GPL本体は同梱しま�
 最新の実行結果・APKサイズ・未検証項目は[0.4検証](docs/v04/validation.md)、以前の0.3.1は[検証記録](docs/scroll-ux-validation.md)、0.3.0は[v0.3検証](docs/v03-validation.md)、実装は[タブ管理](docs/v03-tabs.md)・[UI](docs/v03-ui.md)・[Cosmetic](docs/v03-cosmetics.md)・[要素選択器](docs/v03-picker.md)を参照してください。以前の結果は[0.2.3](docs/compatibility-validation.md)・[0.2.2](docs/fix-validation.md)として保存しています。
 
 API36エミュレーターの[CPU/PSS・Activity起動時間の実測比較](docs/v04/emulator-comparison.md)を20回採取しました。新版ではCPU中央値が増加しており、高速化成功とは評価していません。旧版のFrameTimeline不足によりjank改善は判定不能です。Pixel 7 Pro、通常のcold/warm起動、Speedometer、Chrome/Firefox比較、実機スクロール性能は**NOT_MEASURED**です。エミュレーターfixtureを物理端末の結果と扱いません。[性能測定手順](docs/benchmark-methodology.md)・[既知制限](docs/known-limitations.md)・[広告ブロックのライセンス](docs/adblock-decisions.md)。
+
+## Chromium 実験版
+
+Cefrium 0.13.0 を使う独立プロジェクトを `experiments/chromium-013/` に追加しました。
+別ID `dev.velocity.browser.chromium013` で、Java の隔離 renderer を使用します。
+[移行内容・ビルド・検証記録](docs/chromium-cefrium-013.md)を参照してください。
