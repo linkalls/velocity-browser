@@ -1,5 +1,5 @@
+// The root :app resolves to the Cefrium/Chromium app.
 plugins {
-    alias(libs.plugins.android.application) apply false
-    alias(libs.plugins.android.test) apply false
-    alias(libs.plugins.kotlin.jvm) apply false
+    id("com.android.application") version "9.4.1" apply false
+    id("com.cefrium") version "0.17.0" apply false
 }
