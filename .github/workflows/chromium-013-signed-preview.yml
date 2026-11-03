@@ -2,10 +2,14 @@ name: Velocity Cefrium signed preview
 
 on:
   push:
-    branches: [feat/cefrium-tabs-core]
+    branches: [main]
     paths:
       - 'experiments/chromium-013/**'
       - '.github/workflows/chromium-013-signed-preview.yml'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/wrapper/gradle-wrapper.properties'
   workflow_dispatch:
     inputs:
       publish_prerelease:
