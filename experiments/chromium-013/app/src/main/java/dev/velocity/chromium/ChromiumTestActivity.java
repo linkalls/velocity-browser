@@ -2152,29 +2152,13 @@ public final class ChromiumTestActivity extends Activity {
         new AlertDialog.Builder(this)
             .setTitle("音声が小さくなる原因を調べる")
             .setMessage("『自動再生OFF』は音声フォーカス取得の禁止ではないよ。"
-                + "
-
-まず、この画面に表示されているAPKのbuild番号を確認。"
-                + "
-
-音楽を再生した状態で、PCからUSBデバッグを使い："
-                + "
-
-① Velocityを開く前
-adb shell dumpsys audio"
-                + "
-
-② Velocityを開いて音が小さくなった直後
-adb shell dumpsys audio"
-                + "
-
-『Audio Focus stack entries』内のpackage名・clientId・gainTypeの変化を比較してね。"
-                + "
-
-Androidの制限で、このアプリ自身が別アプリの音声フォーカス履歴を直接読めるわけではない。"
-                + "
-
-調査した結果はパスワードや個人情報を伏せて共有してね。")
+                + "\n\nまず、この画面に表示されているAPKのbuild番号を確認。"
+                + "\n\n音楽を再生した状態で、PCからUSBデバッグを使い："
+                + "\n\n① Velocityを開く前\nadb shell dumpsys audio"
+                + "\n\n② Velocityを開いて音が小さくなった直後\nadb shell dumpsys audio"
+                + "\n\n『Audio Focus stack entries』のpackage名・clientId・gainTypeを比較してね。"
+                + "\n\nAndroidの制限で、このアプリ自身が別アプリのフォーカス履歴を読めるわけではない。"
+                + "\n\nパスワードや個人情報を伏せて共有してね。")
             .setPositiveButton("了解", null).show();
     }
 
