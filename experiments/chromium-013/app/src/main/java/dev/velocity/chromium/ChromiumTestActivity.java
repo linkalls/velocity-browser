@@ -10,6 +10,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.PackageInfo;
 import android.content.pm.ServiceInfo;
 import android.graphics.Color;
+import android.graphics.Bitmap;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
@@ -40,11 +41,19 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.PopupWindow;
+import android.widget.GridLayout;
+import android.widget.ImageView;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 import android.content.SharedPreferences;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -82,8 +91,12 @@ public final class ChromiumTestActivity extends Activity {
     };
 
     private final TabRegistry tabRegistry = new TabRegistry();
-    private final Map<String, CefriumBrowser> liveBrowsers = new LinkedHashMap<>();
+    private TabPreviewStore previewStore;
+    private OnBackInvokedCallback gestureBackCallback;
+    private final Map<String, CefriumBrowser> liveBrowsers = new LinkedHashMap<>(16, .75f, true);
     private static final String TAB_PREFS = "cefrium_tabs_v1";
+    // Unlimited tab metadata, bounded live native renderers on memory-limited phones.
+    private static final int MAX_RESIDENT_BROWSERS = 6;
     private String lastSavedTabSnapshot;
     private CefriumBrowser engine;
     private LinearLayout browserRoot;
@@ -159,6 +172,26 @@ public final class ChromiumTestActivity extends Activity {
         return b;
     }
 
+    /** A consistent icon-first toolbar: monochrome 24dp vector artwork. */
+    private Button iconButton(int icon, String hint, Runnable action) {
+        Button button = makeButton("", hint, action);
+        android.graphics.drawable.Drawable drawable = getDrawable(icon);
+        if (drawable != null) {
+            drawable.setBounds(0, 0, dp(23), dp(23));
+            button.setCompoundDrawables(null, drawable, null, null);
+        }
+        button.setGravity(Gravity.CENTER);
+        return button;
+    }
+
+    private ImageView iconView(int resource, int color) {
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(resource);
+        icon.setColorFilter(color);
+        icon.setPadding(dp(8), dp(8), dp(8), dp(8));
+        return icon;
+    }
+
     private TextView text(String value, int sp, int color, boolean bold) {
         TextView label = new TextView(this);
         label.setText(value);
@@ -201,6 +234,13 @@ public final class ChromiumTestActivity extends Activity {
         activityStartedResources = StartupResourceProbe.capture();
         Trace.endAsyncSection("Velocity CEF provider startup", 6421);
         super.onCreate(state);
+        previewStore = new TabPreviewStore(this);
+        // Android 13+ gestures no longer reliably invoke Activity.onBackPressed().
+        if (Build.VERSION.SDK_INT >= 33) {
+            gestureBackCallback = this::handleBrowserBack;
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                OnBackInvokedDispatcher.PRIORITY_DEFAULT, gestureBackCallback);
+        }
         // Benchmark-only next hypothesis: initialize at Activity creation,
         // then create the Surface after layout. Background process wakes stay lazy.
         if (getResources().getBoolean(R.bool.velocity_early_engine_init)
@@ -260,9 +300,9 @@ public final class ChromiumTestActivity extends Activity {
         LinearLayout.LayoutParams addressLp = new LinearLayout.LayoutParams(-1, dp(51));
         footer.addView(addressRow, addressLp);
 
-        TextView searchMark = text("⌕", 27, ACCENT, true);
+        ImageView searchMark = iconView(R.drawable.ic_browser_search, ACCENT);
         searchMark.setContentDescription("URLと検索");
-        addressRow.addView(searchMark, new LinearLayout.LayoutParams(dp(31), -1));
+        addressRow.addView(searchMark, new LinearLayout.LayoutParams(dp(31), dp(44)));
 
         address = new EditText(this);
         address.setSingleLine(true);
@@ -286,7 +326,7 @@ public final class ChromiumTestActivity extends Activity {
         });
         addressRow.addView(address, new LinearLayout.LayoutParams(0, dp(48), 1f));
 
-        Button go = makeButton("→", "入力したURLを開く", this::loadAddress);
+        Button go = iconButton(R.drawable.ic_browser_forward, "入力したURLを開く", this::loadAddress);
         go.setTextColor(ACCENT);
         addressRow.addView(go, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
@@ -296,17 +336,18 @@ public final class ChromiumTestActivity extends Activity {
         toolbarLp.topMargin = dp(4);
         footer.addView(toolbarActions, toolbarLp);
 
-        back = makeButton("‹", "前のページへ戻る", () -> {
+        back = iconButton(R.drawable.ic_browser_back, "前のページへ戻る", () -> {
             if (engine != null && !tabRegistry.isStartupHomeCurrent() && engine.canGoBack()) engine.goBack();
         });
-        forward = makeButton("›", "次のページへ進む", () -> {
+        forward = iconButton(R.drawable.ic_browser_forward, "次のページへ進む", () -> {
             if (engine != null && !tabRegistry.isStartupHomeCurrent()) engine.goForward();
         });
-        Button reload = makeButton("↻", "ページを再読み込み", () -> {
+        Button reload = iconButton(R.drawable.ic_browser_refresh, "ページを再読み込み", () -> {
             if (engine != null) engine.reload();
         });
-        tabsButton = makeButton("□", "タブ一覧", this::showTabs);
-        Button menu = makeButton("⋮", "ブラウザメニュー", this::showMenu);
+        tabsButton = iconButton(R.drawable.ic_browser_tabs, "タブ一覧", this::showTabs);
+        tabsButton.setTextSize(12);
+        Button menu = iconButton(R.drawable.ic_browser_menu, "ブラウザメニュー", this::showMenu);
         toolbarActions.addView(back, new LinearLayout.LayoutParams(0, dp(48), 1));
         toolbarActions.addView(forward, new LinearLayout.LayoutParams(0, dp(48), 1));
         toolbarActions.addView(reload, new LinearLayout.LayoutParams(0, dp(48), 1));
@@ -317,7 +358,7 @@ public final class ChromiumTestActivity extends Activity {
         // appears, drop the duplicate toolbar instead of hiding the URL input.
         address.setOnFocusChangeListener((v, hasFocus) -> {
             toolbarActions.setVisibility(hasFocus ? View.GONE : View.VISIBLE);
-            go.setText(hasFocus ? "→" : "↗");
+            go.setContentDescription(hasFocus ? "検索・ページを開く" : "アドレスを開く");
             if (hasFocus) address.selectAll();
         });
 
@@ -397,12 +438,8 @@ public final class ChromiumTestActivity extends Activity {
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        if (Intent.ACTION_MAIN.equals(intent.getAction())
-                && intent.hasCategory(Intent.CATEGORY_LAUNCHER) && chromiumReady) {
-            tabRegistry.selectStartupHome();
-            activateCurrentTab();
-            saveRegularTabs();
-        }
+        // Re-launching an existing task must retain the in-memory WebContents.
+        // Do not navigate back to Home and re-create the active page.
     }
 
     /** A native home never fetches remote data during cold start. */
@@ -774,12 +811,14 @@ public final class ChromiumTestActivity extends Activity {
             if (normal == null) return;
             int selected = state.optInt("selected", 0);
             String selectedId = null;
-            for (int i = 0; i < normal.length() && i < TabRegistry.MAX_PERSISTED_TABS; i++) {
+            for (int i = 0; i < normal.length(); i++) {
                 JSONObject item = normal.optJSONObject(i);
                 if (item == null) continue;
                 String url = item.optString("url", "");
                 if (!isPersistable(url)) continue;
-                TabRegistry.Tab tab = tabRegistry.restoreRegularTab(url, item.optBoolean("home", false));
+                TabRegistry.Tab tab = tabRegistry.restoreRegularTab(
+                    url, item.optBoolean("home", false), item.optString("id", null),
+                    item.optString("group", null));
                 if (tab == null) break;
                 tab.title = item.optString("title", "");
                 if (i == selected) selectedId = tab.id;
@@ -819,6 +858,8 @@ public final class ChromiumTestActivity extends Activity {
                 if (tab == current) selected = regularIndex;
                 normal.put(new JSONObject()
                     .put("url", tab.url)
+                    .put("id", tab.id)
+                    .put("group", tab.group == null ? "" : tab.group)
                     .put("home", tab.startupHome)
                     .put("title", tab.title == null ? "" : tab.title.substring(
                         0, Math.min(tab.title.length(), 120))));
@@ -852,6 +893,7 @@ public final class ChromiumTestActivity extends Activity {
 
     private void selectTab(String id) {
         if (tabRegistry.select(id)) {
+            // Preserve the old tab preview before switching its native Surface off.
             activateCurrentTab();
             saveRegularTabs();
         }
@@ -875,7 +917,7 @@ public final class ChromiumTestActivity extends Activity {
         CefriumBrowser browser = CefriumBrowser.createWithSurface(this, tab.privateMode);
         try {
             attachSurface(browser);
-            browser.setMediaPlaybackRequiresUserGesture(true);
+            applyBrowserSettings(browser);
             // Per-browser origin snapshot avoids carrying a site's exemption
             // across the earliest subrequests of a top-level navigation.
             // Parse the top-level host once per navigation, not for every
@@ -896,6 +938,18 @@ public final class ChromiumTestActivity extends Activity {
                     tab.canGoBack = canBack;
                     tab.canGoForward = canForward;
                     if (!loading) {
+                        if (!tab.privateMode && tabRegistry.current() == tab) {
+                            // Capture only a visible normal tab, never a secret tab.
+                            if (getSharedPreferences(TAB_PREFS, MODE_PRIVATE)
+                                    .getBoolean("save_previews", true)) browser.captureBitmap(bitmap -> {
+                                if (!destroyed && tabRegistry.find(tab.id) == tab
+                                        && !tab.privateMode && bitmap != null) {
+                                    previewStore.save(tab.id, bitmap);
+                                }
+                            });
+                        }
+                        browser.setDarkMode(getSharedPreferences(TAB_PREFS, MODE_PRIVATE)
+                            .getBoolean("force_dark", false));
                         refreshCosmetics(browser, tab);
                         if (externalBenchmarkRequested) {
                             browser.evaluateJavaScript(PageTimingProbe.script());
@@ -955,7 +1009,16 @@ public final class ChromiumTestActivity extends Activity {
                 if (tabRegistry.current() == tab) updateNavigation();
                 if (!tab.privateMode) scheduleRegularTabsSave();
             }));
-            browser.loadUrl(tab.url);
+            // A restored tab is instantiated only when the user explicitly
+            // selects it. Chromium PageState also restores back/forward history;
+            // a dead renderer cannot preserve live JS/DOM state.
+            byte[] savedNavigation = tab.privateMode || tab.startupHome ? null
+                : previewStore.loadNavigationState(tab.id);
+            if (savedNavigation != null && savedNavigation.length > 0) {
+                browser.restoreNavigationState(savedNavigation);
+            } else {
+                browser.loadUrl(tab.url);
+            }
             return browser;
         } catch (RuntimeException | LinkageError error) {
             browser.close();
@@ -990,6 +1053,7 @@ public final class ChromiumTestActivity extends Activity {
             browserRoot.bringToFront();
             updateHomeState();
             updateNavigation();
+            trimInactiveBrowsers(current.id);
         } catch (RuntimeException | LinkageError error) {
             Log.e(TAG, "Tab engine failed to open", error);
             engine = null;
@@ -998,13 +1062,36 @@ public final class ChromiumTestActivity extends Activity {
         }
     }
 
+    /** Hibernate oldest inactive WebContents while preserving visible tab cards. */
+    private void trimInactiveBrowsers(String currentId) {
+        while (liveBrowsers.size() > MAX_RESIDENT_BROWSERS) {
+            String oldestId = null;
+            for (String id : liveBrowsers.keySet()) {
+                if (!id.equals(currentId)) { oldestId = id; break; }
+            }
+            if (oldestId == null) break;
+            CefriumBrowser idle = liveBrowsers.remove(oldestId);
+            TabRegistry.Tab tab = tabRegistry.find(oldestId);
+            if (idle == null) continue;
+            if (tab != null && !tab.privateMode && !tab.startupHome) {
+                try {
+                    previewStore.saveNavigationState(tab.id, idle.serializeNavigationState());
+                } catch (RuntimeException error) {
+                    Log.w(TAG, "Failed to hibernate tab navigation", error);
+                }
+            }
+            idle.close();
+        }
+        CefriumBrowser.reapUnusedRenderers();
+    }
+
     private void updateNavigation() {
         if (back == null || forward == null) return;
         TabRegistry.Tab tab = tabRegistry.current();
         boolean ready = tab != null && engine != null;
         back.setEnabled(ready && !tab.startupHome && tab.canGoBack);
         forward.setEnabled(ready && !tab.startupHome && tab.canGoForward);
-        if (tabsButton != null) tabsButton.setText("□ " + tabRegistry.all().size());
+        if (tabsButton != null) tabsButton.setText(String.valueOf(tabRegistry.all().size()));
         if (tab != null) {
             updateHomeState();
             title.setText((tab.privateMode ? "非公開 · " : "") + tab.displayTitle());
@@ -1083,90 +1170,153 @@ public final class ChromiumTestActivity extends Activity {
         return panel;
     }
 
+    /** Chrome/Vivaldi-style visual tab overview with persistent named groups. */
     private void showTabs() {
         if (!chromiumReady) return;
         LinearLayout panel = sheetPanel();
-        TextView heading = text("タブ  " + tabRegistry.all().size(), 19, PRIMARY, true);
-        heading.setPadding(dp(6), 0, 0, dp(15));
+        TextView heading = text("タブ  " + tabRegistry.all().size(), 21, PRIMARY, true);
         panel.addView(heading, new LinearLayout.LayoutParams(-1, dp(42)));
 
-        LinearLayout actions = new LinearLayout(this);
-        actions.setGravity(Gravity.CENTER_VERTICAL);
-        panel.addView(actions, new LinearLayout.LayoutParams(-1, dp(49)));
-
-        // The dialog is created before buttons receive listeners. The holder
-        // avoids retaining a stale Activity outside the dialog lifetime.
         final Dialog[] shown = new Dialog[1];
-        Button addNormal = makeButton("＋ 新しいタブ", "通常タブを新規作成", () -> {
+        LinearLayout actions = new LinearLayout(this);
+        panel.addView(actions, new LinearLayout.LayoutParams(-1, dp(46)));
+        Button normal = makeButton("＋ 新しいタブ", "新しい通常タブ", () -> {
             shown[0].dismiss();
             createTab("about:blank", false);
         });
-        addNormal.setTextSize(14);
-        addNormal.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        addNormal.setBackground(rounded(ELEVATED, 13, BORDER));
-        actions.addView(addNormal, new LinearLayout.LayoutParams(0, dp(44), 1));
-
-        Button addPrivate = makeButton("◇ 非公開", "非公開タブを新規作成", () -> {
+        normal.setTextSize(13);
+        actions.addView(normal, new LinearLayout.LayoutParams(0, -1, 1));
+        Button incognito = makeButton("◇ 非公開", "新しい非公開タブ", () -> {
             shown[0].dismiss();
             createTab("about:blank", true);
         });
-        addPrivate.setTextSize(14);
-        addPrivate.setTextColor(ACCENT);
-        LinearLayout.LayoutParams privateLp = new LinearLayout.LayoutParams(0, dp(44), 1);
-        privateLp.leftMargin = dp(9);
-        actions.addView(addPrivate, privateLp);
+        incognito.setTextSize(13);
+        actions.addView(incognito, new LinearLayout.LayoutParams(0, -1, 1));
 
         ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(false);
         scroll.setVerticalScrollBarEnabled(false);
-        int maxHeight = (int) (getResources().getDisplayMetrics().heightPixels * .56f);
-        LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(-1,
-            Math.min(maxHeight, dp(Math.max(74, tabRegistry.all().size() * 73))));
-        scrollLp.topMargin = dp(10);
-        panel.addView(scroll, scrollLp);
-        LinearLayout rows = sheetPanel();
-        scroll.addView(rows);
+        scroll.setFillViewport(false);
+        panel.addView(scroll, new LinearLayout.LayoutParams(-1,
+            (int) (getResources().getDisplayMetrics().heightPixels * .66f)));
+        LinearLayout groups = sheetPanel();
+        scroll.addView(groups);
 
+        // Preserve stable group insertion order, and a dedicated ungrouped section.
+        Map<String, List<TabRegistry.Tab>> groupMap = new LinkedHashMap<>();
         for (TabRegistry.Tab tab : tabRegistry.all()) {
-            LinearLayout tabRow = new LinearLayout(this);
-            tabRow.setGravity(Gravity.CENTER_VERTICAL);
-            tabRow.setPadding(dp(12), dp(4), dp(3), dp(4));
-            boolean active = tab == tabRegistry.current();
-            tabRow.setBackground(rounded(active ? ELEVATED : SURFACE, 14,
-                active ? ACCENT : Color.TRANSPARENT));
-            LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(67));
-            rowLp.bottomMargin = dp(5);
-            rows.addView(tabRow, rowLp);
+            String label = tab.group == null ? "タブ" : tab.group;
+            groupMap.computeIfAbsent(label, key -> new ArrayList<>()).add(tab);
+        }
+        int cardWidth = (getResources().getDisplayMetrics().widthPixels - dp(70)) / 2;
+        for (Map.Entry<String, List<TabRegistry.Tab>> group : groupMap.entrySet()) {
+            TextView section = text(group.getKey() + "  ·  " + group.getValue().size(),
+                15, ACCENT, true);
+            section.setPadding(dp(4), dp(10), 0, dp(9));
+            groups.addView(section, new LinearLayout.LayoutParams(-1, dp(49)));
+            GridLayout grid = new GridLayout(this);
+            grid.setColumnCount(2);
+            groups.addView(grid, new LinearLayout.LayoutParams(-1, -2));
+            for (TabRegistry.Tab tab : group.getValue()) {
+                LinearLayout card = sheetPanel();
+                card.setBackground(rounded(ELEVATED, 13,
+                    tab == tabRegistry.current() ? ACCENT : BORDER));
+                GridLayout.LayoutParams cardLp = new GridLayout.LayoutParams();
+                cardLp.width = cardWidth;
+                cardLp.height = dp(237);
+                cardLp.setMargins(dp(3), dp(3), dp(3), dp(4));
+                grid.addView(card, cardLp);
 
-            LinearLayout details = new LinearLayout(this);
-            details.setOrientation(LinearLayout.VERTICAL);
-            details.setGravity(Gravity.CENTER_VERTICAL);
-            String display = tab.displayTitle();
-            TextView label = text((tab.privateMode ? "◇  " : "") + display, 14,
-                PRIMARY, active);
-            label.setSingleLine(true);
-            label.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            details.addView(label, new LinearLayout.LayoutParams(-1, dp(25)));
-            TextView subtitle = text(tab.privateMode ? "非公開" : tab.url, 11,
-                SECONDARY, false);
-            subtitle.setSingleLine(true);
-            subtitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            details.addView(subtitle, new LinearLayout.LayoutParams(-1, dp(20)));
-            tabRow.addView(details, new LinearLayout.LayoutParams(0, -1, 1));
-            details.setContentDescription("タブを選択: " + display);
-            details.setOnClickListener(v -> {
-                shown[0].dismiss();
-                selectTab(tab.id);
-            });
-
-            Button close = makeButton("×", "このタブを閉じる", () -> {
-                shown[0].dismiss();
-                closeTabDirect(tab.id);
-            });
-            close.setTextColor(SECONDARY);
-            tabRow.addView(close, new LinearLayout.LayoutParams(dp(43), dp(45)));
+                ImageView preview = new ImageView(this);
+                preview.setContentDescription("ページのプレビュー");
+                preview.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                preview.setBackground(rounded(SURFACE, 10, Color.TRANSPARENT));
+                Bitmap bitmap = tab.privateMode ? null : previewStore.load(tab.id);
+                if (bitmap != null) preview.setImageBitmap(bitmap);
+                else {
+                    TextView placeholder = text(tab.privateMode ? "◇ 非公開" : "▤ プレビュー未取得",
+                        13, SECONDARY, false);
+                    placeholder.setGravity(Gravity.CENTER);
+                    card.addView(placeholder, new LinearLayout.LayoutParams(-1, dp(137)));
+                }
+                if (bitmap != null) {
+                    card.addView(preview, new LinearLayout.LayoutParams(-1, dp(137)));
+                }
+                TextView name = text(tab.displayTitle(), 13, PRIMARY, true);
+                name.setSingleLine(true);
+                name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                name.setPadding(dp(8), 0, dp(8), 0);
+                card.addView(name, new LinearLayout.LayoutParams(-1, dp(34)));
+                TextView url = text(tab.privateMode ? "非公開" : tab.url,
+                    10, SECONDARY, false);
+                url.setSingleLine(true);
+                url.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                url.setPadding(dp(8), 0, dp(8), 0);
+                card.addView(url, new LinearLayout.LayoutParams(-1, dp(22)));
+                LinearLayout actionsRow = new LinearLayout(this);
+                card.addView(actionsRow, new LinearLayout.LayoutParams(-1, dp(39)));
+                Button groupButton = makeButton("グループ", "タブをグループ分け", () -> {
+                    shown[0].dismiss();
+                    showTabGroupDialog(tab.id);
+                });
+                groupButton.setTextSize(11);
+                groupButton.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_browser_folder, 0, 0, 0);
+                groupButton.setCompoundDrawablePadding(dp(4));
+                actionsRow.addView(groupButton, new LinearLayout.LayoutParams(0, -1, 1));
+                Button close = makeButton("×", "タブを閉じる", () -> {
+                    shown[0].dismiss();
+                    closeTabDirect(tab.id);
+                });
+                actionsRow.addView(close, new LinearLayout.LayoutParams(dp(42), -1));
+                preview.setOnClickListener(v -> {
+                    shown[0].dismiss();
+                    selectTab(tab.id);
+                });
+                card.setOnClickListener(v -> {
+                    shown[0].dismiss();
+                    selectTab(tab.id);
+                });
+                card.setOnLongClickListener(v -> {
+                    shown[0].dismiss();
+                    showTabGroupDialog(tab.id);
+                    return true;
+                });
+            }
         }
         shown[0] = bottomSheet(panel);
+    }
+
+    private void showTabGroupDialog(String id) {
+        TabRegistry.Tab tab = tabRegistry.find(id);
+        if (tab == null) return;
+        LinkedHashSet<String> names = new LinkedHashSet<>();
+        for (TabRegistry.Tab other : tabRegistry.all()) {
+            if (other.group != null) names.add(other.group);
+        }
+        ArrayList<String> choices = new ArrayList<>();
+        choices.add("＋ 新しいグループを作成");
+        choices.add("グループから外す");
+        choices.addAll(names);
+        new AlertDialog.Builder(this).setTitle("タブのグループ分け")
+            .setItems(choices.toArray(new String[0]), (dialog, which) -> {
+                if (which == 0) {
+                    EditText name = new EditText(this);
+                    name.setSingleLine(true);
+                    name.setHint("グループ名");
+                    new AlertDialog.Builder(this).setTitle("新しいグループ")
+                        .setView(name).setPositiveButton("作成", (d, w) -> {
+                            String value = name.getText().toString().trim();
+                            if (!value.isEmpty()) {
+                                tab.group = value.substring(0, Math.min(40, value.length()));
+                                saveRegularTabs();
+                                showTabs();
+                            }
+                        }).setNegativeButton("キャンセル", null).show();
+                } else {
+                    tab.group = which == 1 ? null : choices.get(which);
+                    saveRegularTabs();
+                    showTabs();
+                }
+            }).setNegativeButton("キャンセル", null).show();
     }
 
     /** Closing is a single operation; reopening navigates back to the URL. */
@@ -1183,6 +1333,7 @@ public final class ChromiumTestActivity extends Activity {
             CefriumBrowser.reapUnusedRenderers();
         }
         tabRegistry.close(id);
+        if (!victim.privateMode) previewStore.remove(victim.id);
         if (tabRegistry.current() == null) tabRegistry.add("about:blank", false);
         if (wasCurrent) activateCurrentTab();
         else updateNavigation();
@@ -1267,7 +1418,7 @@ public final class ChromiumTestActivity extends Activity {
         // A plain HTTPS page, never silent APK installation or downloads from
         // unauthenticated third-party hosts.
         Intent browser = new Intent(Intent.ACTION_VIEW,
-            android.net.Uri.parse("https://github.com/linkalls/velocity-browser/actions/workflows/chromium-013-signed-preview.yml"));
+            android.net.Uri.parse("https://github.com/linkalls/velocity-browser/actions/workflows/velocity-signed-apk.yml"));
         try {
             startActivity(browser);
         } catch (RuntimeException error) {
@@ -1281,10 +1432,16 @@ public final class ChromiumTestActivity extends Activity {
             "ページ内検索", "ページを共有", "比較サイト",
             "広告・トラッカードメイン遮断", "広告枠の非表示を切替",
             "このサイトの追加遮断を切替", "高速起動（実験・次回から）",
-            "更新APKを確認", "起動診断", "このブラウザについて"
+            "更新APKを確認", "起動診断", "設定", "このブラウザについて"
         };
-        String[] glyphs = {
-            "+", "◇", "×", "⌕", "↗", "▤", "◎", "▧", "◉", "⚡", "↓", "⚙", "ⓘ"
+        int[] icons = {
+            R.drawable.ic_browser_plus, R.drawable.ic_browser_lock,
+            R.drawable.ic_browser_close, R.drawable.ic_browser_search,
+            R.drawable.ic_browser_share, R.drawable.ic_browser_globe,
+            R.drawable.ic_browser_shield, R.drawable.ic_browser_eye_off,
+            R.drawable.ic_browser_shield, R.drawable.ic_browser_speed,
+            R.drawable.ic_browser_download, R.drawable.ic_browser_flask,
+            R.drawable.ic_browser_settings, R.drawable.ic_browser_info
         };
         String[] hints = {
             "通常のブラウジング", "終了時にURLを保存しない", "5秒以内ならURLを再度開ける",
@@ -1295,6 +1452,7 @@ public final class ChromiumTestActivity extends Activity {
             isFastAttachEnabled()
                     ? "ON · 失敗時は起動診断から解除できる" : "OFF · 標準起動を使用中",
             "GitHub Actionsの署名済みビルド", "クラッシュ・起動状態を確認",
+            "ページ・プライバシー・Googleパスキーの設定",
             "Cefrium 0.17.0 · 開発版"
         };
         LinearLayout panel = sheetPanel();
@@ -1318,9 +1476,8 @@ public final class ChromiumTestActivity extends Activity {
             item.setBackground(new RippleDrawable(ColorStateList.valueOf(0x22FFFFFF),
                 rounded(SURFACE, 13, Color.TRANSPARENT), null));
             items.addView(item, new LinearLayout.LayoutParams(-1, dp(62)));
-            TextView icon = text(glyphs[i], 23, i == 7 ? ACCENT : SECONDARY, false);
-            icon.setGravity(Gravity.CENTER);
-            item.addView(icon, new LinearLayout.LayoutParams(dp(43), -1));
+            item.addView(iconView(icons[i], i == 12 ? ACCENT : SECONDARY),
+                new LinearLayout.LayoutParams(dp(43), dp(43)));
             LinearLayout detail = sheetPanel();
             detail.setGravity(Gravity.CENTER_VERTICAL);
             TextView label = text(labels[i], 15, PRIMARY, false);
@@ -1360,13 +1517,120 @@ public final class ChromiumTestActivity extends Activity {
             case 9: toggleExperimentalFastStartup(); break;
             case 10: openUpdatesPage(); break;
             case 11: startActivity(new Intent(this, StartupDiagnosticActivity.class)); break;
-            case 12: showInfo(); break;
+            case 12: showSettings(); break;
+            case 13: showInfo(); break;
             default: break;
         }
     }
 
+    private void applyBrowserSettings(CefriumBrowser browser) {
+        SharedPreferences settings = getSharedPreferences(TAB_PREFS, MODE_PRIVATE);
+        browser.setPullToRefreshEnabled(settings.getBoolean("pull_to_refresh", true));
+        // Default forbids autoplay without user activation.
+        browser.setMediaPlaybackRequiresUserGesture(!settings.getBoolean("auto_play", false));
+    }
+
+    private void addSettingsToggle(LinearLayout panel, String titleText, String hint,
+                                   String key, boolean defaultValue) {
+        SharedPreferences preferences = getSharedPreferences(TAB_PREFS, MODE_PRIVATE);
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(9), dp(8), dp(7), dp(8));
+        int optionIcon;
+        switch (key) {
+            case "pull_to_refresh": optionIcon = R.drawable.ic_browser_refresh; break;
+            case "force_dark": optionIcon = R.drawable.ic_browser_moon; break;
+            case "auto_play": optionIcon = R.drawable.ic_browser_play; break;
+            case "save_previews": optionIcon = R.drawable.ic_browser_image; break;
+            case "block_domains": optionIcon = R.drawable.ic_browser_shield; break;
+            case "cosmetic_elements": optionIcon = R.drawable.ic_browser_eye_off; break;
+            default: optionIcon = R.drawable.ic_browser_settings; break;
+        }
+        row.addView(iconView(optionIcon, SECONDARY), new LinearLayout.LayoutParams(dp(43), dp(43)));
+        LinearLayout body = sheetPanel();
+        TextView titleView = text(titleText, 15, PRIMARY, false);
+        TextView description = text(hint, 11, SECONDARY, false);
+        body.addView(titleView);
+        body.addView(description);
+        row.addView(body, new LinearLayout.LayoutParams(0, -2, 1));
+        Switch toggle = new Switch(this);
+        toggle.setChecked(preferences.getBoolean(key, defaultValue));
+        row.addView(toggle);
+        row.setOnClickListener(view -> toggle.setChecked(!toggle.isChecked()));
+        toggle.setOnCheckedChangeListener((button, enabled) -> {
+            preferences.edit().putBoolean(key, enabled).apply();
+            if ("block_domains".equals(key)) blockDomainsEnabled = enabled;
+            if ("cosmetic_elements".equals(key)) cosmeticEnabled = enabled;
+            for (CefriumBrowser browser : liveBrowsers.values()) {
+                if ("pull_to_refresh".equals(key)) browser.setPullToRefreshEnabled(enabled);
+                if ("auto_play".equals(key)) browser.setMediaPlaybackRequiresUserGesture(!enabled);
+                if ("force_dark".equals(key)) browser.setDarkMode(enabled);
+            }
+            if ("cosmetic_elements".equals(key)) {
+                for (TabRegistry.Tab tab : tabRegistry.all()) {
+                    CefriumBrowser live = liveBrowsers.get(tab.id);
+                    if (live != null) refreshCosmetics(live, tab);
+                }
+            }
+        });
+        panel.addView(row, new LinearLayout.LayoutParams(-1, dp(68)));
+    }
+
+    private void showSettings() {
+        LinearLayout panel = sheetPanel();
+        LinearLayout heading = new LinearLayout(this);
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        heading.addView(iconView(R.drawable.ic_browser_settings, ACCENT),
+            new LinearLayout.LayoutParams(dp(43), dp(43)));
+        heading.addView(text("Velocity 設定", 21, PRIMARY, true));
+        panel.addView(heading, new LinearLayout.LayoutParams(-1, dp(45)));
+        ScrollView scroll = new ScrollView(this);
+        panel.addView(scroll, new LinearLayout.LayoutParams(-1,
+            (int) (getResources().getDisplayMetrics().heightPixels * .72f)));
+        LinearLayout items = sheetPanel();
+        scroll.addView(items);
+        items.addView(text("表示と操作", 16, ACCENT, true));
+        addSettingsToggle(items, "下に引いて更新", "ページの先頭から引き下ろして再読み込み",
+            "pull_to_refresh", true);
+        addSettingsToggle(items, "Webサイトのダークモード", "Chromiumのカラースキームを変更",
+            "force_dark", false);
+        addSettingsToggle(items, "動画と音声の自動再生", "OFFの場合は再生に操作が必要",
+            "auto_play", false);
+        items.addView(text("タブとプライバシー", 16, ACCENT, true));
+        addSettingsToggle(items, "タブのプレビューを保存", "通常タブのみ、アプリ内に小さい画像を保存",
+            "save_previews", true);
+        addSettingsToggle(items, "追加の広告ドメイン遮断", "Velocity Block Lite のネットワーク遮断",
+            "block_domains", true);
+        addSettingsToggle(items, "広告枠を非表示", "静的CSSルールによる要素の非表示",
+            "cosmetic_elements", true);
+        Button provider = makeButton("Googleパスキーの設定を開く", "Android標準の認証情報サービスを設定",
+            this::openCredentialSettings);
+        provider.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_browser_key, 0, 0, 0);
+        provider.setCompoundDrawablePadding(dp(12));
+        provider.setTextSize(15);
+        items.addView(provider, new LinearLayout.LayoutParams(-1, dp(58)));
+        TextView caveat = text("Googleパスワードマネージャーを外部サイトで使うには、" +
+            "ブラウザに対するGoogle側の承認も必要。Androidの設定変更だけでは解除できません。",
+            12, SECONDARY, false);
+        items.addView(caveat, new LinearLayout.LayoutParams(-1, dp(75)));
+        TextView sessionInfo = text("タブ数は無制限。終了後は通常タブの一覧・履歴を保存し、" +
+            "非公開タブは保存しません。プロセス終了後のWebページは再生成が必要です。",
+            12, SECONDARY, false);
+        items.addView(sessionInfo, new LinearLayout.LayoutParams(-1, dp(75)));
+        bottomSheet(panel);
+    }
+
+    private void openCredentialSettings() {
+        try {
+            startActivity(new Intent("android.settings.CREDENTIAL_PROVIDER"));
+        } catch (RuntimeException error) {
+            Toast.makeText(this, "端末の『パスワードと自動入力』を確認してね",
+                Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void showInfo() {
-        new AlertDialog.Builder(this).setTitle("Velocity Chromium 実験版")
+        new AlertDialog.Builder(this).setTitle("Velocity Browser")
             .setMessage("エンジン：Chromium（Cefrium 0.17.0）\n\n" +
                 "これはAndroid標準WebViewではありません。\n\n" +
                 "Gecko/WPE版とは別アプリとしてインストールできます。\n\n" +
@@ -1407,6 +1671,16 @@ public final class ChromiumTestActivity extends Activity {
 
     @Override protected void onStop() {
         mainHandler.removeCallbacks(deferredTabSave);
+        // Serialize only existing regular renderers. Private history stays RAM-only.
+        for (TabRegistry.Tab tab : tabRegistry.regularTabs()) {
+            CefriumBrowser live = liveBrowsers.get(tab.id);
+            if (live == null || tab.startupHome) continue;
+            try {
+                previewStore.saveNavigationState(tab.id, live.serializeNavigationState());
+            } catch (RuntimeException error) {
+                Log.w(TAG, "Could not capture back-forward stack", error);
+            }
+        }
         saveRegularTabs();
         super.onStop();
     }
@@ -1420,17 +1694,42 @@ public final class ChromiumTestActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
     }
 
-    @Override @Deprecated public void onBackPressed() {
-        if (address.hasFocus()) {
+    /** System Back is navigation, not Activity destruction during page loads. */
+    private void handleBrowserBack() {
+        if (address != null && address.hasFocus()) {
             hideKeyboard();
             address.clearFocus();
-        } else if (engine != null && !tabRegistry.isStartupHomeCurrent() && engine.canGoBack()) {
+            return;
+        }
+        if (engine != null && !tabRegistry.isStartupHomeCurrent() && engine.canGoBack()) {
             engine.goBack();
-        } else super.onBackPressed();
+            return;
+        }
+        TabRegistry.Tab current = tabRegistry.current();
+        if (current != null && current.loading && engine != null) {
+            // A brand-new navigation can report canGoBack=false until committed.
+            // Cancel it rather than erroneously finishing the Activity.
+            engine.stopLoading();
+            return;
+        }
+        if (!tabRegistry.isStartupHomeCurrent()) {
+            tabRegistry.selectStartupHome();
+            activateCurrentTab();
+            saveRegularTabs();
+            return;
+        }
+        // Preserve all browser objects and history for an ordinary app re-launch.
+        moveTaskToBack(true);
     }
+
+    @Override @Deprecated public void onBackPressed() { handleBrowserBack(); }
 
     @Override protected void onDestroy() {
         destroyed = true;
+        if (Build.VERSION.SDK_INT >= 33 && gestureBackCallback != null) {
+            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(gestureBackCallback);
+        }
+        if (previewStore != null) previewStore.close();
         mainHandler.removeCallbacks(deferredTabSave);
         if (undoTimeout != null) mainHandler.removeCallbacks(undoTimeout);
         if (undoPopup != null) undoPopup.dismiss();

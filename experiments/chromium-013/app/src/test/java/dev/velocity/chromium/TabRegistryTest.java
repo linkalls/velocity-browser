@@ -42,14 +42,20 @@ public final class TabRegistryTest {
         assertNull(model.current());
     }
 
-    @Test public void tabCapacityIsStable() {
+    @Test public void tabCountIsUnlimitedAndStable() {
         TabRegistry model = new TabRegistry();
-        for (int i = 0; i < TabRegistry.MAX_TABS; i++) {
-            assertNotNull(model.add("about:blank", false));
+        for (int i = 0; i < 250; i++) {
+            assertNotNull(model.add("https://example.com/" + i, i % 2 == 0));
         }
-        TabRegistry.Tab current = model.current();
-        assertNull(model.add("about:blank", true));
-        assertSame(current, model.current());
+        assertEquals(250, model.all().size());
+    }
+    @Test public void restoredIdsAndGroupsSurvive() {
+        TabRegistry model = new TabRegistry();
+        String id = java.util.UUID.randomUUID().toString();
+        TabRegistry.Tab tab = model.restoreRegularTab("https://example.com", false, id, "Research");
+        assertEquals(id, tab.id);
+        assertEquals("Research", tab.group);
+        assertNotEquals(id, model.restoreRegularTab("https://another.example", false, id, null).id);
     }
     @Test public void startupKeepsGoogleSavedButSelectsOfflineHome() {
         TabRegistry model = new TabRegistry();
@@ -67,21 +73,21 @@ public final class TabRegistryTest {
 
     @Test public void fullSavedSessionIsNotDiscardedForStartupHome() {
         TabRegistry model = new TabRegistry();
-        for (int i = 0; i < TabRegistry.MAX_TABS; i++) {
+        for (int i = 0; i < 50; i++) {
             assertNotNull(model.restoreRegularTab("https://saved.example/" + i));
         }
         model.selectStartupHome();
-        assertEquals(TabRegistry.MAX_PERSISTED_TABS, model.all().size());
+        assertEquals(51, model.all().size());
         assertTrue(model.isStartupHomeCurrent());
         TabRegistry restored = new TabRegistry();
         for (TabRegistry.Tab tab : model.regularTabs()) {
             assertNotNull(restored.restoreRegularTab(tab.url, tab.startupHome));
         }
         restored.selectStartupHome();
-        assertEquals(TabRegistry.MAX_PERSISTED_TABS, restored.all().size());
+        assertEquals(51, restored.all().size());
         assertEquals("about:blank", restored.current().url);
         long saved = restored.regularTabs().stream().filter(t -> t.url.startsWith("https://saved.example/")).count();
-        assertEquals(TabRegistry.MAX_TABS, saved);
+        assertEquals(50, saved);
         TabRegistry.Tab victim = restored.all().get(1);
         restored.close(victim.id);
         assertNotNull(restored.add("https://new.example/", false));
@@ -95,13 +101,13 @@ public final class TabRegistryTest {
         assertEquals(1, model.regularTabs().size());
     }
 
-    @Test public void reservedHomeAllowsTwelveUserTabsAndRemainsReusable() {
+    @Test public void reservedHomeAllowsMoreTabsAndRemainsReusable() {
         TabRegistry model = new TabRegistry();
         TabRegistry.Tab home = model.selectStartupHome();
-        for (int i = 0; i < TabRegistry.MAX_TABS; i++) {
+        for (int i = 0; i < 50; i++) {
             assertNotNull(model.add("https://saved.example/" + i, false));
         }
-        assertNull(model.add("https://overflow.example/", false));
+        assertNotNull(model.add("https://overflow.example/", false));
         assertSame(home, model.selectStartupHome());
         assertTrue(model.isStartupHomeCurrent());
     }

@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- WebAuthn via Android Credential Manager: third-party Google credentials
+         additionally require Google Password Manager privileged-caller approval. -->
+    <uses-permission android:name="android.permission.CREDENTIAL_MANAGER_SET_ORIGIN" />
     <application
         android:name=".ChromiumDiagnosticApplication"
-        android:label="Velocity Preview"
+        android:label="Velocity Browser"
         android:icon="@drawable/ic_velocity"
         android:allowBackup="false"
         android:usesCleartextTraffic="false"

@@ -35,8 +35,8 @@ APKは `experiments/chromium-013/app/build/outputs/apk/` に生成される。�
 ## CIとAPK
 
 - [Android & scheduler](.github/workflows/android.yml)：`main` とPRでChromium root `:app` のテスト・ビルド、Manifest監査、Bun検証を実行。
-- [Chromiumエミュレーター検証](.github/workflows/chromium-013-experiment.yml)：Android 16/17のrenderer／DOM・JSスモーク試験。
-- [署名済みarm64 Preview](.github/workflows/chromium-013-signed-preview.yml)：固定の署名鍵・単調増加versionCodeでビルド。公開リリース作成は手動かつ明示的なオプトインのみ。
+- [Chromiumエミュレーター検証](.github/workflows/velocity-android-smoke.yml)：Android 16/17のrenderer／DOM・JSスモーク試験。
+- [署名済みarm64 APK](.github/workflows/velocity-signed-apk.yml)：固定の署名鍵・単調増加versionCodeでビルド。公開リリース作成は手動かつ明示的なオプトインのみ。
 
 ## 残る検証項目
 
