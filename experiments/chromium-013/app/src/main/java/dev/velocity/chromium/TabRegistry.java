@@ -47,9 +47,6 @@ public final class TabRegistry {
     private String startupHomeId;
 
     public Tab add(String url, boolean privateMode) {
-        Tab home = find(startupHomeId);
-        int capacity = MAX_TABS + (isRegularHome(home) ? 1 : 0);
-        if (tabs.size() >= capacity) return null;
         Tab tab = new Tab(url, privateMode);
         tabs.add(tab);
         selectedId = tab.id;

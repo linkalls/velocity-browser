@@ -93,7 +93,7 @@ public final class ChromiumTestActivity extends Activity {
     private final TabRegistry tabRegistry = new TabRegistry();
     private TabPreviewStore previewStore;
     private OnBackInvokedCallback gestureBackCallback;
-    private final Map<String, CefriumBrowser> liveBrowsers = new LinkedHashMap<>();
+    private final Map<String, CefriumBrowser> liveBrowsers = new LinkedHashMap<>(16, .75f, true);
     private static final String TAB_PREFS = "cefrium_tabs_v1";
     // Unlimited tab metadata, bounded live native renderers on memory-limited phones.
     private static final int MAX_RESIDENT_BROWSERS = 6;
