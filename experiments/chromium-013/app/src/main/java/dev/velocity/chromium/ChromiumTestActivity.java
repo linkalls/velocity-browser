@@ -11,6 +11,7 @@ import android.content.pm.PackageInfo;
 import android.content.pm.ServiceInfo;
 import android.graphics.Color;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -18,6 +19,7 @@ import android.graphics.drawable.RippleDrawable;
 import android.content.res.ColorStateList;
 import android.graphics.drawable.ColorDrawable;
 import android.util.Log;
+import android.util.Base64;
 import android.view.View;
 import android.os.Bundle;
 import android.os.Build;
@@ -64,6 +66,8 @@ import java.util.HashSet;
 import java.util.Collections;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -113,6 +117,10 @@ public final class ChromiumTestActivity extends Activity {
     private PopupWindow undoPopup;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final Runnable deferredTabSave = this::saveRegularTabs;
+    /** Decode CDP JPEGs off the UI thread; never log thumbnail bytes or URLs. */
+    private final ExecutorService thumbnailDecodeExecutor = Executors.newSingleThreadExecutor();
+    private final Map<String, AtomicBoolean> thumbnailRequestsInFlight = new HashMap<>();
+    private final Map<String, ArrayList<ImageView>> pendingThumbnailViews = new HashMap<>();
     private Runnable undoTimeout;
     private boolean chromiumReady;
     private boolean externalBenchmarkRequested;
@@ -669,6 +677,23 @@ public final class ChromiumTestActivity extends Activity {
                 // Restoring metadata must not automatically navigate the last
                 // selected Google/search/other remote page when opening the app.
                 tabRegistry.selectStartupHome();
+                // DEBUG-ONLY screenshot test: a distinctive offline page
+                // with blue/orange/green regions. No internet, cookies or
+                // private content. CI must verify a REAL captured JPEG.
+                boolean debugPreview = (getApplicationInfo().flags
+                    & ApplicationInfo.FLAG_DEBUGGABLE) != 0 && getIntent() != null
+                    && "preview".equals(getIntent().getStringExtra("velocity_debug_ui_audit"));
+                if (debugPreview) {
+                    String previewFixture = "<!doctype html><html><head>"
+                        + "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                        + "<title>Velocity preview fixture</title></head>"
+                        + "<body style='margin:0;background:#1369cf;color:white;font:28px sans-serif'>"
+                        + "<div style='height:180px;background:#f38328'>ORANGE TEST REGION</div>"
+                        + "<div style='height:260px;background:#189e74'>GREEN TEST REGION</div>"
+                        + "<h1>REAL CHROMIUM PIXELS</h1></body></html>";
+                    tabRegistry.add("data:text/html;charset=utf-8,"
+                        + android.net.Uri.encode(previewFixture), false);
+                }
                 String benchmarkUrl = getIntent() == null ? null
                     : getIntent().getStringExtra("velocity_benchmark_url");
                 if (getResources().getBoolean(R.bool.velocity_page_benchmark)
@@ -994,6 +1019,15 @@ public final class ChromiumTestActivity extends Activity {
                 }));
             browser.setOnUrlChangedListener(url -> runOnUiThread(() -> {
                 if (destroyed || tabRegistry.find(tab.id) != tab || url == null) return;
+                // Reusing a UUID across navigations must not show a previous
+                // site's screenshot while a new page is still loading.
+                if (!url.equals(tab.url) && !tab.privateMode) {
+                    previewStore.invalidatePreview(tab.id);
+                    // Old CDP responses must not block a new navigation's
+                    // snapshot or overwrite new live card ImageViews.
+                    thumbnailRequestsInFlight.remove(tab.id);
+                    pendingThumbnailViews.remove(tab.id);
+                }
                 tab.url = url;
                 currentOriginHost.set(SiteBlockPolicy.hostOf(url));
                 if (tabRegistry.current() == tab) {
@@ -1384,11 +1418,25 @@ public final class ChromiumTestActivity extends Activity {
      * null before its internal surface is ready. Direct PixelCopy of the actual
      * SurfaceView is an independent path and yields a smaller preview bitmap.
      */
-    private void captureWithAndroidPixelCopy(CefriumBrowser browser,
+    private void captureWithAndroidPixelCopy(CefriumBrowser browser, TabRegistry.Tab tab,
                                              java.util.function.Consumer<Bitmap> done) {
+        // This fallback reads Android window pixels, which may contain a
+        // different tab. Never allow a capture after the user switched tabs.
+        if (tab.privateMode || tabRegistry.current() != tab || engine != browser) {
+            done.accept(null);
+            return;
+        }
         FrameLayout container = browser.getSurfaceContainer();
         SurfaceView surface = findBrowserSurface(container);
-        View sourceView = surface == null ? container : surface;
+        if (surface == null) surface = findBrowserSurface(browserContent);
+        // Do NOT PixelCopy the Activity window after a dialog is shown: its
+        // pixels may include private content, dim scrims or a different tab.
+        if (surface == null) {
+            Log.w(TAG, "TABSHOT no valid native Chromium SurfaceView");
+            done.accept(null);
+            return;
+        }
+        View sourceView = surface;
         if (sourceView.getWidth() < 40 || sourceView.getHeight() < 40
                 || !sourceView.isAttachedToWindow()) {
             Log.w(TAG, "Preview PixelCopy source not ready");
@@ -1412,30 +1460,8 @@ public final class ChromiumTestActivity extends Activity {
                 }, mainHandler);
                 return;
             }
-            // Some CEF versions mount their Surface in a separate hierarchy.
-            // The Activity window is the last resort for normal (non-private)
-            // tabs. It includes the page and may include surrounding controls.
-            int[] location = new int[2];
-            sourceView.getLocationInWindow(location);
-            Rect bounds = new Rect(Math.max(0, location[0]), Math.max(0, location[1]),
-                Math.min(getWindow().getDecorView().getWidth(),
-                    location[0] + sourceView.getWidth()),
-                Math.min(getWindow().getDecorView().getHeight(),
-                    location[1] + sourceView.getHeight()));
-            if (bounds.isEmpty()) {
-                result.recycle();
-                done.accept(null);
-                return;
-            }
-            PixelCopy.request(getWindow(), bounds, result, status -> {
-                if (status == PixelCopy.SUCCESS && isUsableTabBitmap(result)) {
-                    done.accept(result);
-                } else {
-                    Log.w(TAG, "Window PixelCopy failed: " + status);
-                    result.recycle();
-                    done.accept(null);
-                }
-            }, mainHandler);
+            // Only the tab's SurfaceView is safe to use here. The Chromium
+            // DevTools route above works even without a native SurfaceView.
         } catch (RuntimeException error) {
             Log.w(TAG, "Could not request PixelCopy", error);
             result.recycle();
@@ -1443,7 +1469,116 @@ public final class ChromiumTestActivity extends Activity {
         }
     }
 
-    /** Capture a real page without exposing private tabs or cached secrets. */
+    /**
+     * A Chromium compositor snapshot is independent of Android's SurfaceView.
+     * The official Cefrium CDP bridge returns the Page.captureScreenshot
+     * result object (base64 JPEG) on the UI thread. Decode on a worker.
+     * No remote debugging, extra browser instance or external network call.
+     */
+    private void captureTabWithDevTools(CefriumBrowser browser, boolean fromSurface,
+                                        java.util.function.Consumer<Bitmap> onSuccess,
+                                        Runnable onFailure) {
+        if (destroyed) return;
+        try {
+            String request = "{\"format\":\"jpeg\",\"quality\":58,"
+                + "\"captureBeyondViewport\":false,\"fromSurface\":"
+                + (fromSurface ? "true" : "false") + "}";
+            browser.executeDevToolsMethod("Page.captureScreenshot", request,
+                (success, resultJson) -> {
+                    if (destroyed) return;
+                    if (!success || resultJson == null) {
+                        Log.w(TAG, "TABSHOT CDP failed, fromSurface=" + fromSurface);
+                        onFailure.run();
+                        return;
+                    }
+                    String encoded;
+                    try {
+                        encoded = new JSONObject(resultJson).optString("data", "");
+                    } catch (org.json.JSONException invalidResponse) {
+                        Log.w(TAG, "TABSHOT CDP result was not valid JSON");
+                        onFailure.run();
+                        return;
+                    }
+                    // Bound memory: Base64 input includes only image pixels.
+                    // Fail closed on unexpectedly large/empty DevTools results.
+                    if (encoded.length() < 400 || encoded.length() > 6_000_000) {
+                        Log.w(TAG, "TABSHOT CDP returned no usable image data; chars="
+                            + encoded.length());
+                        onFailure.run();
+                        return;
+                    }
+                    thumbnailDecodeExecutor.execute(() -> {
+                        Bitmap decoded = null;
+                        try {
+                            byte[] jpeg = Base64.decode(encoded, Base64.DEFAULT);
+                            BitmapFactory.Options options = new BitmapFactory.Options();
+                            options.inSampleSize = 2;
+                            options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+                            decoded = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length, options);
+                        } catch (RuntimeException | OutOfMemoryError error) {
+                            Log.w(TAG, "TABSHOT CDP JPEG decode failed", error);
+                        }
+                        final Bitmap result = decoded;
+                        mainHandler.post(() -> {
+                            if (destroyed) return;
+                            if (isUsableTabBitmap(result)) {
+                                Log.i(TAG, "TABSHOT CDP JPEG decoded, fromSurface="
+                                    + fromSurface + ", dimensions="
+                                    + result.getWidth() + "x" + result.getHeight());
+                                onSuccess.accept(result);
+                            } else {
+                                Log.w(TAG, "TABSHOT CDP decoded an empty/invalid frame");
+                                onFailure.run();
+                            }
+                        });
+                    });
+                });
+        } catch (RuntimeException | LinkageError error) {
+            Log.w(TAG, "TABSHOT CDP screenshot request unavailable", error);
+            onFailure.run();
+        }
+    }
+
+    /**
+     * Last resort: PixelCopy of actual surface. Do not request a screenshot
+     * after switching into a private tab or another browser Activity.
+     */
+    private void captureTabWithSdkFallback(CefriumBrowser browser, TabRegistry.Tab tab,
+                                           java.util.function.Consumer<Bitmap> onSuccess) {
+        AtomicBoolean directCopyStarted = new AtomicBoolean(false);
+        Runnable pixelCopy = () -> {
+            if (!directCopyStarted.compareAndSet(false, true) || destroyed) return;
+            captureWithAndroidPixelCopy(browser, tab, bitmap -> {
+                if (isUsableTabBitmap(bitmap)) {
+                    Log.i(TAG, "TABSHOT Android PixelCopy succeeded");
+                    onSuccess.accept(bitmap);
+                } else {
+                    Log.w(TAG, "TABSHOT all image capture paths failed");
+                }
+            });
+        };
+        try {
+            browser.captureBitmap(bitmap -> {
+                if (isUsableTabBitmap(bitmap)) {
+                    Log.i(TAG, "TABSHOT Cefrium Bitmap API succeeded");
+                    onSuccess.accept(bitmap);
+                } else {
+                    Log.w(TAG, "TABSHOT Cefrium Bitmap API returned empty frame");
+                    pixelCopy.run();
+                }
+            });
+            mainHandler.postDelayed(pixelCopy, 450L);
+        } catch (RuntimeException error) {
+            Log.w(TAG, "TABSHOT Cefrium bitmap capture failed", error);
+            pixelCopy.run();
+        }
+    }
+
+    /**
+     * Acquire and persist actual page pixels for a REGULAR tab only.
+     * Multiple load/title/sheet events for the same tab share one request.
+     * Asynchronous results are rejected after navigation or closing.
+     */
     private void captureVisibleTabPreview(TabRegistry.Tab tab, ImageView target) {
         if (destroyed || tab == null || tab.privateMode
                 || "about:blank".equals(tab.url)
@@ -1451,46 +1586,65 @@ public final class ChromiumTestActivity extends Activity {
                 || !getSharedPreferences(TAB_PREFS, MODE_PRIVATE)
                     .getBoolean("save_previews", true)) return;
         CefriumBrowser visible = liveBrowsers.get(tab.id);
-        if (visible == null || visible != engine) return;
-        String capturedUrl = tab.url;
-        AtomicBoolean completed = new AtomicBoolean(false);
-        java.util.function.Consumer<Bitmap> finish = bitmap -> {
-            if (bitmap == null || !completed.compareAndSet(false, true)) return;
-            if (destroyed || tabRegistry.find(tab.id) != tab || tab.privateMode
-                    || !capturedUrl.equals(tab.url)) return;
-            previewStore.save(tab.id, bitmap);
-            if (target != null) {
-                // Setting an image before the sheet attaches is safe. Waiting
-                // for isAttachedToWindow() used to silently drop first captures.
-                target.setImageBitmap(bitmap);
-                target.setVisibility(View.VISIBLE);
-                if (target.getParent() instanceof ViewGroup) {
-                    ViewGroup frame = (ViewGroup) target.getParent();
-                    View fallback = frame.findViewWithTag("velocity-tab-preview-fallback");
+        if (visible == null || visible != engine) {
+            Log.w(TAG, "TABSHOT deferred: no foreground WebContents");
+            return;
+        }
+        if (target != null) {
+            pendingThumbnailViews.computeIfAbsent(tab.id, key -> new ArrayList<>()).add(target);
+        }
+        if (thumbnailRequestsInFlight.containsKey(tab.id)) return;
+
+        final String capturedUrl = tab.url;
+        final String tabId = tab.id;
+        final AtomicBoolean done = new AtomicBoolean(false);
+        thumbnailRequestsInFlight.put(tabId, done);
+        java.util.function.Consumer<Bitmap> complete = bitmap -> {
+            if (!done.compareAndSet(false, true)) return;
+            if (thumbnailRequestsInFlight.get(tabId) != done) return;
+            thumbnailRequestsInFlight.remove(tabId);
+            List<ImageView> views = pendingThumbnailViews.remove(tabId);
+            if (destroyed || tab.privateMode || tabRegistry.find(tabId) != tab
+                    || !capturedUrl.equals(tab.url) || bitmap == null) return;
+            // Only the regular tab that produced this frame can cache it.
+            previewStore.save(tabId, bitmap);
+            if (views != null) for (ImageView image : views) {
+                if (!image.isAttachedToWindow()) continue;
+                image.setImageBitmap(bitmap);
+                image.setVisibility(View.VISIBLE);
+                if (image.getParent() instanceof ViewGroup) {
+                    View fallback = ((ViewGroup) image.getParent())
+                        .findViewWithTag("velocity-tab-preview-fallback");
                     if (fallback != null) fallback.setVisibility(View.GONE);
                 }
             }
-            Log.i(TAG, "Real tab thumbnail captured via compositor");
+            Log.i(TAG, "TABSHOT persisted live regular-tab screenshot");
         };
+        AtomicBoolean fallbackStarted = new AtomicBoolean(false);
         Runnable fallback = () -> {
-            if (destroyed || completed.get() || tabRegistry.find(tab.id) != tab) return;
-            captureWithAndroidPixelCopy(visible, bitmap -> {
-                if (isUsableTabBitmap(bitmap)) finish.accept(bitmap);
-                else Log.w(TAG, "Thumbnail unavailable after direct PixelCopy");
-            });
+            if (!done.get() && fallbackStarted.compareAndSet(false, true)) {
+                Log.i(TAG, "TABSHOT falling back to Android surface capture");
+                captureTabWithSdkFallback(visible, tab, complete);
+            }
         };
-        try {
-            visible.captureBitmap(bitmap -> {
-                if (isUsableTabBitmap(bitmap)) finish.accept(bitmap);
-                else fallback.run();
-            });
-            // Some Cefrium versions never invoke the SDK callback if an
-            // Android Surface changes between frames. Do not wait indefinitely.
-            mainHandler.postDelayed(fallback, 320L);
-        } catch (RuntimeException error) {
-            Log.w(TAG, "Cefrium screenshot API failed; using PixelCopy", error);
-            fallback.run();
-        }
+        Runnable cdpSecondary = () -> {
+            if (!done.get()) {
+                captureTabWithDevTools(visible, false, complete, fallback);
+            }
+        };
+        // Try Chromium's compositor before any Android Surface PixelCopy.
+        captureTabWithDevTools(visible, true, complete, cdpSecondary);
+        // A platform/CEF callback may never arrive; never leave tab locked.
+        mainHandler.postDelayed(fallback, 2700L);
+        mainHandler.postDelayed(() -> {
+            if (!done.get()) {
+                if (thumbnailRequestsInFlight.get(tabId) == done) {
+                    thumbnailRequestsInFlight.remove(tabId);
+                    pendingThumbnailViews.remove(tabId);
+                    Log.w(TAG, "TABSHOT timeout: no usable thumbnail in 6 seconds");
+                }
+            }
+        }, 6000L);
     }
 
     /** Chrome/Vivaldi-style visual tab overview with persistent named groups. */
@@ -2272,6 +2426,9 @@ public final class ChromiumTestActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 33 && gestureBackCallback != null) {
             getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(gestureBackCallback);
         }
+        thumbnailDecodeExecutor.shutdownNow();
+        thumbnailRequestsInFlight.clear();
+        pendingThumbnailViews.clear();
         if (previewStore != null) previewStore.close();
         mainHandler.removeCallbacks(deferredTabSave);
         if (undoTimeout != null) mainHandler.removeCallbacks(undoTimeout);

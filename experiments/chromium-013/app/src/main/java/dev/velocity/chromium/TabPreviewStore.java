@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.util.Log;
+import android.util.LruCache;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.file.Files;
@@ -21,6 +22,13 @@ final class TabPreviewStore {
     private static final String TAG = "VelocityTabPreview";
     private final File directory;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+    // Keep recent real thumbnails in memory so opening the tab sheet does not
+    // race the asynchronous JPEG write. Cache only normal-tab images.
+    private final LruCache<String, Bitmap> memory = new LruCache<String, Bitmap>(12 * 1024) {
+        @Override protected int sizeOf(String key, Bitmap bitmap) {
+            return Math.max(1, bitmap.getByteCount() / 1024);
+        }
+    };
 
     TabPreviewStore(Context context) {
         directory = new File(context.getFilesDir(), "tab_previews");
@@ -33,11 +41,22 @@ final class TabPreviewStore {
     }
 
     Bitmap load(String id) {
+        Bitmap cached = memory.get(id);
+        if (cached != null && !cached.isRecycled()) return cached;
         File file = path(id);
         if (file == null || !file.isFile()) return null;
         BitmapFactory.Options options = new BitmapFactory.Options();
         options.inSampleSize = 2;
-        return BitmapFactory.decodeFile(file.getAbsolutePath(), options);
+        Bitmap decoded = BitmapFactory.decodeFile(file.getAbsolutePath(), options);
+        if (decoded != null) memory.put(id, decoded);
+        return decoded;
+    }
+
+    /** Remove only screenshot pixels, never the tab's back/forward PageState. */
+    void invalidatePreview(String id) {
+        memory.remove(id);
+        File file = path(id);
+        if (file != null) io.execute(file::delete);
     }
 
     void save(String id, Bitmap source) {
@@ -49,6 +68,9 @@ final class TabPreviewStore {
         int height = Math.max(100, Math.min(450,
             (int) (source.getHeight() * (320.0 / source.getWidth()))));
         Bitmap scaled = Bitmap.createScaledBitmap(source, width, height, true);
+        // Critical: the UI sheet can open before the background JPEG finishes.
+        // Never recycle a bitmap still held by an ImageView / LruCache.
+        memory.put(id, scaled);
         io.execute(() -> {
             if (!directory.exists() && !directory.mkdirs()) return;
             File temporary = new File(directory, file.getName() + ".tmp");
@@ -56,11 +78,10 @@ final class TabPreviewStore {
                 scaled.compress(Bitmap.CompressFormat.JPEG, 64, out);
                 out.flush();
                 if (!temporary.renameTo(file)) throw new IOException("Rename failed");
+                Log.i(TAG, "Thumbnail JPEG persisted, bytes=" + file.length());
             } catch (IOException error) {
                 Log.w(TAG, "Could not save tab thumbnail", error);
                 temporary.delete();
-            } finally {
-                if (scaled != source) scaled.recycle();
             }
         });
     }
@@ -94,6 +115,7 @@ final class TabPreviewStore {
     }
 
     void remove(String id) {
+        memory.remove(id);
         File file = path(id);
         if (file != null) io.execute(() -> {
             file.delete();
@@ -101,5 +123,8 @@ final class TabPreviewStore {
         });
     }
 
-    void close() { io.shutdown(); }
+    void close() {
+        memory.evictAll();
+        io.shutdown();
+    }
 }

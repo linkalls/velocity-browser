@@ -66,14 +66,31 @@ class CefriumReleaseTest(unittest.TestCase):
         self.assertIn('private void foregroundBrowserWithoutStealingAudio(', activity)
         self.assertNotIn('engine.onResume();', activity)
 
-    def test_thumbnail_fallback_captures_native_surface_and_stays_private(self):
+    def test_thumbnail_uses_cdp_compositor_then_safe_native_fallback(self):
         activity = (APP / "ChromiumTestActivity.java").read_text()
-        self.assertIn('findBrowserSurface(', activity)
+        store = (APP / "TabPreviewStore.java").read_text()
+        self.assertIn('executeDevToolsMethod("Page.captureScreenshot"', activity)
+        self.assertIn('"captureBeyondViewport', activity)
+        self.assertIn('captureTabWithDevTools(visible, true, complete, cdpSecondary)', activity)
+        self.assertIn('captureTabWithDevTools(visible, false, complete, fallback)', activity)
         self.assertIn('PixelCopy.request(surface, result,', activity)
-        self.assertIn('PixelCopy.request(getWindow(), bounds, result,', activity)
-        self.assertIn('completed.compareAndSet(false, true)', activity)
-        self.assertIn('tab.privateMode', activity)
-        self.assertIn('Log.w(TAG, "Surface PixelCopy failed:', activity)
+        # Window capture can include a private tab or the bottom-sheet scrim.
+        self.assertNotIn('PixelCopy.request(getWindow(),', activity)
+        self.assertIn('tab.privateMode || tabRegistry.current() != tab', activity)
+        self.assertIn('thumbnailRequestsInFlight.put(tabId, done)', activity)
+        self.assertIn('capturedUrl.equals(tab.url)', activity)
+        self.assertIn('memory.put(id, scaled)', store)
+        self.assertIn('void invalidatePreview(String id)', store)
+        self.assertIn('Log.i(TAG, "Thumbnail JPEG persisted', store)
+
+    def test_synthetic_preview_smoke_checks_real_jpeg_bytes(self):
+        script = (ENGINE / 'tools/ui-layout-screenshot-smoke.sh').read_text()
+        activity = (APP / 'ChromiumTestActivity.java').read_text()
+        self.assertIn('velocity_debug_ui_audit', activity)
+        self.assertIn('ORANGE TEST REGION', activity)
+        self.assertIn('REAL CHROMIUM PIXELS', activity)
+        self.assertIn("assert data.startswith(b'\\xff\\xd8')", script)
+        self.assertIn('files/tab_previews/', script)
 
     def test_settings_show_real_installed_build_and_adaptive_layout(self):
         activity = (APP / "ChromiumTestActivity.java").read_text()

@@ -53,6 +53,45 @@ for mode in settings tabs; do
     grep -q 'Velocity 設定' "dist/cefrium-ui-audit/${mode}.xml" || true
   fi
 done
+# Real offline Chromium screenshot regression. The test page has distinct
+# orange, green and blue bands; a generic icon or fabricated bitmap FAILS.
+# This is a separate debug-only Activity intent, never user web content.
+adb shell am force-stop "$APP" || true
+sleep 5
+adb wait-for-device
+if ! start_audit_activity preview "dist/cefrium-ui-audit/preview-launch.txt"; then
+  echo 'ERROR: offline Chromium thumbnail test failed to start' >&2
+  exit 1
+fi
+sleep 17
+adb logcat -d -v brief > dist/cefrium-ui-audit/preview-logcat.txt || true
+# A SUCCESSFUL real capture is persisted to the app's private directory.
+# Do not pass a test just because its UI displays a site icon.
+if ! adb shell run-as "$APP" ls files/tab_previews/ \
+    > dist/cefrium-ui-audit/preview-files.txt 2>&1; then
+  echo 'ERROR: no private thumbnail cache directory exists' >&2
+  exit 1
+fi
+if ! grep -qE '\.jpg$' dist/cefrium-ui-audit/preview-files.txt; then
+  echo 'ERROR: Chromium generated no JPEG screenshot' >&2
+  grep 'TABSHOT' dist/cefrium-ui-audit/preview-logcat.txt || true
+  exit 1
+fi
+# Verify at least one JPEG actually contains encoded image bytes.
+file_name=$(grep -E '\.jpg$' dist/cefrium-ui-audit/preview-files.txt | head -1 | tr -d '\r')
+adb exec-out run-as "$APP" cat "files/tab_previews/$file_name" \
+  > dist/cefrium-ui-audit/offline-real-chromium-thumbnail.jpg
+python3 - <<'CHECK_JPEG'
+from pathlib import Path
+p=Path('dist/cefrium-ui-audit/offline-real-chromium-thumbnail.jpg')
+data=p.read_bytes()
+assert len(data) > 1000, 'Thumbnail JPEG unexpectedly short'
+assert data.startswith(b'\xff\xd8') and data.endswith(b'\xff\xd9'), 'Invalid JPEG'
+print('PASS: captured a REAL Chromium JPEG, bytes=',len(data))
+CHECK_JPEG
+# Record whether screenshot originated from CDP or a fallback.
+grep 'TABSHOT' dist/cefrium-ui-audit/preview-logcat.txt | tail -25 || true
+
 # At 393dp width the UI should switch to the two-column tab grid.
 # Keep 160dpi so the physical test resolution equals the logical dp size.
 adb shell wm size 393x852
