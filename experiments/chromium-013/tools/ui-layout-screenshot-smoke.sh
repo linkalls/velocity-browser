@@ -7,17 +7,34 @@ ACTIVITY="$APP/dev.velocity.chromium.ChromiumTestActivity"
 mkdir -p dist/cefrium-ui-audit
 # Capture a second layout size close to Pixel 7 Pro CSS viewport width.
 # Android emulator's native 320dp mode is still retained for narrow devices.
+# API 37 may transiently reject a subsequent Activity start immediately after
+# framework boot with "Too early to start activity". Retry ONLY that precise
+# platform error, preserving every other failure as a CI failure.
+start_audit_activity() {
+  local mode="$1" launch_log="$2" attempt
+  for attempt in 1 2 3 4; do
+    if adb shell am start -W -n "$ACTIVITY" --es velocity_debug_ui_audit "$mode" \
+        > "$launch_log" 2>&1; then
+      if grep -q 'Status: ok' "$launch_log"; then return 0; fi
+    fi
+    if ! grep -q 'Too early to start activity' "$launch_log"; then break; fi
+    echo "Android ActivityManager not ready yet (attempt $attempt), retrying" >&2
+    sleep 12
+    adb wait-for-device
+  done
+  adb logcat -d -v threadtime > "${launch_log%.txt}-failure-logcat.txt" || true
+  cat "$launch_log" >&2
+  return 1
+}
+
 for mode in settings tabs; do
   adb shell am force-stop "$APP" || true
   # Closing Chromium may briefly leave native child-process teardown active.
   # Give Android's ActivityManager time before a cold restart.
   sleep 4
   adb wait-for-device
-  if ! adb shell am start -W -n "$ACTIVITY" --es velocity_debug_ui_audit "$mode" \
-      > "dist/cefrium-ui-audit/${mode}-launch.txt" 2>&1; then
-    adb logcat -d -v threadtime > "dist/cefrium-ui-audit/${mode}-start-failure-logcat.txt" || true
-    echo "ERROR: ${mode} UI Activity failed to start; logcat collected" >&2
-    cat "dist/cefrium-ui-audit/${mode}-launch.txt" >&2
+  if ! start_audit_activity "$mode" "dist/cefrium-ui-audit/${mode}-launch.txt"; then
+    echo "ERROR: ${mode} UI Activity failed to start" >&2
     exit 1
   fi
   sleep 14
@@ -44,11 +61,8 @@ for mode in settings tabs; do
   adb shell am force-stop "$APP" || true
   sleep 4
   adb wait-for-device
-  if ! adb shell am start -W -n "$ACTIVITY" --es velocity_debug_ui_audit "$mode" \
-      > "dist/cefrium-ui-audit/${mode}-393dp-launch.txt" 2>&1; then
-    adb logcat -d -v threadtime > "dist/cefrium-ui-audit/${mode}-393dp-failure-logcat.txt" || true
+  if ! start_audit_activity "$mode" "dist/cefrium-ui-audit/${mode}-393dp-launch.txt"; then
     echo "ERROR: ${mode} UI Activity failed to start at 393dp" >&2
-    cat "dist/cefrium-ui-audit/${mode}-393dp-launch.txt" >&2
     exit 1
   fi
   sleep 12
