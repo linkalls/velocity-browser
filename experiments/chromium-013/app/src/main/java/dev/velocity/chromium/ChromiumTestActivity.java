@@ -947,15 +947,12 @@ public final class ChromiumTestActivity extends Activity {
                     tab.canGoBack = canBack;
                     tab.canGoForward = canForward;
                     if (!loading) {
-                        if (!tab.privateMode && tabRegistry.current() == tab) {
-                            // Capture only a visible normal tab, never a secret tab.
-                            if (getSharedPreferences(TAB_PREFS, MODE_PRIVATE)
-                                    .getBoolean("save_previews", true)) browser.captureBitmap(bitmap -> {
-                                if (!destroyed && tabRegistry.find(tab.id) == tab
-                                        && !tab.privateMode && bitmap != null) {
-                                    previewStore.save(tab.id, bitmap);
-                                }
-                            });
+                        // A loading-state callback can happen before the native
+                        // Surface has painted its first frame. Capture after paint
+                        // has had a chance to finish, not synchronously here.
+                        if (tabRegistry.current() == tab && !tab.privateMode) {
+                            mainHandler.postDelayed(() -> captureVisibleTabPreview(tab, null), 650L);
+                            mainHandler.postDelayed(() -> captureVisibleTabPreview(tab, null), 1800L);
                         }
                         browser.setDarkMode(getSharedPreferences(TAB_PREFS, MODE_PRIVATE)
                             .getBoolean("force_dark", false));
@@ -1274,6 +1271,37 @@ public final class ChromiumTestActivity extends Activity {
         return panel;
     }
 
+    /**
+     * Capture only a currently displayed regular page. An inactive Surface or
+     * an early loading callback can produce black / empty thumbnails. This
+     * method also updates a visible card directly, before the async JPEG write.
+     */
+    private void captureVisibleTabPreview(TabRegistry.Tab tab, ImageView target) {
+        if (destroyed || tab == null || tab.privateMode || tab.loading
+                || "about:blank".equals(tab.url)
+                || tabRegistry.find(tab.id) != tab || tabRegistry.current() != tab
+                || !getSharedPreferences(TAB_PREFS, MODE_PRIVATE)
+                    .getBoolean("save_previews", true)) return;
+        CefriumBrowser visible = liveBrowsers.get(tab.id);
+        if (visible == null || visible != engine) return;
+        visible.captureBitmap(bitmap -> runOnUiThread(() -> {
+            // The capture may finish after the user navigates or closes the tab.
+            if (destroyed || tabRegistry.find(tab.id) != tab || tab.privateMode
+                    || bitmap == null || bitmap.isRecycled()
+                    || bitmap.getWidth() < 24 || bitmap.getHeight() < 24) return;
+            previewStore.save(tab.id, bitmap);
+            if (target != null && target.isAttachedToWindow()) {
+                target.setImageBitmap(bitmap);
+                target.setVisibility(View.VISIBLE);
+                if (target.getParent() instanceof ViewGroup) {
+                    ViewGroup frame = (ViewGroup) target.getParent();
+                    View fallback = frame.findViewWithTag("velocity-tab-preview-fallback");
+                    if (fallback != null) fallback.setVisibility(View.GONE);
+                }
+            }
+        }));
+    }
+
     /** Chrome/Vivaldi-style visual tab overview with persistent named groups. */
     private void showTabs() {
         TabRegistry.Tab current = tabRegistry.current();
@@ -1282,6 +1310,11 @@ public final class ChromiumTestActivity extends Activity {
 
     private void showTabs(boolean privateMode) {
         if (!chromiumReady) return;
+        // Trigger a fresh screenshot while the webpage is still visible.
+        TabRegistry.Tab focusedTab = tabRegistry.current();
+        if (focusedTab != null && !focusedTab.privateMode) {
+            captureVisibleTabPreview(focusedTab, null);
+        }
         LinearLayout panel = sheetPanel();
         TextView heading = text(privateMode ? "非公開タブ" : "通常タブ", 21, PRIMARY, true);
         panel.addView(heading, new LinearLayout.LayoutParams(-1, dp(42)));
@@ -1319,8 +1352,20 @@ public final class ChromiumTestActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setFillViewport(false);
+        // Match the sheet to its content. The old fixed 66%-screen scroll area
+        // left more than half a screen of pointless empty space for two tabs.
+        // Larger collections remain scrollable instead of expanding offscreen.
+        int groupedRows = 0;
+        java.util.HashMap<String, Integer> sizes = new java.util.HashMap<>();
+        for (TabRegistry.Tab tab : tabRegistry.tabsForMode(privateMode)) {
+            String groupName = tab.group == null ? "タブ" : tab.group;
+            sizes.put(groupName, sizes.getOrDefault(groupName, 0) + 1);
+        }
+        for (int size : sizes.values()) groupedRows += 49 + ((size + 1) / 2) * 244;
+        int contentHeight = sizes.isEmpty() ? 108 : groupedRows + 14;
+        int maxHeight = (int) (getResources().getDisplayMetrics().heightPixels * .66f);
         panel.addView(scroll, new LinearLayout.LayoutParams(-1,
-            (int) (getResources().getDisplayMetrics().heightPixels * .66f)));
+            Math.min(maxHeight, dp(contentHeight))));
         LinearLayout groups = sheetPanel();
         scroll.addView(groups);
 
@@ -1356,20 +1401,45 @@ public final class ChromiumTestActivity extends Activity {
                 cardLp.setMargins(dp(3), dp(3), dp(3), dp(4));
                 grid.addView(card, cardLp);
 
+                FrameLayout screenshot = new FrameLayout(this);
+                screenshot.setBackground(rounded(SURFACE, 10, Color.TRANSPARENT));
+                screenshot.setClipToOutline(true);
+                card.addView(screenshot, new LinearLayout.LayoutParams(-1, dp(137)));
                 ImageView preview = new ImageView(this);
                 preview.setContentDescription("ページのプレビュー");
                 preview.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                preview.setBackground(rounded(SURFACE, 10, Color.TRANSPARENT));
+                screenshot.addView(preview, new FrameLayout.LayoutParams(-1, -1));
                 Bitmap bitmap = tab.privateMode ? null : previewStore.load(tab.id);
-                if (bitmap != null) preview.setImageBitmap(bitmap);
-                else {
-                    TextView placeholder = text(tab.privateMode ? "◇ 非公開" : "▤ プレビュー未取得",
-                        13, SECONDARY, false);
-                    placeholder.setGravity(Gravity.CENTER);
-                    card.addView(placeholder, new LinearLayout.LayoutParams(-1, dp(137)));
-                }
                 if (bitmap != null) {
-                    card.addView(preview, new LinearLayout.LayoutParams(-1, dp(137)));
+                    preview.setImageBitmap(bitmap);
+                } else {
+                    // A small site identity is more useful than a giant
+                    // "preview unavailable" warning. It is not a fake screenshot.
+                    String host = SiteBlockPolicy.hostOf(tab.url);
+                    boolean blank = "about:blank".equals(tab.url);
+                    FrameLayout placeholder = new FrameLayout(this);
+                    placeholder.setTag("velocity-tab-preview-fallback");
+                    screenshot.addView(placeholder, new FrameLayout.LayoutParams(-1, -1));
+                    TextView fallback = text(tab.privateMode ? "非公開" :
+                        blank ? "新しいタブ" : host == null ? "Webページ" : host,
+                        12, SECONDARY, false);
+                    fallback.setGravity(Gravity.CENTER);
+                    fallback.setPadding(dp(6), 0, dp(6), 0);
+                    fallback.setMaxLines(2);
+                    FrameLayout.LayoutParams fallbackLp = new FrameLayout.LayoutParams(
+                        -1, dp(43), Gravity.BOTTOM);
+                    fallbackLp.bottomMargin = dp(11);
+                    placeholder.addView(fallback, fallbackLp);
+                    ImageView symbol = iconView(tab.privateMode ? R.drawable.ic_browser_lock
+                        : blank ? R.drawable.ic_browser_plus : R.drawable.ic_browser_globe,
+                        SECONDARY);
+                    FrameLayout.LayoutParams mark = new FrameLayout.LayoutParams(dp(44), dp(44),
+                        Gravity.CENTER_HORIZONTAL | Gravity.TOP);
+                    mark.topMargin = dp(21);
+                    placeholder.addView(symbol, mark);
+                    if (tab == tabRegistry.current() && !blank && !tab.privateMode) {
+                        captureVisibleTabPreview(tab, preview);
+                    }
                 }
                 TextView name = text(tab.displayTitle(), 13, PRIMARY, true);
                 name.setSingleLine(true);
@@ -1397,7 +1467,7 @@ public final class ChromiumTestActivity extends Activity {
                     closeTabDirect(tab.id);
                 });
                 actionsRow.addView(close, new LinearLayout.LayoutParams(dp(42), -1));
-                preview.setOnClickListener(v -> {
+                screenshot.setOnClickListener(v -> {
                     shown[0].dismiss();
                     selectTab(tab.id);
                 });

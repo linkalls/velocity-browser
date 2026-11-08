@@ -24,6 +24,16 @@ public final class TabRegistryTest {
         assertEquals("https://normal.example/", model.regularTabs().get(0).url);
     }
 
+    @Test public void blankTabTitleUsesReadableLabel() {
+        TabRegistry model = new TabRegistry();
+        TabRegistry.Tab blank = model.add("about:blank", false);
+        blank.title = "about:blank";
+        assertEquals("新しいタブ", blank.displayTitle());
+        blank.title = "";
+        assertEquals("新しいタブ", blank.displayTitle());
+        assertEquals("ホーム", model.selectStartupHome().displayTitle());
+    }
+
     @Test public void privateAndRegularTabListsAreDisjoint() {
         TabRegistry model = new TabRegistry();
         TabRegistry.Tab normal = model.add("https://normal.example", false);
