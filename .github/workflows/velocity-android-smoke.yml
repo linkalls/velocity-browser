@@ -131,7 +131,7 @@ jobs:
           # Chromium APK + extracted libraries + dex need room beyond the image defaults.
           disk-size: 6G
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 4
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -memory 6144 -cores 4
           script: |
             # Visual QA must run on a healthy emulator. Optional startup A/B
             # loops and Perfetto traces can exhaust emulator GPU resources

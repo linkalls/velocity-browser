@@ -9,8 +9,17 @@ mkdir -p dist/cefrium-ui-audit
 # Android emulator's native 320dp mode is still retained for narrow devices.
 for mode in settings tabs; do
   adb shell am force-stop "$APP" || true
-  adb shell am start -W -n "$ACTIVITY" --es velocity_debug_ui_audit "$mode" \
-    > "dist/cefrium-ui-audit/${mode}-launch.txt"
+  # Closing Chromium may briefly leave native child-process teardown active.
+  # Give Android's ActivityManager time before a cold restart.
+  sleep 4
+  adb wait-for-device
+  if ! adb shell am start -W -n "$ACTIVITY" --es velocity_debug_ui_audit "$mode" \
+      > "dist/cefrium-ui-audit/${mode}-launch.txt" 2>&1; then
+    adb logcat -d -v threadtime > "dist/cefrium-ui-audit/${mode}-start-failure-logcat.txt" || true
+    echo "ERROR: ${mode} UI Activity failed to start; logcat collected" >&2
+    cat "dist/cefrium-ui-audit/${mode}-launch.txt" >&2
+    exit 1
+  fi
   sleep 14
   adb exec-out screencap -p > "dist/cefrium-ui-audit/${mode}.png"
   timeout 30s adb shell uiautomator dump "/sdcard/velocity-${mode}-audit.xml" \
