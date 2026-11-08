@@ -133,7 +133,10 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 4
           script: |
-            VELOCITY_STARTUP_EXPERIMENT=1 VELOCITY_CAPTURE_PERFETTO=1 bash experiments/chromium-013/tools/boot-smoke.sh
+            # Visual QA must run on a healthy emulator. Optional startup A/B
+            # loops and Perfetto traces can exhaust emulator GPU resources
+            # before the screenshot pass, causing spurious 'device offline'.
+            bash experiments/chromium-013/tools/boot-smoke.sh
             bash experiments/chromium-013/tools/ui-layout-screenshot-smoke.sh
       - name: Report actual DOM+JS readiness (not visual paint)
         if: always()
