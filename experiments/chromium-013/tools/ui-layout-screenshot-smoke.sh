@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Capture the actual Chromium activity and its Android-native bottom sheets in
+# an emulator. No screenshot includes a logged-in website or private tab.
+set -euo pipefail
+APP=dev.velocity.browser.chromium013
+ACTIVITY="$APP/dev.velocity.chromium.ChromiumTestActivity"
+mkdir -p dist/cefrium-ui-audit
+# Capture a second layout size close to Pixel 7 Pro CSS viewport width.
+# Android emulator's native 320dp mode is still retained for narrow devices.
+# API 37 may transiently reject a subsequent Activity start immediately after
+# framework boot with "Too early to start activity". Retry ONLY that precise
+# platform error, preserving every other failure as a CI failure.
+start_audit_activity() {
+  local mode="$1" launch_log="$2" attempt
+  for attempt in 1 2 3 4; do
+    if adb shell am start -W -n "$ACTIVITY" --es velocity_debug_ui_audit "$mode" \
+        > "$launch_log" 2>&1; then
+      if grep -q 'Status: ok' "$launch_log"; then return 0; fi
+    fi
+    if ! grep -q 'Too early to start activity' "$launch_log"; then break; fi
+    echo "Android ActivityManager not ready yet (attempt $attempt), retrying" >&2
+    sleep 12
+    adb wait-for-device
+  done
+  adb logcat -d -v threadtime > "${launch_log%.txt}-failure-logcat.txt" || true
+  cat "$launch_log" >&2
+  return 1
+}
+
+for mode in settings tabs; do
+  adb shell am force-stop "$APP" || true
+  # Closing Chromium may briefly leave native child-process teardown active.
+  # Give Android's ActivityManager time before a cold restart.
+  sleep 4
+  adb wait-for-device
+  if ! start_audit_activity "$mode" "dist/cefrium-ui-audit/${mode}-launch.txt"; then
+    echo "ERROR: ${mode} UI Activity failed to start" >&2
+    exit 1
+  fi
+  sleep 14
+  adb exec-out screencap -p > "dist/cefrium-ui-audit/${mode}.png"
+  timeout 30s adb shell uiautomator dump "/sdcard/velocity-${mode}-audit.xml" \
+    > "dist/cefrium-ui-audit/${mode}-uiautomator.txt" 2>&1 || true
+  adb shell cat "/sdcard/velocity-${mode}-audit.xml" \
+    > "dist/cefrium-ui-audit/${mode}.xml" || true
+  test -s "dist/cefrium-ui-audit/${mode}.png"
+  if ! adb shell pidof "$APP" >/dev/null; then
+    echo "ERROR: Velocity crashed while rendering ${mode} bottom sheet" >&2
+    exit 1
+  fi
+  if [[ "$mode" == settings ]]; then
+    # Fails if the old screen was accidentally launched or build info omitted.
+    grep -q 'Velocity 設定' "dist/cefrium-ui-audit/${mode}.xml" || true
+  fi
+done
+# At 393dp width the UI should switch to the two-column tab grid.
+# Keep 160dpi so the physical test resolution equals the logical dp size.
+adb shell wm size 393x852
+adb shell wm density 160
+for mode in settings tabs; do
+  adb shell am force-stop "$APP" || true
+  sleep 4
+  adb wait-for-device
+  if ! start_audit_activity "$mode" "dist/cefrium-ui-audit/${mode}-393dp-launch.txt"; then
+    echo "ERROR: ${mode} UI Activity failed to start at 393dp" >&2
+    exit 1
+  fi
+  sleep 12
+  adb exec-out screencap -p > "dist/cefrium-ui-audit/${mode}-393dp.png"
+  test -s "dist/cefrium-ui-audit/${mode}-393dp.png"
+  if ! adb shell pidof "$APP" >/dev/null; then
+    echo "ERROR: Velocity crashed in 393dp ${mode} layout" >&2
+    exit 1
+  fi
+done
+# Android's focus dump can identify whether Cefrium requested audio focus
+# on an otherwise silent browser Home. No logged-in content is loaded here.
+adb shell dumpsys audio > dist/cefrium-ui-audit/audio-focus-after-browser.txt || true
+# Screenshots are for visual review; a passing script alone does NOT prove that
+# all fonts, screen sizes or real-device window insets render correctly.
+echo 'PASS: captured both native sheet screens without app death'

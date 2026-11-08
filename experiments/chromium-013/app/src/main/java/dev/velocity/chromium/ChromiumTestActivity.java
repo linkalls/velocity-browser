@@ -397,6 +397,27 @@ public final class ChromiumTestActivity extends Activity {
             address.hasFocus() ? false : addressGesture.onTouchEvent(event));
         root.requestFocus();
 
+        // Screenshot-only UI audit hook in DEBUG builds. This never ships in a
+        // signed release or handles remote instructions in the production app.
+        String audit = getIntent() == null ? null :
+            getIntent().getStringExtra("velocity_debug_ui_audit");
+        if ((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                && ("settings".equals(audit) || "tabs".equals(audit))) {
+            root.postDelayed(() -> {
+                if (destroyed || isFinishing()) return;
+                if ("settings".equals(audit)) {
+                    showSettings();
+                } else if (chromiumReady) {
+                    // Additional empty tab metadata demonstrates 2-row grid,
+                    // no network access and no private-page screenshot data.
+                    for (int i = 0; i < 3; i++) {
+                        tabRegistry.add("about:blank", false);
+                    }
+                    showTabs(false);
+                }
+            }, 9000L);
+        }
+
         updateNavigation();
         address.clearFocus();
         // The SDK's WindowAndroid requires an attached Activity view. The
@@ -1254,10 +1275,42 @@ public final class ChromiumTestActivity extends Activity {
             .setNegativeButton("閉じる", null).show();
     }
 
+    /**
+     * A ScrollView that measures to its CONTENT height until the screen limit.
+     * Unlike hard-coded heights, this remains correct at 125%-200% font scale,
+     * in landscape, and when the keyboard changes available window height.
+     */
+    private final class BoundedScrollView extends ScrollView {
+        BoundedScrollView() {
+            super(ChromiumTestActivity.this);
+            setFillViewport(false);
+            setVerticalScrollBarEnabled(false);
+            setClipToPadding(false);
+        }
+
+        @Override protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+            int activityHeight = browserRoot == null ? 0 : browserRoot.getHeight();
+            int screenHeight = getResources().getDisplayMetrics().heightPixels;
+            int available = activityHeight > 0 ? activityHeight : screenHeight;
+            int maximum = BrowserUiLayout.sheetMaxHeightPx(
+                Math.max(1, available - dp(160)), available, dp(130));
+            // Always measure with a bounded AT_MOST: an unconstrained
+            // ScrollView within a wrap-content Dialog can otherwise consume
+            // the whole display, leaving blank space below its actual rows.
+            int cap = maximum;
+            if (View.MeasureSpec.getMode(heightMeasureSpec) != View.MeasureSpec.UNSPECIFIED) {
+                cap = Math.min(cap, View.MeasureSpec.getSize(heightMeasureSpec));
+            }
+            super.onMeasure(widthMeasureSpec,
+                View.MeasureSpec.makeMeasureSpec(Math.max(dp(96), cap), View.MeasureSpec.AT_MOST));
+        }
+    }
+
     /** Native compact bottom sheet instead of a full-screen, unlabeled list. */
     private Dialog bottomSheet(LinearLayout panel) {
         Dialog sheet = new Dialog(this);
-        panel.setPadding(dp(18), dp(17), dp(18), dp(20));
+        panel.setPadding(dp(BrowserUiLayout.SHEET_SIDE_PADDING_DP), dp(16),
+            dp(BrowserUiLayout.SHEET_SIDE_PADDING_DP), dp(15));
         panel.setBackground(rounded(SURFACE, 24, BORDER));
         sheet.setContentView(panel);
         Window window = sheet.getWindow();
@@ -1269,6 +1322,7 @@ public final class ChromiumTestActivity extends Activity {
         sheet.show();
         if (window != null) {
             window.setGravity(Gravity.BOTTOM);
+            window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
             window.setLayout(-1, -2);
         }
         return sheet;
@@ -1454,7 +1508,8 @@ public final class ChromiumTestActivity extends Activity {
         }
         LinearLayout panel = sheetPanel();
         TextView heading = text(privateMode ? "非公開タブ" : "通常タブ", 21, PRIMARY, true);
-        panel.addView(heading, new LinearLayout.LayoutParams(-1, dp(42)));
+        heading.setMinHeight(dp(47));
+        panel.addView(heading, new LinearLayout.LayoutParams(-1, -2));
 
         final Dialog[] shown = new Dialog[1];
         LinearLayout actions = new LinearLayout(this);
@@ -1486,23 +1541,9 @@ public final class ChromiumTestActivity extends Activity {
             });
         actions.addView(add, new LinearLayout.LayoutParams(dp(47), -1));
 
-        ScrollView scroll = new ScrollView(this);
-        scroll.setVerticalScrollBarEnabled(false);
-        scroll.setFillViewport(false);
-        // Match the sheet to its content. The old fixed 66%-screen scroll area
-        // left more than half a screen of pointless empty space for two tabs.
-        // Larger collections remain scrollable instead of expanding offscreen.
-        int groupedRows = 0;
-        java.util.HashMap<String, Integer> sizes = new java.util.HashMap<>();
-        for (TabRegistry.Tab tab : tabRegistry.tabsForMode(privateMode)) {
-            String groupName = tab.group == null ? "タブ" : tab.group;
-            sizes.put(groupName, sizes.getOrDefault(groupName, 0) + 1);
-        }
-        for (int size : sizes.values()) groupedRows += 49 + ((size + 1) / 2) * 244;
-        int contentHeight = sizes.isEmpty() ? 108 : groupedRows + 14;
-        int maxHeight = (int) (getResources().getDisplayMetrics().heightPixels * .66f);
-        panel.addView(scroll, new LinearLayout.LayoutParams(-1,
-            Math.min(maxHeight, dp(contentHeight))));
+        // Content-sized for 1-3 tabs, scrolling only when enough cards exist.
+        BoundedScrollView scroll = new BoundedScrollView();
+        panel.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout groups = sheetPanel();
         scroll.addView(groups);
 
@@ -1519,29 +1560,44 @@ public final class ChromiumTestActivity extends Activity {
             empty.setGravity(Gravity.CENTER);
             groups.addView(empty);
         }
-        int cardWidth = (getResources().getDisplayMetrics().widthPixels - dp(70)) / 2;
+        // Use weighted rows rather than GridLayout's fixed pixel widths. The
+        // dialog's measured inner width is the source of truth, not full screen
+        // metrics (which ignore split screen, panel padding and font scaling).
+        int widthDp = getResources().getConfiguration().screenWidthDp;
+        int columns = BrowserUiLayout.columnsForAvailableWidthDp(
+            BrowserUiLayout.availableSheetWidthDp(widthDp));
+        int previewHeightDp = columns == 1 ? 168 : columns == 2 ? 137 : 122;
         for (Map.Entry<String, List<TabRegistry.Tab>> group : groupMap.entrySet()) {
             TextView section = text(group.getKey() + "  ·  " + group.getValue().size(),
                 15, ACCENT, true);
-            section.setPadding(dp(4), dp(10), 0, dp(9));
-            groups.addView(section, new LinearLayout.LayoutParams(-1, dp(49)));
-            GridLayout grid = new GridLayout(this);
-            grid.setColumnCount(2);
-            groups.addView(grid, new LinearLayout.LayoutParams(-1, -2));
+            section.setPadding(dp(5), dp(10), 0, dp(5));
+            section.setMinHeight(dp(42));
+            groups.addView(section, new LinearLayout.LayoutParams(-1, -2));
+            LinearLayout row = null;
+            int itemIndex = 0;
             for (TabRegistry.Tab tab : group.getValue()) {
+                if (itemIndex % columns == 0) {
+                    row = new LinearLayout(this);
+                    row.setOrientation(LinearLayout.HORIZONTAL);
+                    row.setGravity(Gravity.TOP);
+                    groups.addView(row, new LinearLayout.LayoutParams(-1, -2));
+                }
                 LinearLayout card = sheetPanel();
                 card.setBackground(rounded(ELEVATED, 13,
                     tab == tabRegistry.current() ? ACCENT : BORDER));
-                GridLayout.LayoutParams cardLp = new GridLayout.LayoutParams();
-                cardLp.width = cardWidth;
-                cardLp.height = dp(237);
-                cardLp.setMargins(dp(3), dp(3), dp(3), dp(4));
-                grid.addView(card, cardLp);
+                card.setMinimumHeight(dp(previewHeightDp + 99));
+                LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
+                    0, -2, 1f);
+                cardLp.setMargins(dp(itemIndex % columns == 0 ? 0 :
+                    BrowserUiLayout.CARD_GAP_DP), dp(3), 0, dp(5));
+                row.addView(card, cardLp);
+                itemIndex++;
 
                 FrameLayout screenshot = new FrameLayout(this);
                 screenshot.setBackground(rounded(SURFACE, 10, Color.TRANSPARENT));
                 screenshot.setClipToOutline(true);
-                card.addView(screenshot, new LinearLayout.LayoutParams(-1, dp(137)));
+                card.addView(screenshot, new LinearLayout.LayoutParams(
+                    -1, dp(previewHeightDp)));
                 ImageView preview = new ImageView(this);
                 preview.setContentDescription("ページのプレビュー");
                 preview.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -1582,28 +1638,35 @@ public final class ChromiumTestActivity extends Activity {
                 name.setSingleLine(true);
                 name.setEllipsize(android.text.TextUtils.TruncateAt.END);
                 name.setPadding(dp(8), 0, dp(8), 0);
-                card.addView(name, new LinearLayout.LayoutParams(-1, dp(34)));
+                name.setMinHeight(dp(35));
+                card.addView(name, new LinearLayout.LayoutParams(-1, -2));
                 TextView url = text(tab.privateMode ? "非公開" : tab.url,
                     10, SECONDARY, false);
                 url.setSingleLine(true);
                 url.setEllipsize(android.text.TextUtils.TruncateAt.END);
                 url.setPadding(dp(8), 0, dp(8), 0);
-                card.addView(url, new LinearLayout.LayoutParams(-1, dp(22)));
+                url.setMinHeight(dp(25));
+                card.addView(url, new LinearLayout.LayoutParams(-1, -2));
                 LinearLayout actionsRow = new LinearLayout(this);
-                card.addView(actionsRow, new LinearLayout.LayoutParams(-1, dp(39)));
+                actionsRow.setGravity(Gravity.CENTER_VERTICAL);
+                card.addView(actionsRow, new LinearLayout.LayoutParams(-1, dp(48)));
                 Button groupButton = makeButton("グループ", "タブをグループ分け", () -> {
                     shown[0].dismiss();
                     showTabGroupDialog(tab.id);
                 });
-                groupButton.setTextSize(11);
-                groupButton.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_browser_folder, 0, 0, 0);
+                groupButton.setTextSize(12);
+                groupButton.setSingleLine(true);
+                groupButton.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                groupButton.setCompoundDrawablesWithIntrinsicBounds(
+                    R.drawable.ic_browser_folder, 0, 0, 0);
                 groupButton.setCompoundDrawablePadding(dp(4));
-                actionsRow.addView(groupButton, new LinearLayout.LayoutParams(0, -1, 1));
-                Button close = makeButton("×", "タブを閉じる", () -> {
+                groupButton.setPadding(dp(5), 0, 0, 0);
+                actionsRow.addView(groupButton, new LinearLayout.LayoutParams(0, dp(48), 1));
+                Button close = iconButton(R.drawable.ic_browser_close, "タブを閉じる", () -> {
                     shown[0].dismiss();
                     closeTabDirect(tab.id);
                 });
-                actionsRow.addView(close, new LinearLayout.LayoutParams(dp(42), -1));
+                actionsRow.addView(close, new LinearLayout.LayoutParams(dp(48), dp(48)));
                 screenshot.setOnClickListener(v -> {
                     shown[0].dismiss();
                     selectTab(tab.id);
@@ -1617,6 +1680,17 @@ public final class ChromiumTestActivity extends Activity {
                     showTabGroupDialog(tab.id);
                     return true;
                 });
+            }
+            // Reserve unused columns in the last row so a single final card
+            // remains the same width as the cards above it.
+            if (row != null && itemIndex % columns != 0) {
+                for (int col = itemIndex % columns; col < columns; col++) {
+                    View spacer = new View(this);
+                    LinearLayout.LayoutParams empty = new LinearLayout.LayoutParams(
+                        0, 1, 1f);
+                    empty.leftMargin = dp(BrowserUiLayout.CARD_GAP_DP);
+                    row.addView(spacer, empty);
+                }
             }
         }
         shown[0] = bottomSheet(panel);
@@ -1801,11 +1875,8 @@ public final class ChromiumTestActivity extends Activity {
         TextView header = text("Velocity", 21, PRIMARY, true);
         header.setPadding(dp(6), 0, 0, dp(12));
         panel.addView(header, new LinearLayout.LayoutParams(-1, dp(45)));
-        ScrollView scroll = new ScrollView(this);
-        scroll.setVerticalScrollBarEnabled(false);
-        scroll.setLayoutParams(new LinearLayout.LayoutParams(-1,
-            Math.min(dp(510), (int) (getResources().getDisplayMetrics().heightPixels * .68f))));
-        panel.addView(scroll);
+        BoundedScrollView scroll = new BoundedScrollView();
+        panel.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout items = sheetPanel();
         scroll.addView(items);
         final Dialog[] shown = new Dialog[1];
@@ -1829,15 +1900,20 @@ public final class ChromiumTestActivity extends Activity {
             item.setPadding(dp(9), 0, dp(6), 0);
             item.setBackground(new RippleDrawable(ColorStateList.valueOf(0x22FFFFFF),
                 rounded(SURFACE, 13, Color.TRANSPARENT), null));
-            items.addView(item, new LinearLayout.LayoutParams(-1, dp(62)));
+            item.setMinimumHeight(dp(63));
+            item.setPadding(dp(9), dp(8), dp(8), dp(8));
+            items.addView(item, new LinearLayout.LayoutParams(-1, -2));
             item.addView(iconView(icons[i], i == 12 ? ACCENT : SECONDARY),
                 new LinearLayout.LayoutParams(dp(43), dp(43)));
             LinearLayout detail = sheetPanel();
             detail.setGravity(Gravity.CENTER_VERTICAL);
             TextView label = text(labels[i], 15, PRIMARY, false);
             TextView sub = text(hints[i], 11, SECONDARY, false);
-            detail.addView(label, new LinearLayout.LayoutParams(-1, dp(24)));
-            detail.addView(sub, new LinearLayout.LayoutParams(-1, dp(18)));
+            label.setMinHeight(dp(23));
+            sub.setMaxLines(2);
+            sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            detail.addView(label, new LinearLayout.LayoutParams(-1, -2));
+            detail.addView(sub, new LinearLayout.LayoutParams(-1, -2));
             item.addView(detail, new LinearLayout.LayoutParams(0, -1, 1));
             item.setContentDescription(labels[i] + "、" + hints[i]);
             item.setOnClickListener(v -> {
@@ -1906,6 +1982,12 @@ public final class ChromiumTestActivity extends Activity {
         }
         browser.setAudioMuted(false);
         browser.setPageVisible(true);
+        if (externalAudioPriority() && tabRegistry.isStartupHomeCurrent()) {
+            // A blank home has no user-requested audio to keep active.
+            // stopMediaSession operates at WebContents level; disabling system
+            // notification controls alone does NOT release Android audio focus.
+            browser.stopMediaSession();
+        }
     }
 
     private void addSettingsToggle(LinearLayout panel, String titleText, String hint,
@@ -1922,18 +2004,23 @@ public final class ChromiumTestActivity extends Activity {
             case "save_previews": optionIcon = R.drawable.ic_browser_image; break;
             case "block_domains": optionIcon = R.drawable.ic_browser_shield; break;
             case "cosmetic_elements": optionIcon = R.drawable.ic_browser_eye_off; break;
+            case "external_audio_priority": optionIcon = R.drawable.ic_browser_play; break;
             default: optionIcon = R.drawable.ic_browser_settings; break;
         }
         row.addView(iconView(optionIcon, SECONDARY), new LinearLayout.LayoutParams(dp(43), dp(43)));
         LinearLayout body = sheetPanel();
+        body.setPadding(dp(4), dp(1), dp(8), dp(1));
         TextView titleView = text(titleText, 15, PRIMARY, false);
         TextView description = text(hint, 11, SECONDARY, false);
-        body.addView(titleView);
-        body.addView(description);
+        description.setMaxLines(3);
+        description.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        body.addView(titleView, new LinearLayout.LayoutParams(-1, -2));
+        body.addView(description, new LinearLayout.LayoutParams(-1, -2));
         row.addView(body, new LinearLayout.LayoutParams(0, -2, 1));
         Switch toggle = new Switch(this);
         toggle.setChecked(preferences.getBoolean(key, defaultValue));
-        row.addView(toggle);
+        toggle.setMinWidth(dp(50));
+        row.addView(toggle, new LinearLayout.LayoutParams(-2, dp(50)));
         row.setOnClickListener(view -> toggle.setChecked(!toggle.isChecked()));
         toggle.setOnCheckedChangeListener((button, enabled) -> {
             preferences.edit().putBoolean(key, enabled).apply();
@@ -1960,7 +2047,8 @@ public final class ChromiumTestActivity extends Activity {
                 }
             }
         });
-        panel.addView(row, new LinearLayout.LayoutParams(-1, dp(68)));
+        row.setMinimumHeight(dp(70));
+        panel.addView(row, new LinearLayout.LayoutParams(-1, -2));
     }
 
     private void showSettings() {
@@ -1971,9 +2059,11 @@ public final class ChromiumTestActivity extends Activity {
             new LinearLayout.LayoutParams(dp(43), dp(43)));
         heading.addView(text("Velocity 設定", 21, PRIMARY, true));
         panel.addView(heading, new LinearLayout.LayoutParams(-1, dp(45)));
-        ScrollView scroll = new ScrollView(this);
-        panel.addView(scroll, new LinearLayout.LayoutParams(-1,
-            (int) (getResources().getDisplayMetrics().heightPixels * .72f)));
+        TextView version = text(installedVersionLabel(), 11, SECONDARY, false);
+        version.setPadding(dp(7), 0, 0, dp(6));
+        panel.addView(version, new LinearLayout.LayoutParams(-1, -2));
+        BoundedScrollView scroll = new BoundedScrollView();
+        panel.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout items = sheetPanel();
         scroll.addView(items);
         items.addView(text("表示と操作", 16, ACCENT, true));
@@ -1981,10 +2071,27 @@ public final class ChromiumTestActivity extends Activity {
             "pull_to_refresh", true);
         addSettingsToggle(items, "Webサイトのダークモード", "Chromiumのカラースキームを変更",
             "force_dark", false);
-        addSettingsToggle(items, "動画と音声の自動再生", "OFFの場合は再生に操作が必要",
+        addSettingsToggle(items, "動画と音声の自動再生", "自動再生の設定。音声フォーカスとは別",
             "auto_play", false);
-        addSettingsToggle(items, "他アプリの音声を優先", "標準ON。画面復帰やタブ切替でWeb音声を自動再開しない",
+        addSettingsToggle(items, "他アプリの音声を優先", "標準ON。ブラウザ復帰時の音声再開を抑制",
             "external_audio_priority", true);
+        Button stopAudio = makeButton("Webメディアを停止・音声フォーカスを解放", "不要なWeb音声セッションを停止",
+            this::stopAllWebMedia);
+        stopAudio.setTextSize(13);
+        stopAudio.setSingleLine(false);
+        stopAudio.setMinHeight(dp(48));
+        stopAudio.setPadding(dp(12), dp(7), dp(10), dp(7));
+        stopAudio.setCompoundDrawablesWithIntrinsicBounds(
+            R.drawable.ic_browser_play, 0, 0, 0);
+        items.addView(stopAudio, new LinearLayout.LayoutParams(-1, -2));
+        Button audioDiagnostic = makeButton("音声フォーカスの原因を調査", "Androidの音声フォーカス診断手順",
+            this::showAudioFocusDiagnostic);
+        audioDiagnostic.setTextSize(13);
+        audioDiagnostic.setMinHeight(dp(48));
+        audioDiagnostic.setPadding(dp(12), dp(7), dp(10), dp(7));
+        audioDiagnostic.setCompoundDrawablesWithIntrinsicBounds(
+            R.drawable.ic_browser_info, 0, 0, 0);
+        items.addView(audioDiagnostic, new LinearLayout.LayoutParams(-1, -2));
         items.addView(text("タブとプライバシー", 16, ACCENT, true));
         addSettingsToggle(items, "タブのプレビューを保存", "通常タブのみ、アプリ内に小さい画像を保存",
             "save_previews", true);
@@ -1997,16 +2104,62 @@ public final class ChromiumTestActivity extends Activity {
         provider.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_browser_key, 0, 0, 0);
         provider.setCompoundDrawablePadding(dp(12));
         provider.setTextSize(15);
-        items.addView(provider, new LinearLayout.LayoutParams(-1, dp(58)));
+        provider.setPadding(dp(10), dp(6), dp(10), dp(6));
+        provider.setMinHeight(dp(58));
+        provider.setTextSize(14);
+        provider.setSingleLine(false);
+        items.addView(provider, new LinearLayout.LayoutParams(-1, -2));
         TextView caveat = text("Googleパスワードマネージャーを外部サイトで使うには、" +
             "ブラウザに対するGoogle側の承認も必要。Androidの設定変更だけでは解除できません。",
             12, SECONDARY, false);
-        items.addView(caveat, new LinearLayout.LayoutParams(-1, dp(75)));
+        caveat.setPadding(dp(9), dp(9), dp(9), dp(9));
+        items.addView(caveat, new LinearLayout.LayoutParams(-1, -2));
         TextView sessionInfo = text("タブ数は無制限。終了後は通常タブの一覧・履歴を保存し、" +
             "非公開タブは保存しません。プロセス終了後のWebページは再生成が必要です。",
             12, SECONDARY, false);
-        items.addView(sessionInfo, new LinearLayout.LayoutParams(-1, dp(75)));
+        sessionInfo.setPadding(dp(9), dp(9), dp(9), dp(9));
+        items.addView(sessionInfo, new LinearLayout.LayoutParams(-1, -2));
         bottomSheet(panel);
+    }
+
+    /** Surface the actual installed APK build, not a hardcoded marketing label. */
+    private String installedVersionLabel() {
+        try {
+            PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            return "APK " + info.versionName + "  ·  build " + info.getLongVersionCode()
+                + "  ·  " + getPackageName();
+        } catch (PackageManager.NameNotFoundException error) {
+            return "APK版を取得できませんでした";
+        }
+    }
+
+    /** Only Cefrium itself can abandon focus held by its WebContents. */
+    private void stopAllWebMedia() {
+        int stopped = 0;
+        for (CefriumBrowser browser : liveBrowsers.values()) {
+            try {
+                browser.stopMediaSession();
+                browser.stopAllMedia();
+                stopped++;
+            } catch (RuntimeException error) {
+                Log.w(TAG, "Could not release WebContents media session", error);
+            }
+        }
+        Toast.makeText(this, stopped + "件のWebメディアを停止したよ", Toast.LENGTH_SHORT).show();
+    }
+
+    private void showAudioFocusDiagnostic() {
+        new AlertDialog.Builder(this)
+            .setTitle("音声が小さくなる原因を調べる")
+            .setMessage("『自動再生OFF』は音声フォーカス取得の禁止ではないよ。"
+                + "\n\nまず、この画面に表示されているAPKのbuild番号を確認。"
+                + "\n\n音楽を再生した状態で、PCからUSBデバッグを使い："
+                + "\n\n① Velocityを開く前\nadb shell dumpsys audio"
+                + "\n\n② Velocityを開いて音が小さくなった直後\nadb shell dumpsys audio"
+                + "\n\n『Audio Focus stack entries』のpackage名・clientId・gainTypeを比較してね。"
+                + "\n\nAndroidの制限で、このアプリ自身が別アプリのフォーカス履歴を読めるわけではない。"
+                + "\n\nパスワードや個人情報を伏せて共有してね。")
+            .setPositiveButton("了解", null).show();
     }
 
     private void openCredentialSettings() {
