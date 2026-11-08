@@ -41,8 +41,10 @@ public final class TabRegistry {
 
         public String displayTitle() {
             if (startupHome) return "ホーム";
-            return title != null && !title.trim().isEmpty() ? title
-                : (url.equals("about:blank") ? "新しいタブ" : url);
+            // Chromium may report "about:blank" as a document title. Keep the
+            // tab-switcher label friendly rather than exposing an internal URL.
+            if ("about:blank".equals(url)) return "新しいタブ";
+            return title != null && !title.trim().isEmpty() ? title : url;
         }
     }
 
