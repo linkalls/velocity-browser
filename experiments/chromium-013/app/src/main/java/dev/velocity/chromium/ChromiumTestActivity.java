@@ -990,6 +990,13 @@ public final class ChromiumTestActivity extends Activity {
                     }
                 }
                 tab.title = name == null ? "" : name;
+                // Some real sites keep loading advertisements indefinitely.
+                // Their document title is available long before loading=false;
+                // schedule one best-effort capture even during those loads.
+                if (!tab.privateMode && tabRegistry.current() == tab
+                        && name != null && !name.trim().isEmpty()) {
+                    mainHandler.postDelayed(() -> captureVisibleTabPreview(tab, null), 1100L);
+                }
                 if (syntheticSmokeRequested && syntheticLoadStartedAtMs > 0
                         && SyntheticRenderFixture.READY_TITLE.equals(name)) {
                     long domReadyMs = SystemClock.elapsedRealtime()
@@ -1277,29 +1284,34 @@ public final class ChromiumTestActivity extends Activity {
      * method also updates a visible card directly, before the async JPEG write.
      */
     private void captureVisibleTabPreview(TabRegistry.Tab tab, ImageView target) {
-        if (destroyed || tab == null || tab.privateMode || tab.loading
+        if (destroyed || tab == null || tab.privateMode
                 || "about:blank".equals(tab.url)
                 || tabRegistry.find(tab.id) != tab || tabRegistry.current() != tab
                 || !getSharedPreferences(TAB_PREFS, MODE_PRIVATE)
                     .getBoolean("save_previews", true)) return;
         CefriumBrowser visible = liveBrowsers.get(tab.id);
         if (visible == null || visible != engine) return;
-        visible.captureBitmap(bitmap -> runOnUiThread(() -> {
-            // The capture may finish after the user navigates or closes the tab.
-            if (destroyed || tabRegistry.find(tab.id) != tab || tab.privateMode
-                    || bitmap == null || bitmap.isRecycled()
-                    || bitmap.getWidth() < 24 || bitmap.getHeight() < 24) return;
-            previewStore.save(tab.id, bitmap);
-            if (target != null && target.isAttachedToWindow()) {
-                target.setImageBitmap(bitmap);
-                target.setVisibility(View.VISIBLE);
-                if (target.getParent() instanceof ViewGroup) {
-                    ViewGroup frame = (ViewGroup) target.getParent();
-                    View fallback = frame.findViewWithTag("velocity-tab-preview-fallback");
-                    if (fallback != null) fallback.setVisibility(View.GONE);
+        try {
+            visible.captureBitmap(bitmap -> runOnUiThread(() -> {
+                // The capture may finish after the user navigates or closes the tab.
+                if (destroyed || tabRegistry.find(tab.id) != tab || tab.privateMode
+                        || bitmap == null || bitmap.isRecycled()
+                        || bitmap.getWidth() < 24 || bitmap.getHeight() < 24) return;
+                previewStore.save(tab.id, bitmap);
+                if (target != null && target.isAttachedToWindow()) {
+                    target.setImageBitmap(bitmap);
+                    target.setVisibility(View.VISIBLE);
+                    if (target.getParent() instanceof ViewGroup) {
+                        ViewGroup frame = (ViewGroup) target.getParent();
+                        View fallback = frame.findViewWithTag("velocity-tab-preview-fallback");
+                        if (fallback != null) fallback.setVisibility(View.GONE);
+                    }
                 }
-            }
-        }));
+            }));
+        } catch (RuntimeException captureError) {
+            // A tab might finish closing just as Chromium starts capture.
+            Log.w(TAG, "Thumbnail capture could not start", captureError);
+        }
     }
 
     /** Chrome/Vivaldi-style visual tab overview with persistent named groups. */
