@@ -24,6 +24,36 @@ public final class TabRegistryTest {
         assertEquals("https://normal.example/", model.regularTabs().get(0).url);
     }
 
+    @Test public void privateAndRegularTabListsAreDisjoint() {
+        TabRegistry model = new TabRegistry();
+        TabRegistry.Tab normal = model.add("https://normal.example", false);
+        TabRegistry.Tab secret = model.add("https://secret.example", true);
+        assertEquals(1, model.countForMode(false));
+        assertEquals(1, model.countForMode(true));
+        assertEquals(java.util.List.of(normal), model.tabsForMode(false));
+        assertEquals(java.util.List.of(secret), model.tabsForMode(true));
+        assertFalse(model.regularTabs().contains(secret));
+    }
+
+    @Test public void closingPrivateTabSelectsOtherPrivateBeforeNormal() {
+        TabRegistry model = new TabRegistry();
+        model.add("https://normal.example", false);
+        TabRegistry.Tab first = model.add("https://private-1.example", true);
+        TabRegistry.Tab second = model.add("https://private-2.example", true);
+        model.close(second.id);
+        assertSame(first, model.current());
+        assertEquals(1, model.countForMode(true));
+    }
+
+    @Test public void desktopModeIsTabSpecific() {
+        TabRegistry model = new TabRegistry();
+        TabRegistry.Tab normal = model.add("https://example.com", false);
+        TabRegistry.Tab privateTab = model.add("https://example.com", true);
+        normal.desktopMode = true;
+        assertFalse(privateTab.desktopMode);
+        assertTrue(normal.desktopMode);
+    }
+
     @Test public void backgroundCloseKeepsSelection() {
         TabRegistry model = new TabRegistry();
         TabRegistry.Tab a = model.add("https://a.example/", false);

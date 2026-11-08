@@ -13,6 +13,10 @@ public final class TabRegistry {
         public final String id;
         /** A null value means the tab is not assigned to a group. */
         public String group;
+        /** Request a desktop User-Agent for this tab only. */
+        public boolean desktopMode;
+        /** CEF zoom steps (0 = 100%), per tab. */
+        public double zoomLevel;
         public final boolean privateMode;
         public final boolean startupHome;
         public volatile String url;
@@ -102,6 +106,20 @@ public final class TabRegistry {
     }
 
     public List<Tab> all() { return Collections.unmodifiableList(tabs); }
+
+    /** Keep private and regular tabs in disjoint UI lists; never merge groups. */
+    public List<Tab> tabsForMode(boolean privateMode) {
+        ArrayList<Tab> matches = new ArrayList<>();
+        for (Tab tab : tabs) if (tab.privateMode == privateMode) matches.add(tab);
+        return Collections.unmodifiableList(matches);
+    }
+
+    public int countForMode(boolean privateMode) {
+        int count = 0;
+        for (Tab tab : tabs) if (tab.privateMode == privateMode) count++;
+        return count;
+    }
+
     public Tab current() { return find(selectedId); }
 
     public Tab find(String id) {
@@ -124,7 +142,19 @@ public final class TabRegistry {
         tabs.remove(index);
         if (id.equals(startupHomeId)) startupHomeId = null;
         if (id.equals(selectedId)) {
-            selectedId = tabs.isEmpty() ? null : tabs.get(Math.max(0, index - 1)).id;
+            // Select a neighbor in the same mode before crossing the privacy boundary.
+            Tab fallback = null;
+            int distance = Integer.MAX_VALUE;
+            for (int i = 0; i < tabs.size(); i++) {
+                Tab candidate = tabs.get(i);
+                if (candidate.privateMode != victim.privateMode) continue;
+                int steps = Math.abs(i - index);
+                if (steps < distance) { distance = steps; fallback = candidate; }
+            }
+            if (fallback == null && !tabs.isEmpty()) {
+                fallback = tabs.get(Math.max(0, Math.min(index - 1, tabs.size() - 1)));
+            }
+            selectedId = fallback == null ? null : fallback.id;
         }
         return victim;
     }
