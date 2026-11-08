@@ -42,7 +42,15 @@ adb shell wm size 393x852
 adb shell wm density 160
 for mode in settings tabs; do
   adb shell am force-stop "$APP" || true
-  adb shell am start -W -n "$ACTIVITY" --es velocity_debug_ui_audit "$mode"     > "dist/cefrium-ui-audit/${mode}-393dp-launch.txt"
+  sleep 4
+  adb wait-for-device
+  if ! adb shell am start -W -n "$ACTIVITY" --es velocity_debug_ui_audit "$mode" \
+      > "dist/cefrium-ui-audit/${mode}-393dp-launch.txt" 2>&1; then
+    adb logcat -d -v threadtime > "dist/cefrium-ui-audit/${mode}-393dp-failure-logcat.txt" || true
+    echo "ERROR: ${mode} UI Activity failed to start at 393dp" >&2
+    cat "dist/cefrium-ui-audit/${mode}-393dp-launch.txt" >&2
+    exit 1
+  fi
   sleep 12
   adb exec-out screencap -p > "dist/cefrium-ui-audit/${mode}-393dp.png"
   test -s "dist/cefrium-ui-audit/${mode}-393dp.png"
