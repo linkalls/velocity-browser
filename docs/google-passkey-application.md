@@ -7,9 +7,9 @@ Public Google allowlist: https://www.gstatic.com/gpm-passkeys-privileged-apps/ap
 ## Verified technical fields
 
 - (1) Official app name: **Velocity Browser**
-- (2) Public downloadable signed APK: **PENDING**. Add the publicly downloadable APK release asset URL; GitHub Actions artifacts may require authentication and are not suitable as the sole public download location.
+- (2) Public downloadable signed APK: **https://github.com/linkalls/velocity-browser/releases/download/velocity-849916402/Velocity-Browser-849916402-arm64.apk**. Public GitHub Release asset, downloadable without an account. The SHA-256 checksum file is published alongside it.
 - (3) Package name: **`dev.velocity.browser.chromium013`**. This is the existing stable package ID even though the user-visible name is now Velocity Browser. Changing it would break installed-app upgrades and require a new approval.
-- (4) SHA-256 signing certificate and build type: **`release`**, **`2E:08:2D:A9:C3:9F:1B:89:42:25:1C:F2:D6:AF:2E:0C:D7:0D:DA:2B:B4:96:62:00:B2:C6:37:6D:A9:0C:50:32`**. This is the fixed fingerprint asserted by the signed APK workflow and must also be verified against the actual published APK with `apksigner verify --print-certs` before submission.
+- (4) SHA-256 signing certificate and build type: **`release`**, **`2E:08:2D:A9:C3:9F:1B:89:42:25:1C:F2:D6:AF:2E:0C:D7:0D:DA:2B:B4:96:62:00:B2:C6:37:6D:A9:0C:50:32`**. This is the fixed release-signing fingerprint verified by GitHub Actions for this public release. The downloaded APK SHA-256 matched the published `SHA256SUMS.txt`: `64e5466a4c9b2e761e2c49136cbcf438b50b8e1cee413e7907c39d7a85f8ec53`.
 - (5) Organization: Suggested **Velocity Browser (independent open-source project)**. Confirm the legal/formal entity representation with the maintainer before submitting.
 - (6) Organization contact email: **REQUIRES MAINTAINER INPUT**.
 - (7) Organization phone: optional.
@@ -39,4 +39,4 @@ Velocity Browser uses Android application sandboxing, app-private local data sto
 
 ## Approval remains pending
 
-Do **not** mark the application as submitted until the maintainer's legal name and contact information are supplied, the policy and terms are published, the public downloadable APK exists, and the actual release APK certificate is verified. Do not invent applicant identity or claim Google approval merely from the Android Manifest permission.
+The policy, terms, public downloadable signed APK, and verified release-signing fingerprint are ready. **The form has not been submitted.** Do not mark the application as submitted until the maintainer supplies and confirms their full legal name, organization contact email, applicant email and organization representation. Do not invent applicant identity or claim Google approval merely from the Android Manifest permission.
