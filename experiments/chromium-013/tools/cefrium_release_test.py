@@ -1,4 +1,4 @@
-"""Guard the Cefrium SDK/Preview/benchmark version and safety contract.
+"""Guard the Cefrium SDK, signed APK and benchmark version/safety contract.
 
 These are source-level regression checks. Android CI must separately compile
 with JDK 25, inspect the merged Manifest and exercise real renderers.
@@ -24,16 +24,20 @@ class CefriumReleaseTest(unittest.TestCase):
         self.assertEqual(VERSION, plugin.group(1))
         self.assertEqual(VERSION, sdk.group(1))
 
-    def test_preview_version_and_ui_are_not_stale(self):
-        preview = (ROOT / ".github" / "workflows" /
-                   "chromium-013-signed-preview.yml").read_text()
+    def test_signed_version_and_ui_are_not_stale(self):
+        signed = (ROOT / ".github" / "workflows" /
+                  "velocity-signed-apk.yml").read_text()
         activity = (APP / "ChromiumTestActivity.java").read_text()
-        self.assertIn("-PvelocityVersionName=0.17.0-preview.", preview)
+        self.assertIn("-PvelocityVersionName=0.17.0.$VERSION_CODE", signed)
         self.assertIn("Cefrium 0.17.0", activity)
         self.assertNotIn("Cefrium 0.16.0", activity)
         app_build = (ENGINE / "app" / "build.gradle.kts").read_text()
-        self.assertIn('.orElse("0.17.0-experiment")', app_build)
-        self.assertIn("Experimental Cefrium 0.17.0 preview", preview)
+        self.assertIn('.orElse("0.17.0")', app_build)
+        self.assertIn('Velocity-Browser-$code-arm64.apk', signed)
+        self.assertIn('GITHUB_RUN_ID / 50', signed)
+        self.assertNotIn('Preview', signed)
+        manifest = (ENGINE / "app" / "src" / "main" / "AndroidManifest.xml").read_text()
+        self.assertIn('android:label="Velocity Browser"', manifest)
 
     def test_sdk_prefetch_enabled_by_default_and_protects_signed_preview(self):
         gradle = (ENGINE / "app" / "build.gradle.kts").read_text()
@@ -45,11 +49,10 @@ class CefriumReleaseTest(unittest.TestCase):
         self.assertIn('Cefrium.setLibraryPrefetchEnabled(false)', application)
         self.assertIn('R.bool.velocity_sdk_prefetch_enabled', application)
 
-    def test_old_benchmark_is_explicitly_sdk_prefetch_off(self):
-        workflow = (ROOT / ".github" / "workflows" /
-                    "chromium-native-prefetch-experiment.yml").read_text()
-        self.assertIn('-PvelocitySdkPrefetch=false', workflow)
-        self.assertIn('-PvelocityNativePrefetchMiB="$amount"', workflow)
+    def test_only_active_workflows_remain(self):
+        directory = ROOT / ".github" / "workflows"
+        self.assertEqual({"android.yml", "velocity-signed-apk.yml", "velocity-android-smoke.yml"},
+                         {f.name for f in directory.glob("*.yml")})
 
     def test_youtube_rules_are_explicit_and_netlog_is_not_automatic(self):
         activity = (APP / "ChromiumTestActivity.java").read_text()

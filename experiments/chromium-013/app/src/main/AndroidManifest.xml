@@ -6,7 +6,7 @@
     <uses-permission android:name="android.permission.CREDENTIAL_MANAGER_SET_ORIGIN" />
     <application
         android:name=".ChromiumDiagnosticApplication"
-        android:label="Velocity Preview"
+        android:label="Velocity Browser"
         android:icon="@drawable/ic_velocity"
         android:allowBackup="false"
         android:usesCleartextTraffic="false"

@@ -172,6 +172,26 @@ public final class ChromiumTestActivity extends Activity {
         return b;
     }
 
+    /** A consistent icon-first toolbar: monochrome 24dp vector artwork. */
+    private Button iconButton(int icon, String hint, Runnable action) {
+        Button button = makeButton("", hint, action);
+        android.graphics.drawable.Drawable drawable = getDrawable(icon);
+        if (drawable != null) {
+            drawable.setBounds(0, 0, dp(23), dp(23));
+            button.setCompoundDrawables(null, drawable, null, null);
+        }
+        button.setGravity(Gravity.CENTER);
+        return button;
+    }
+
+    private ImageView iconView(int resource, int color) {
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(resource);
+        icon.setColorFilter(color);
+        icon.setPadding(dp(8), dp(8), dp(8), dp(8));
+        return icon;
+    }
+
     private TextView text(String value, int sp, int color, boolean bold) {
         TextView label = new TextView(this);
         label.setText(value);
@@ -280,9 +300,9 @@ public final class ChromiumTestActivity extends Activity {
         LinearLayout.LayoutParams addressLp = new LinearLayout.LayoutParams(-1, dp(51));
         footer.addView(addressRow, addressLp);
 
-        TextView searchMark = text("⌕", 27, ACCENT, true);
+        ImageView searchMark = iconView(R.drawable.ic_browser_search, ACCENT);
         searchMark.setContentDescription("URLと検索");
-        addressRow.addView(searchMark, new LinearLayout.LayoutParams(dp(31), -1));
+        addressRow.addView(searchMark, new LinearLayout.LayoutParams(dp(31), dp(44)));
 
         address = new EditText(this);
         address.setSingleLine(true);
@@ -306,7 +326,7 @@ public final class ChromiumTestActivity extends Activity {
         });
         addressRow.addView(address, new LinearLayout.LayoutParams(0, dp(48), 1f));
 
-        Button go = makeButton("→", "入力したURLを開く", this::loadAddress);
+        Button go = iconButton(R.drawable.ic_browser_forward, "入力したURLを開く", this::loadAddress);
         go.setTextColor(ACCENT);
         addressRow.addView(go, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
@@ -316,17 +336,18 @@ public final class ChromiumTestActivity extends Activity {
         toolbarLp.topMargin = dp(4);
         footer.addView(toolbarActions, toolbarLp);
 
-        back = makeButton("‹", "前のページへ戻る", () -> {
+        back = iconButton(R.drawable.ic_browser_back, "前のページへ戻る", () -> {
             if (engine != null && !tabRegistry.isStartupHomeCurrent() && engine.canGoBack()) engine.goBack();
         });
-        forward = makeButton("›", "次のページへ進む", () -> {
+        forward = iconButton(R.drawable.ic_browser_forward, "次のページへ進む", () -> {
             if (engine != null && !tabRegistry.isStartupHomeCurrent()) engine.goForward();
         });
-        Button reload = makeButton("↻", "ページを再読み込み", () -> {
+        Button reload = iconButton(R.drawable.ic_browser_refresh, "ページを再読み込み", () -> {
             if (engine != null) engine.reload();
         });
-        tabsButton = makeButton("□", "タブ一覧", this::showTabs);
-        Button menu = makeButton("⋮", "ブラウザメニュー", this::showMenu);
+        tabsButton = iconButton(R.drawable.ic_browser_tabs, "タブ一覧", this::showTabs);
+        tabsButton.setTextSize(12);
+        Button menu = iconButton(R.drawable.ic_browser_menu, "ブラウザメニュー", this::showMenu);
         toolbarActions.addView(back, new LinearLayout.LayoutParams(0, dp(48), 1));
         toolbarActions.addView(forward, new LinearLayout.LayoutParams(0, dp(48), 1));
         toolbarActions.addView(reload, new LinearLayout.LayoutParams(0, dp(48), 1));
@@ -337,7 +358,7 @@ public final class ChromiumTestActivity extends Activity {
         // appears, drop the duplicate toolbar instead of hiding the URL input.
         address.setOnFocusChangeListener((v, hasFocus) -> {
             toolbarActions.setVisibility(hasFocus ? View.GONE : View.VISIBLE);
-            go.setText(hasFocus ? "→" : "↗");
+            go.setContentDescription(hasFocus ? "検索・ページを開く" : "アドレスを開く");
             if (hasFocus) address.selectAll();
         });
 
@@ -1070,7 +1091,7 @@ public final class ChromiumTestActivity extends Activity {
         boolean ready = tab != null && engine != null;
         back.setEnabled(ready && !tab.startupHome && tab.canGoBack);
         forward.setEnabled(ready && !tab.startupHome && tab.canGoForward);
-        if (tabsButton != null) tabsButton.setText("□ " + tabRegistry.all().size());
+        if (tabsButton != null) tabsButton.setText(String.valueOf(tabRegistry.all().size()));
         if (tab != null) {
             updateHomeState();
             title.setText((tab.privateMode ? "非公開 · " : "") + tab.displayTitle());
@@ -1233,11 +1254,13 @@ public final class ChromiumTestActivity extends Activity {
                 card.addView(url, new LinearLayout.LayoutParams(-1, dp(22)));
                 LinearLayout actionsRow = new LinearLayout(this);
                 card.addView(actionsRow, new LinearLayout.LayoutParams(-1, dp(39)));
-                Button groupButton = makeButton("▦ グループ", "タブをグループ分け", () -> {
+                Button groupButton = makeButton("グループ", "タブをグループ分け", () -> {
                     shown[0].dismiss();
                     showTabGroupDialog(tab.id);
                 });
                 groupButton.setTextSize(11);
+                groupButton.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_browser_folder, 0, 0, 0);
+                groupButton.setCompoundDrawablePadding(dp(4));
                 actionsRow.addView(groupButton, new LinearLayout.LayoutParams(0, -1, 1));
                 Button close = makeButton("×", "タブを閉じる", () -> {
                     shown[0].dismiss();
@@ -1395,7 +1418,7 @@ public final class ChromiumTestActivity extends Activity {
         // A plain HTTPS page, never silent APK installation or downloads from
         // unauthenticated third-party hosts.
         Intent browser = new Intent(Intent.ACTION_VIEW,
-            android.net.Uri.parse("https://github.com/linkalls/velocity-browser/actions/workflows/chromium-013-signed-preview.yml"));
+            android.net.Uri.parse("https://github.com/linkalls/velocity-browser/actions/workflows/velocity-signed-apk.yml"));
         try {
             startActivity(browser);
         } catch (RuntimeException error) {
@@ -1411,8 +1434,14 @@ public final class ChromiumTestActivity extends Activity {
             "このサイトの追加遮断を切替", "高速起動（実験・次回から）",
             "更新APKを確認", "起動診断", "設定", "このブラウザについて"
         };
-        String[] glyphs = {
-            "+", "◇", "×", "⌕", "↗", "▤", "◎", "▧", "◉", "⚡", "↓", "⚙", "⚙", "ⓘ"
+        int[] icons = {
+            R.drawable.ic_browser_plus, R.drawable.ic_browser_lock,
+            R.drawable.ic_browser_close, R.drawable.ic_browser_search,
+            R.drawable.ic_browser_share, R.drawable.ic_browser_globe,
+            R.drawable.ic_browser_shield, R.drawable.ic_browser_eye_off,
+            R.drawable.ic_browser_shield, R.drawable.ic_browser_speed,
+            R.drawable.ic_browser_download, R.drawable.ic_browser_flask,
+            R.drawable.ic_browser_settings, R.drawable.ic_browser_info
         };
         String[] hints = {
             "通常のブラウジング", "終了時にURLを保存しない", "5秒以内ならURLを再度開ける",
@@ -1447,9 +1476,8 @@ public final class ChromiumTestActivity extends Activity {
             item.setBackground(new RippleDrawable(ColorStateList.valueOf(0x22FFFFFF),
                 rounded(SURFACE, 13, Color.TRANSPARENT), null));
             items.addView(item, new LinearLayout.LayoutParams(-1, dp(62)));
-            TextView icon = text(glyphs[i], 23, i == 7 ? ACCENT : SECONDARY, false);
-            icon.setGravity(Gravity.CENTER);
-            item.addView(icon, new LinearLayout.LayoutParams(dp(43), -1));
+            item.addView(iconView(icons[i], i == 12 ? ACCENT : SECONDARY),
+                new LinearLayout.LayoutParams(dp(43), dp(43)));
             LinearLayout detail = sheetPanel();
             detail.setGravity(Gravity.CENTER_VERTICAL);
             TextView label = text(labels[i], 15, PRIMARY, false);
@@ -1508,6 +1536,17 @@ public final class ChromiumTestActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(9), dp(8), dp(7), dp(8));
+        int optionIcon;
+        switch (key) {
+            case "pull_to_refresh": optionIcon = R.drawable.ic_browser_refresh; break;
+            case "force_dark": optionIcon = R.drawable.ic_browser_moon; break;
+            case "auto_play": optionIcon = R.drawable.ic_browser_play; break;
+            case "save_previews": optionIcon = R.drawable.ic_browser_image; break;
+            case "block_domains": optionIcon = R.drawable.ic_browser_shield; break;
+            case "cosmetic_elements": optionIcon = R.drawable.ic_browser_eye_off; break;
+            default: optionIcon = R.drawable.ic_browser_settings; break;
+        }
+        row.addView(iconView(optionIcon, SECONDARY), new LinearLayout.LayoutParams(dp(43), dp(43)));
         LinearLayout body = sheetPanel();
         TextView titleView = text(titleText, 15, PRIMARY, false);
         TextView description = text(hint, 11, SECONDARY, false);
@@ -1539,8 +1578,12 @@ public final class ChromiumTestActivity extends Activity {
 
     private void showSettings() {
         LinearLayout panel = sheetPanel();
-        panel.addView(text("Velocity 設定", 21, PRIMARY, true),
-            new LinearLayout.LayoutParams(-1, dp(43)));
+        LinearLayout heading = new LinearLayout(this);
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        heading.addView(iconView(R.drawable.ic_browser_settings, ACCENT),
+            new LinearLayout.LayoutParams(dp(43), dp(43)));
+        heading.addView(text("Velocity 設定", 21, PRIMARY, true));
+        panel.addView(heading, new LinearLayout.LayoutParams(-1, dp(45)));
         ScrollView scroll = new ScrollView(this);
         panel.addView(scroll, new LinearLayout.LayoutParams(-1,
             (int) (getResources().getDisplayMetrics().heightPixels * .72f)));
@@ -1562,6 +1605,8 @@ public final class ChromiumTestActivity extends Activity {
             "cosmetic_elements", true);
         Button provider = makeButton("Googleパスキーの設定を開く", "Android標準の認証情報サービスを設定",
             this::openCredentialSettings);
+        provider.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_browser_key, 0, 0, 0);
+        provider.setCompoundDrawablePadding(dp(12));
         provider.setTextSize(15);
         items.addView(provider, new LinearLayout.LayoutParams(-1, dp(58)));
         TextView caveat = text("Googleパスワードマネージャーを外部サイトで使うには、" +
@@ -1585,7 +1630,7 @@ public final class ChromiumTestActivity extends Activity {
     }
 
     private void showInfo() {
-        new AlertDialog.Builder(this).setTitle("Velocity Chromium 実験版")
+        new AlertDialog.Builder(this).setTitle("Velocity Browser")
             .setMessage("エンジン：Chromium（Cefrium 0.17.0）\n\n" +
                 "これはAndroid標準WebViewではありません。\n\n" +
                 "Gecko/WPE版とは別アプリとしてインストールできます。\n\n" +
