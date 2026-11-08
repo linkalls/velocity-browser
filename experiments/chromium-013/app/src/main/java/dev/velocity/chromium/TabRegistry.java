@@ -7,12 +7,12 @@ import java.util.UUID;
 
 /** Pure-Java tab metadata: Android surfaces and Cefrium belong to the Activity. */
 public final class TabRegistry {
-    public static final int MAX_TABS = 12;
-    // One reusable blank home can coexist with a full set of saved tabs.
-    public static final int MAX_PERSISTED_TABS = MAX_TABS + 1;
+    // Tabs are metadata, not one renderer each. Do not impose a UI tab cap.
 
     public static final class Tab {
         public final String id;
+        /** A null value means the tab is not assigned to a group. */
+        public String group;
         public final boolean privateMode;
         public final boolean startupHome;
         public volatile String url;
@@ -24,8 +24,12 @@ public final class TabRegistry {
         private Tab(String url, boolean privateMode) { this(url, privateMode, false); }
 
         private Tab(String url, boolean privateMode, boolean startupHome) {
+            this(url, privateMode, startupHome, UUID.randomUUID().toString());
+        }
+
+        private Tab(String url, boolean privateMode, boolean startupHome, String id) {
             this.startupHome = startupHome;
-            this.id = UUID.randomUUID().toString();
+            this.id = id;
             this.url = url;
             this.title = "";
             this.privateMode = privateMode;
@@ -60,12 +64,22 @@ public final class TabRegistry {
     public Tab restoreRegularTab(String url) { return restoreRegularTab(url, false); }
 
     public Tab restoreRegularTab(String url, boolean homeFlag) {
+        return restoreRegularTab(url, homeFlag, null, null);
+    }
+
+    /** Stable IDs preserve thumbnail and navigation-state associations across launches. */
+    public Tab restoreRegularTab(String url, boolean homeFlag, String persistedId, String group) {
         boolean isHome = homeFlag && "about:blank".equals(url);
-        if (tabs.size() >= MAX_PERSISTED_TABS) return null;
-        boolean hasHome = false;
-        for (Tab tab : tabs) if (isRegularHome(tab)) hasHome = true;
-        if (tabs.size() >= MAX_TABS && !hasHome && !isHome) return null;
-        Tab tab = new Tab(url, false, isHome);
+        String id;
+        try {
+            id = persistedId == null ? UUID.randomUUID().toString()
+                : UUID.fromString(persistedId).toString();
+        } catch (IllegalArgumentException error) {
+            id = UUID.randomUUID().toString();
+        }
+        if (find(id) != null) id = UUID.randomUUID().toString();
+        Tab tab = new Tab(url, false, isHome, id);
+        tab.group = group == null || group.trim().isEmpty() ? null : group.trim();
         tabs.add(tab);
         selectedId = tab.id;
         if (isRegularHome(tab) && startupHomeId == null) startupHomeId = tab.id;
