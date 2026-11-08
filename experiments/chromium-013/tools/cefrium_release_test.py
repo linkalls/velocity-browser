@@ -75,6 +75,18 @@ class CefriumReleaseTest(unittest.TestCase):
         self.assertIn('tab.privateMode', activity)
         self.assertIn('Log.w(TAG, "Surface PixelCopy failed:', activity)
 
+    def test_settings_show_real_installed_build_and_adaptive_layout(self):
+        activity = (APP / "ChromiumTestActivity.java").read_text()
+        layout = (APP / "BrowserUiLayout.java").read_text()
+        self.assertIn('private String installedVersionLabel()', activity)
+        self.assertIn('info.getLongVersionCode()', activity)
+        self.assertIn('class BoundedScrollView extends ScrollView', activity)
+        self.assertIn('columnsForAvailableWidthDp', activity)
+        self.assertNotIn('int cardWidth =', activity)
+        self.assertIn('"音声フォーカスの原因を調査"', activity)
+        self.assertIn('"Webメディアを停止・音声フォーカスを解放"', activity)
+        self.assertIn('MIN_CARD_WIDTH_DP = 148', layout)
+
     def test_youtube_rules_are_explicit_and_netlog_is_not_automatic(self):
         activity = (APP / "ChromiumTestActivity.java").read_text()
         application = (APP / "ChromiumDiagnosticApplication.java").read_text()
