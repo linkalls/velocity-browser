@@ -54,6 +54,27 @@ class CefriumReleaseTest(unittest.TestCase):
         self.assertEqual({"android.yml", "velocity-signed-apk.yml", "velocity-android-smoke.yml"},
                          {f.name for f in directory.glob("*.yml")})
 
+    def test_external_audio_priority_does_not_auto_resume_media(self):
+        # Regression for Android automatic audio ducking when merely opening
+        # Velocity while a podcast/music app is already playing.
+        activity = (APP / "ChromiumTestActivity.java").read_text()
+        self.assertIn('getBoolean("external_audio_priority", true)', activity)
+        self.assertIn('browser.setMediaSessionEnabled(!externalAudioPriority())', activity)
+        self.assertIn('browser.stopAllMedia();', activity)
+        self.assertIn('browser.setPageVisible(true);', activity)
+        self.assertIn('"他アプリの音声を優先"', activity)
+        self.assertIn('private void foregroundBrowserWithoutStealingAudio(', activity)
+        self.assertNotIn('engine.onResume();', activity)
+
+    def test_thumbnail_fallback_captures_native_surface_and_stays_private(self):
+        activity = (APP / "ChromiumTestActivity.java").read_text()
+        self.assertIn('findBrowserSurface(', activity)
+        self.assertIn('PixelCopy.request(surface, result,', activity)
+        self.assertIn('PixelCopy.request(getWindow(), bounds, result,', activity)
+        self.assertIn('completed.compareAndSet(false, true)', activity)
+        self.assertIn('tab.privateMode', activity)
+        self.assertIn('Log.w(TAG, "Surface PixelCopy failed:', activity)
+
     def test_youtube_rules_are_explicit_and_netlog_is_not_automatic(self):
         activity = (APP / "ChromiumTestActivity.java").read_text()
         application = (APP / "ChromiumDiagnosticApplication.java").read_text()

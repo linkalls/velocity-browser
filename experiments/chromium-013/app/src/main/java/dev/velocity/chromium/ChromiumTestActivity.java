@@ -11,6 +11,7 @@ import android.content.pm.PackageInfo;
 import android.content.pm.ServiceInfo;
 import android.graphics.Color;
 import android.graphics.Bitmap;
+import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
@@ -28,6 +29,8 @@ import android.text.InputType;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.ViewGroup;
+import android.view.PixelCopy;
+import android.view.SurfaceView;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.GestureDetector;
@@ -60,6 +63,7 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.Collections;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -1049,8 +1053,7 @@ public final class ChromiumTestActivity extends Activity {
             // Cefrium.onPause() also suspends media, unlike page visibility
             // alone. Inactive tabs must never resume animation/audio on
             // Activity.onResume -- only the foreground engine is resumed.
-            oldEngine.onPause();
-            oldEngine.setPageVisible(false);
+            quietBrowserWhenHidden(oldEngine);
             oldEngine.getSurfaceContainer().setVisibility(View.GONE);
         }
         try {
@@ -1063,8 +1066,7 @@ public final class ChromiumTestActivity extends Activity {
             engine.setPageVisible(true);
             if (activityResumed && oldEngine != active) {
                 // Reopen a previously paused WebContents, without a reload.
-                engine.onResume();
-                showForegroundBrowser(engine);
+                foregroundBrowserWithoutStealingAudio(engine);
             }
             engine.getSurfaceContainer().bringToFront();
             browserRoot.bringToFront();
@@ -1278,11 +1280,116 @@ public final class ChromiumTestActivity extends Activity {
         return panel;
     }
 
+    /** Find the actual Chromium Surface, not its empty FrameLayout shell. */
+    private static SurfaceView findBrowserSurface(View root) {
+        if (root instanceof SurfaceView) {
+            SurfaceView surface = (SurfaceView) root;
+            if (surface.getHolder().getSurface() != null
+                    && surface.getHolder().getSurface().isValid()
+                    && surface.getWidth() > 40 && surface.getHeight() > 40) {
+                return surface;
+            }
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            for (int index = 0; index < group.getChildCount(); index++) {
+                SurfaceView found = findBrowserSurface(group.getChildAt(index));
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
     /**
-     * Capture only a currently displayed regular page. An inactive Surface or
-     * an early loading callback can produce black / empty thumbnails. This
-     * method also updates a visible card directly, before the async JPEG write.
+     * Reject an empty/uninitialized compositor buffer. Pages may be mostly
+     * white or dark; only reject exact uniform output, not legitimate themes.
      */
+    private static boolean isUsableTabBitmap(Bitmap bitmap) {
+        if (bitmap == null || bitmap.isRecycled()
+                || bitmap.getWidth() < 40 || bitmap.getHeight() < 40) return false;
+        try {
+            int baseline = bitmap.getPixel(bitmap.getWidth() / 2,
+                bitmap.getHeight() / 2);
+            for (int x = 1; x <= 6; x++) {
+                for (int y = 1; y <= 6; y++) {
+                    int sample = bitmap.getPixel(bitmap.getWidth() * x / 7,
+                        bitmap.getHeight() * y / 7);
+                    if (sample != baseline) return true;
+                }
+            }
+        } catch (IllegalStateException incompatibleBitmap) {
+            // HARDWARE bitmaps are not directly pixel-readable. The fallback
+            // uses an explicit software ARGB_8888 bitmap for PixelCopy.
+            return false;
+        }
+        return false;
+    }
+
+    /**
+     * Cefrium's captureBitmap uses PixelCopy for Surface mode, but can return
+     * null before its internal surface is ready. Direct PixelCopy of the actual
+     * SurfaceView is an independent path and yields a smaller preview bitmap.
+     */
+    private void captureWithAndroidPixelCopy(CefriumBrowser browser,
+                                             java.util.function.Consumer<Bitmap> done) {
+        FrameLayout container = browser.getSurfaceContainer();
+        SurfaceView surface = findBrowserSurface(container);
+        View sourceView = surface == null ? container : surface;
+        if (sourceView.getWidth() < 40 || sourceView.getHeight() < 40
+                || !sourceView.isAttachedToWindow()) {
+            Log.w(TAG, "Preview PixelCopy source not ready");
+            done.accept(null);
+            return;
+        }
+        int width = Math.min(420, sourceView.getWidth());
+        int height = Math.max(70, Math.min(800,
+            Math.round(width * (sourceView.getHeight() / (float) sourceView.getWidth()))));
+        Bitmap result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        try {
+            if (surface != null) {
+                PixelCopy.request(surface, result, status -> {
+                    if (status == PixelCopy.SUCCESS && isUsableTabBitmap(result)) {
+                        done.accept(result);
+                    } else {
+                        Log.w(TAG, "Surface PixelCopy failed: " + status);
+                        result.recycle();
+                        done.accept(null);
+                    }
+                }, mainHandler);
+                return;
+            }
+            // Some CEF versions mount their Surface in a separate hierarchy.
+            // The Activity window is the last resort for normal (non-private)
+            // tabs. It includes the page and may include surrounding controls.
+            int[] location = new int[2];
+            sourceView.getLocationInWindow(location);
+            Rect bounds = new Rect(Math.max(0, location[0]), Math.max(0, location[1]),
+                Math.min(getWindow().getDecorView().getWidth(),
+                    location[0] + sourceView.getWidth()),
+                Math.min(getWindow().getDecorView().getHeight(),
+                    location[1] + sourceView.getHeight()));
+            if (bounds.isEmpty()) {
+                result.recycle();
+                done.accept(null);
+                return;
+            }
+            PixelCopy.request(getWindow(), bounds, result, status -> {
+                if (status == PixelCopy.SUCCESS && isUsableTabBitmap(result)) {
+                    done.accept(result);
+                } else {
+                    Log.w(TAG, "Window PixelCopy failed: " + status);
+                    result.recycle();
+                    done.accept(null);
+                }
+            }, mainHandler);
+        } catch (RuntimeException error) {
+            Log.w(TAG, "Could not request PixelCopy", error);
+            result.recycle();
+            done.accept(null);
+        }
+    }
+
+    /** Capture a real page without exposing private tabs or cached secrets. */
     private void captureVisibleTabPreview(TabRegistry.Tab tab, ImageView target) {
         if (destroyed || tab == null || tab.privateMode
                 || "about:blank".equals(tab.url)
@@ -1291,26 +1398,44 @@ public final class ChromiumTestActivity extends Activity {
                     .getBoolean("save_previews", true)) return;
         CefriumBrowser visible = liveBrowsers.get(tab.id);
         if (visible == null || visible != engine) return;
-        try {
-            visible.captureBitmap(bitmap -> runOnUiThread(() -> {
-                // The capture may finish after the user navigates or closes the tab.
-                if (destroyed || tabRegistry.find(tab.id) != tab || tab.privateMode
-                        || bitmap == null || bitmap.isRecycled()
-                        || bitmap.getWidth() < 24 || bitmap.getHeight() < 24) return;
-                previewStore.save(tab.id, bitmap);
-                if (target != null && target.isAttachedToWindow()) {
-                    target.setImageBitmap(bitmap);
-                    target.setVisibility(View.VISIBLE);
-                    if (target.getParent() instanceof ViewGroup) {
-                        ViewGroup frame = (ViewGroup) target.getParent();
-                        View fallback = frame.findViewWithTag("velocity-tab-preview-fallback");
-                        if (fallback != null) fallback.setVisibility(View.GONE);
-                    }
+        String capturedUrl = tab.url;
+        AtomicBoolean completed = new AtomicBoolean(false);
+        java.util.function.Consumer<Bitmap> finish = bitmap -> {
+            if (bitmap == null || !completed.compareAndSet(false, true)) return;
+            if (destroyed || tabRegistry.find(tab.id) != tab || tab.privateMode
+                    || !capturedUrl.equals(tab.url)) return;
+            previewStore.save(tab.id, bitmap);
+            if (target != null) {
+                // Setting an image before the sheet attaches is safe. Waiting
+                // for isAttachedToWindow() used to silently drop first captures.
+                target.setImageBitmap(bitmap);
+                target.setVisibility(View.VISIBLE);
+                if (target.getParent() instanceof ViewGroup) {
+                    ViewGroup frame = (ViewGroup) target.getParent();
+                    View fallback = frame.findViewWithTag("velocity-tab-preview-fallback");
+                    if (fallback != null) fallback.setVisibility(View.GONE);
                 }
-            }));
-        } catch (RuntimeException captureError) {
-            // A tab might finish closing just as Chromium starts capture.
-            Log.w(TAG, "Thumbnail capture could not start", captureError);
+            }
+            Log.i(TAG, "Real tab thumbnail captured via compositor");
+        };
+        Runnable fallback = () -> {
+            if (destroyed || completed.get() || tabRegistry.find(tab.id) != tab) return;
+            captureWithAndroidPixelCopy(visible, bitmap -> {
+                if (isUsableTabBitmap(bitmap)) finish.accept(bitmap);
+                else Log.w(TAG, "Thumbnail unavailable after direct PixelCopy");
+            });
+        };
+        try {
+            visible.captureBitmap(bitmap -> {
+                if (isUsableTabBitmap(bitmap)) finish.accept(bitmap);
+                else fallback.run();
+            });
+            // Some Cefrium versions never invoke the SDK callback if an
+            // Android Surface changes between frames. Do not wait indefinitely.
+            mainHandler.postDelayed(fallback, 320L);
+        } catch (RuntimeException error) {
+            Log.w(TAG, "Cefrium screenshot API failed; using PixelCopy", error);
+            fallback.run();
         }
     }
 
@@ -1746,11 +1871,41 @@ public final class ChromiumTestActivity extends Activity {
         }
     }
 
+    /** Prefer an already-playing external music/podcast app over web audio. */
+    private boolean externalAudioPriority() {
+        return getSharedPreferences(TAB_PREFS, MODE_PRIVATE)
+            .getBoolean("external_audio_priority", true);
+    }
+
     private void applyBrowserSettings(CefriumBrowser browser) {
         SharedPreferences settings = getSharedPreferences(TAB_PREFS, MODE_PRIVATE);
         browser.setPullToRefreshEnabled(settings.getBoolean("pull_to_refresh", true));
         // Default forbids autoplay without user activation.
         browser.setMediaPlaybackRequiresUserGesture(!settings.getBoolean("auto_play", false));
+        // Chromium's media session can hold/request Android audio focus,
+        // causing the user's music in another app to duck, even on a page
+        // that the user merely opened to read. Opt out by default.
+        browser.setMediaSessionEnabled(!externalAudioPriority());
+    }
+
+    private void quietBrowserWhenHidden(CefriumBrowser browser) {
+        if (externalAudioPriority()) {
+            // stopAllMedia() releases web media instead of leaving a suspended
+            // MediaSession that onResume() may automatically resume/focus.
+            // The user can start a video's audio again with a page gesture.
+            browser.stopAllMedia();
+            browser.setPageVisible(false);
+        } else {
+            browser.onPause();
+        }
+    }
+
+    private void foregroundBrowserWithoutStealingAudio(CefriumBrowser browser) {
+        if (!externalAudioPriority()) {
+            browser.onResume();
+        }
+        browser.setAudioMuted(false);
+        browser.setPageVisible(true);
     }
 
     private void addSettingsToggle(LinearLayout panel, String titleText, String hint,
@@ -1782,12 +1937,21 @@ public final class ChromiumTestActivity extends Activity {
         row.setOnClickListener(view -> toggle.setChecked(!toggle.isChecked()));
         toggle.setOnCheckedChangeListener((button, enabled) -> {
             preferences.edit().putBoolean(key, enabled).apply();
+            if ("external_audio_priority".equals(key) && enabled) {
+                for (CefriumBrowser browser : liveBrowsers.values()) {
+                    browser.stopAllMedia();
+                }
+            }
             if ("block_domains".equals(key)) blockDomainsEnabled = enabled;
             if ("cosmetic_elements".equals(key)) cosmeticEnabled = enabled;
             for (CefriumBrowser browser : liveBrowsers.values()) {
                 if ("pull_to_refresh".equals(key)) browser.setPullToRefreshEnabled(enabled);
                 if ("auto_play".equals(key)) browser.setMediaPlaybackRequiresUserGesture(!enabled);
                 if ("force_dark".equals(key)) browser.setDarkMode(enabled);
+                if ("external_audio_priority".equals(key)) {
+                    browser.setMediaSessionEnabled(!enabled);
+                    if (enabled) browser.setMediaPlaybackRequiresUserGesture(true);
+                }
             }
             if ("cosmetic_elements".equals(key)) {
                 for (TabRegistry.Tab tab : tabRegistry.all()) {
@@ -1819,6 +1983,8 @@ public final class ChromiumTestActivity extends Activity {
             "force_dark", false);
         addSettingsToggle(items, "動画と音声の自動再生", "OFFの場合は再生に操作が必要",
             "auto_play", false);
+        addSettingsToggle(items, "他アプリの音声を優先", "標準ON。画面復帰やタブ切替でWeb音声を自動再開しない",
+            "external_audio_priority", true);
         items.addView(text("タブとプライバシー", 16, ACCENT, true));
         addSettingsToggle(items, "タブのプレビューを保存", "通常タブのみ、アプリ内に小さい画像を保存",
             "save_previews", true);
@@ -1865,32 +2031,23 @@ public final class ChromiumTestActivity extends Activity {
 
     @Override protected void onPause() {
         activityResumed = false;
-        if (engine != null) engine.onPause();
+        if (engine != null) quietBrowserWhenHidden(engine);
         super.onPause();
-    }
-
-    private static void showForegroundBrowser(CefriumBrowser browser) {
-        // Cefrium.onResume() also calls MediaSession.resume(), which can request
-        // Android audio focus. Showing a tab must not start audio or duck music
-        // playing in another app. Media paused on background stays paused until
-        // the user explicitly plays it in the page.
-        browser.setAudioMuted(false);
-        browser.setPageVisible(true);
     }
 
     @Override protected void onResume() {
         super.onResume();
         activityResumed = true;
         if (engine != null) {
-            // A chooser, credential provider or other Activity pauses Cefrium.
-            // Resume the *same* WebContents; do not reload or recreate it.
-            engine.onResume();
+            // The chooser or credential provider temporarily takes focus.
+            // Restore the same Surface without automatically restarting any
+            // media session that would duck music from an unrelated app.
+            foregroundBrowserWithoutStealingAudio(engine);
             engine.getSurfaceContainer().setVisibility(View.VISIBLE);
             engine.getSurfaceContainer().requestLayout();
             engine.getSurfaceContainer().invalidate();
             if (browserRoot != null) browserRoot.bringToFront();
             updateHomeState();
-            showForegroundBrowser(engine);
         }
     }
 
