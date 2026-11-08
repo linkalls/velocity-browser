@@ -123,6 +123,7 @@ public final class ChromiumTestActivity extends Activity {
     private NetworkRules networkRules = NetworkRules.parse("");
     private Button tabsButton;
     private EditText address;
+    private LinearLayout addressBar;
     private TextView title;
     private Button back;
     private Button forward;
@@ -217,10 +218,12 @@ public final class ChromiumTestActivity extends Activity {
     private void switchTabBy(int direction) {
         TabRegistry.Tab current = tabRegistry.current();
         if (current == null || address.hasFocus()) return;
-        int index = tabRegistry.all().indexOf(current);
+        // Address-bar swipes never jump across normal/private browsing contexts.
+        List<TabRegistry.Tab> modeTabs = tabRegistry.tabsForMode(current.privateMode);
+        int index = modeTabs.indexOf(current);
         int next = index + direction;
-        if (next >= 0 && next < tabRegistry.all().size()) {
-            selectTab(tabRegistry.all().get(next).id);
+        if (next >= 0 && next < modeTabs.size()) {
+            selectTab(modeTabs.get(next).id);
         }
     }
 
@@ -293,6 +296,7 @@ public final class ChromiumTestActivity extends Activity {
         footer.addView(progressLine, progressLp);
 
         LinearLayout addressRow = new LinearLayout(this);
+        addressBar = addressRow;
         addressRow.setOrientation(LinearLayout.HORIZONTAL);
         addressRow.setGravity(Gravity.CENTER_VERTICAL);
         addressRow.setPadding(dp(12), 0, dp(5), 0);
@@ -821,6 +825,8 @@ public final class ChromiumTestActivity extends Activity {
                     item.optString("group", null));
                 if (tab == null) break;
                 tab.title = item.optString("title", "");
+                tab.desktopMode = item.optBoolean("desktop", false);
+                tab.zoomLevel = Math.max(-3, Math.min(4, item.optDouble("zoom", 0)));
                 if (i == selected) selectedId = tab.id;
             }
             if (selectedId != null) tabRegistry.select(selectedId);
@@ -860,6 +866,8 @@ public final class ChromiumTestActivity extends Activity {
                     .put("url", tab.url)
                     .put("id", tab.id)
                     .put("group", tab.group == null ? "" : tab.group)
+                    .put("desktop", tab.desktopMode)
+                    .put("zoom", tab.zoomLevel)
                     .put("home", tab.startupHome)
                     .put("title", tab.title == null ? "" : tab.title.substring(
                         0, Math.min(tab.title.length(), 120))));
@@ -918,6 +926,7 @@ public final class ChromiumTestActivity extends Activity {
         try {
             attachSurface(browser);
             applyBrowserSettings(browser);
+            applyTabDisplayPreferences(browser, tab);
             // Per-browser origin snapshot avoids carrying a site's exemption
             // across the earliest subrequests of a top-level navigation.
             // Parse the top-level host once per navigation, not for every
@@ -1048,7 +1057,11 @@ public final class ChromiumTestActivity extends Activity {
             engine = active;
             engine.getSurfaceContainer().setVisibility(View.VISIBLE);
             engine.setPageVisible(true);
-            if (activityResumed && oldEngine != active) showForegroundBrowser(engine);
+            if (activityResumed && oldEngine != active) {
+                // Reopen a previously paused WebContents, without a reload.
+                engine.onResume();
+                showForegroundBrowser(engine);
+            }
             engine.getSurfaceContainer().bringToFront();
             browserRoot.bringToFront();
             updateHomeState();
@@ -1085,13 +1098,104 @@ public final class ChromiumTestActivity extends Activity {
         CefriumBrowser.reapUnusedRenderers();
     }
 
+    /** A per-tab desktop mode using Chromium's UA override; no fake viewport injection. */
+    private static final String DESKTOP_USER_AGENT =
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            + "(KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36";
+
+    private void applyTabDisplayPreferences(CefriumBrowser browser, TabRegistry.Tab tab) {
+        if (tab.desktopMode) browser.setUserAgentOverride(DESKTOP_USER_AGENT);
+        browser.setZoomLevel(tab.zoomLevel);
+    }
+
+    private void toggleDesktopMode() {
+        TabRegistry.Tab tab = tabRegistry.current();
+        if (tab == null || tab.startupHome || engine == null) return;
+        tab.desktopMode = !tab.desktopMode;
+        try {
+            // CDP treats empty userAgent as clearing the custom UA override.
+            engine.setUserAgentOverride(tab.desktopMode ? DESKTOP_USER_AGENT : "");
+            // Changing a User-Agent cannot retroactively update an already loaded document.
+            engine.reload();
+            if (!tab.privateMode) saveRegularTabs();
+            Toast.makeText(this, tab.desktopMode ? "PC版サイトをリクエスト" : "スマホ版サイトをリクエスト",
+                Toast.LENGTH_SHORT).show();
+        } catch (RuntimeException exception) {
+            tab.desktopMode = !tab.desktopMode;
+            Toast.makeText(this, "表示モードの変更に失敗", Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "User-Agent override failed", exception);
+        }
+    }
+
+    private void showPageZoom() {
+        TabRegistry.Tab tab = tabRegistry.current();
+        if (tab == null || engine == null || tab.startupHome) return;
+        final double[] zoom = { -1.22, 0, 1.22, 2.22 };
+        final String[] labels = { "80%", "100%", "125%", "150%" };
+        new AlertDialog.Builder(this).setTitle("ページの表示倍率")
+            .setSingleChoiceItems(labels, Math.abs(tab.zoomLevel) < 0.05 ? 1 : -1,
+                (dialog, which) -> {
+                    tab.zoomLevel = zoom[which];
+                    engine.setZoomLevel(tab.zoomLevel);
+                    if (!tab.privateMode) saveRegularTabs();
+                    dialog.dismiss();
+                }).setNegativeButton("キャンセル", null).show();
+    }
+
+    private void copyCurrentPageUrl() {
+        TabRegistry.Tab tab = tabRegistry.current();
+        if (tab == null || !isPersistable(tab.url) || "about:blank".equals(tab.url)) return;
+        android.content.ClipboardManager clipboard =
+            (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText("URL", tab.url));
+            Toast.makeText(this, "URLをコピーした", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** Share the current URL through Android without touching the Chromium Surface. */
+    private void shareCurrentPage() {
+        TabRegistry.Tab tab = tabRegistry.current();
+        if (tab == null || !isPersistable(tab.url) || "about:blank".equals(tab.url)) {
+            Toast.makeText(this, "共有できるページがないよ", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final String url = tab.url;
+        final Intent send = new Intent(Intent.ACTION_SEND);
+        send.setType("text/plain");
+        send.putExtra(Intent.EXTRA_TEXT, url);
+        send.putExtra(Intent.EXTRA_SUBJECT, tab.displayTitle());
+        try {
+            // Let the menu sheet finish dismissing before the system chooser takes focus.
+            browserRoot.post(() -> {
+                if (destroyed || isFinishing()) return;
+                try {
+                    startActivity(Intent.createChooser(send, "ページを共有"));
+                } catch (RuntimeException error) {
+                    Log.e(TAG, "Share chooser unavailable", error);
+                    Toast.makeText(this, "共有メニューを開けなかった", Toast.LENGTH_LONG).show();
+                }
+            });
+        } catch (RuntimeException error) {
+            Log.e(TAG, "Share intent error", error);
+        }
+    }
+
     private void updateNavigation() {
         if (back == null || forward == null) return;
         TabRegistry.Tab tab = tabRegistry.current();
         boolean ready = tab != null && engine != null;
         back.setEnabled(ready && !tab.startupHome && tab.canGoBack);
         forward.setEnabled(ready && !tab.startupHome && tab.canGoForward);
-        if (tabsButton != null) tabsButton.setText(String.valueOf(tabRegistry.all().size()));
+        if (tabsButton != null && tab != null) {
+            int count = tabRegistry.countForMode(tab.privateMode);
+            tabsButton.setText((tab.privateMode ? "◇ " : "") + count);
+            tabsButton.setContentDescription(tab.privateMode ? "非公開タブ一覧" : "通常タブ一覧");
+        }
+        if (addressBar != null && tab != null) {
+            addressBar.setBackground(rounded(tab.privateMode ? ELEVATED : SURFACE, 17,
+                tab.privateMode ? SECONDARY : BORDER));
+        }
         if (tab != null) {
             updateHomeState();
             title.setText((tab.privateMode ? "非公開 · " : "") + tab.displayTitle());
@@ -1172,26 +1276,45 @@ public final class ChromiumTestActivity extends Activity {
 
     /** Chrome/Vivaldi-style visual tab overview with persistent named groups. */
     private void showTabs() {
+        TabRegistry.Tab current = tabRegistry.current();
+        showTabs(current != null && current.privateMode);
+    }
+
+    private void showTabs(boolean privateMode) {
         if (!chromiumReady) return;
         LinearLayout panel = sheetPanel();
-        TextView heading = text("タブ  " + tabRegistry.all().size(), 21, PRIMARY, true);
+        TextView heading = text(privateMode ? "非公開タブ" : "通常タブ", 21, PRIMARY, true);
         panel.addView(heading, new LinearLayout.LayoutParams(-1, dp(42)));
 
         final Dialog[] shown = new Dialog[1];
         LinearLayout actions = new LinearLayout(this);
         panel.addView(actions, new LinearLayout.LayoutParams(-1, dp(46)));
-        Button normal = makeButton("＋ 新しいタブ", "新しい通常タブ", () -> {
-            shown[0].dismiss();
-            createTab("about:blank", false);
-        });
-        normal.setTextSize(13);
+        Button normal = iconButton(R.drawable.ic_browser_tabs,
+            "通常タブの一覧", () -> {
+                shown[0].dismiss();
+                showTabs(false);
+            });
+        normal.setText("通常  " + tabRegistry.countForMode(false));
+        normal.setTextSize(14);
+        normal.setTextColor(privateMode ? SECONDARY : ACCENT);
+        normal.setBackground(rounded(privateMode ? SURFACE : ELEVATED, 10, BORDER));
         actions.addView(normal, new LinearLayout.LayoutParams(0, -1, 1));
-        Button incognito = makeButton("◇ 非公開", "新しい非公開タブ", () -> {
-            shown[0].dismiss();
-            createTab("about:blank", true);
-        });
-        incognito.setTextSize(13);
+        Button incognito = iconButton(R.drawable.ic_browser_lock,
+            "非公開タブの一覧", () -> {
+                shown[0].dismiss();
+                showTabs(true);
+            });
+        incognito.setText("非公開  " + tabRegistry.countForMode(true));
+        incognito.setTextSize(14);
+        incognito.setTextColor(privateMode ? ACCENT : SECONDARY);
+        incognito.setBackground(rounded(privateMode ? ELEVATED : SURFACE, 10, BORDER));
         actions.addView(incognito, new LinearLayout.LayoutParams(0, -1, 1));
+        Button add = iconButton(R.drawable.ic_browser_plus,
+            privateMode ? "新しい非公開タブ" : "新しい通常タブ", () -> {
+                shown[0].dismiss();
+                createTab("about:blank", privateMode);
+            });
+        actions.addView(add, new LinearLayout.LayoutParams(dp(47), -1));
 
         ScrollView scroll = new ScrollView(this);
         scroll.setVerticalScrollBarEnabled(false);
@@ -1203,9 +1326,16 @@ public final class ChromiumTestActivity extends Activity {
 
         // Preserve stable group insertion order, and a dedicated ungrouped section.
         Map<String, List<TabRegistry.Tab>> groupMap = new LinkedHashMap<>();
-        for (TabRegistry.Tab tab : tabRegistry.all()) {
+        for (TabRegistry.Tab tab : tabRegistry.tabsForMode(privateMode)) {
             String label = tab.group == null ? "タブ" : tab.group;
             groupMap.computeIfAbsent(label, key -> new ArrayList<>()).add(tab);
+        }
+        if (groupMap.isEmpty()) {
+            TextView empty = text(privateMode ? "非公開タブはまだないよ" : "通常タブはまだないよ",
+                16, SECONDARY, false);
+            empty.setPadding(dp(8), dp(38), dp(8), dp(38));
+            empty.setGravity(Gravity.CENTER);
+            groups.addView(empty);
         }
         int cardWidth = (getResources().getDisplayMetrics().widthPixels - dp(70)) / 2;
         for (Map.Entry<String, List<TabRegistry.Tab>> group : groupMap.entrySet()) {
@@ -1289,7 +1419,7 @@ public final class ChromiumTestActivity extends Activity {
         TabRegistry.Tab tab = tabRegistry.find(id);
         if (tab == null) return;
         LinkedHashSet<String> names = new LinkedHashSet<>();
-        for (TabRegistry.Tab other : tabRegistry.all()) {
+        for (TabRegistry.Tab other : tabRegistry.tabsForMode(tab.privateMode)) {
             if (other.group != null) names.add(other.group);
         }
         ArrayList<String> choices = new ArrayList<>();
@@ -1308,13 +1438,13 @@ public final class ChromiumTestActivity extends Activity {
                             if (!value.isEmpty()) {
                                 tab.group = value.substring(0, Math.min(40, value.length()));
                                 saveRegularTabs();
-                                showTabs();
+                                showTabs(tab.privateMode);
                             }
                         }).setNegativeButton("キャンセル", null).show();
                 } else {
                     tab.group = which == 1 ? null : choices.get(which);
                     saveRegularTabs();
-                    showTabs();
+                    showTabs(tab.privateMode);
                 }
             }).setNegativeButton("キャンセル", null).show();
     }
@@ -1432,7 +1562,8 @@ public final class ChromiumTestActivity extends Activity {
             "ページ内検索", "ページを共有", "比較サイト",
             "広告・トラッカードメイン遮断", "広告枠の非表示を切替",
             "このサイトの追加遮断を切替", "高速起動（実験・次回から）",
-            "更新APKを確認", "起動診断", "設定", "このブラウザについて"
+            "更新APKを確認", "起動診断", "設定", "このブラウザについて",
+            "PC版サイト / スマホ版サイト", "URLをコピー", "ページの表示倍率"
         };
         int[] icons = {
             R.drawable.ic_browser_plus, R.drawable.ic_browser_lock,
@@ -1441,7 +1572,8 @@ public final class ChromiumTestActivity extends Activity {
             R.drawable.ic_browser_shield, R.drawable.ic_browser_eye_off,
             R.drawable.ic_browser_shield, R.drawable.ic_browser_speed,
             R.drawable.ic_browser_download, R.drawable.ic_browser_flask,
-            R.drawable.ic_browser_settings, R.drawable.ic_browser_info
+            R.drawable.ic_browser_settings, R.drawable.ic_browser_info,
+            R.drawable.ic_browser_globe, R.drawable.ic_browser_share, R.drawable.ic_browser_search
         };
         String[] hints = {
             "通常のブラウジング", "終了時にURLを保存しない", "5秒以内ならURLを再度開ける",
@@ -1453,7 +1585,10 @@ public final class ChromiumTestActivity extends Activity {
                     ? "ON · 失敗時は起動診断から解除できる" : "OFF · 標準起動を使用中",
             "GitHub Actionsの署名済みビルド", "クラッシュ・起動状態を確認",
             "ページ・プライバシー・Googleパスキーの設定",
-            "Cefrium 0.17.0 · 開発版"
+            "Cefrium 0.17.0 · 開発版",
+            tabRegistry.current() != null && tabRegistry.current().desktopMode
+                ? "PC版リクエスト ON · スマホ版に戻す" : "スマホ版リクエスト ON · PC版に切替",
+            "ページのURLをクリップボードにコピー", "80% / 100% / 125% / 150%"
         };
         LinearLayout panel = sheetPanel();
         TextView header = text("Velocity", 21, PRIMARY, true);
@@ -1468,8 +1603,20 @@ public final class ChromiumTestActivity extends Activity {
         scroll.addView(items);
         final Dialog[] shown = new Dialog[1];
 
-        for (int i = 0; i < labels.length; i++) {
+        // Group actions by user intent instead of chronological implementation order.
+        final int[] menuOrder = {0, 1, 2, 3, 14, 16, 4, 15, 5, 6, 7, 8, 9, 10, 11, 12, 13};
+        for (int i : menuOrder) {
             final int action = i;
+            String section = null;
+            if (i == 0) section = "タブ";
+            else if (i == 3) section = "ページ";
+            else if (i == 6) section = "プライバシーと保護";
+            else if (i == 9) section = "ブラウザ";
+            if (section != null) {
+                TextView sectionHeader = text(section, 13, ACCENT, true);
+                sectionHeader.setPadding(dp(11), dp(8), 0, dp(2));
+                items.addView(sectionHeader, new LinearLayout.LayoutParams(-1, dp(35)));
+            }
             LinearLayout item = new LinearLayout(this);
             item.setGravity(Gravity.CENTER_VERTICAL);
             item.setPadding(dp(9), 0, dp(6), 0);
@@ -1500,16 +1647,7 @@ public final class ChromiumTestActivity extends Activity {
             case 1: createTab("about:blank", true); break;
             case 2: closeCurrentTab(); break;
             case 3: findInPage(); break;
-            case 4:
-                TabRegistry.Tab tab = tabRegistry.current();
-                if (tab != null && isPersistable(tab.url)
-                        && !tab.url.equals("about:blank")) {
-                    Intent share = new Intent(Intent.ACTION_SEND);
-                    share.setType("text/plain");
-                    share.putExtra(Intent.EXTRA_TEXT, tab.url);
-                    startActivity(Intent.createChooser(share, "共有"));
-                }
-                break;
+            case 4: shareCurrentPage(); break;
             case 5: showSites(); break;
             case 6: toggleNetworkRules(); break;
             case 7: toggleCosmetics(); break;
@@ -1519,6 +1657,9 @@ public final class ChromiumTestActivity extends Activity {
             case 11: startActivity(new Intent(this, StartupDiagnosticActivity.class)); break;
             case 12: showSettings(); break;
             case 13: showInfo(); break;
+            case 14: toggleDesktopMode(); break;
+            case 15: copyCurrentPageUrl(); break;
+            case 16: showPageZoom(); break;
             default: break;
         }
     }
@@ -1658,7 +1799,17 @@ public final class ChromiumTestActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         activityResumed = true;
-        if (engine != null) showForegroundBrowser(engine);
+        if (engine != null) {
+            // A chooser, credential provider or other Activity pauses Cefrium.
+            // Resume the *same* WebContents; do not reload or recreate it.
+            engine.onResume();
+            engine.getSurfaceContainer().setVisibility(View.VISIBLE);
+            engine.getSurfaceContainer().requestLayout();
+            engine.getSurfaceContainer().invalidate();
+            if (browserRoot != null) browserRoot.bringToFront();
+            updateHomeState();
+            showForegroundBrowser(engine);
+        }
     }
 
     @Override public void onTrimMemory(int level) {
