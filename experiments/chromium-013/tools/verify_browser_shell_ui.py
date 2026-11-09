@@ -10,7 +10,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 
-def verify(path: Path, mode: str) -> None:
+def verify(path: Path, mode: str, density_dpi: int = 160) -> None:
     root = ET.parse(path).getroot()
     nodes = list(root.iter('node'))
     text = {node.get('text', '') for node in nodes}
@@ -36,9 +36,11 @@ def verify(path: Path, mode: str) -> None:
             require('メディア', '他アプリの音声を優先', '動画と音声の自動再生')
     elif mode == 'top-bar':
         require('Velocity', '通常タブ一覧', 'ブラウザメニュー')
+    elif mode == 'address-ime':
+        require('検索・ページを開く', 'サイト情報')
     else:
         raise ValueError(f'Unsupported UI screen: {mode}')
-    if mode in ('home', 'top-bar'):
+    if mode in ('home', 'top-bar', 'address-ime'):
         fields = [n for n in nodes if n.get('class') == 'android.widget.EditText']
         assert fields, f'{mode}: missing address EditText'
         bounds = fields[0].get('bounds', '')
@@ -49,8 +51,22 @@ def verify(path: Path, mode: str) -> None:
                      for n in nodes if n.get('bounds'))
         if mode == 'top-bar':
             assert top < height / 2, f'Top address bar incorrectly at y={top}'
-        else:
+        elif mode == 'home':
             assert top > height / 2, f'Bottom address bar incorrectly at y={top}'
+        else:
+            assert top > 0, f'Focused address bar missing from visible area at y={top}'
+        # Confirm actual native clickable bounds rather than icon art dimensions.
+        for name in ('サイト情報', 'ブラウザメニュー', '検索・ページを開く'):
+            targets = [n for n in nodes if n.get('content-desc') == name
+                       and n.get('clickable') == 'true']
+            for target in targets:
+                match = re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',
+                                     target.get('bounds', ''))
+                assert match, f'{mode}: no bounds for {name}'
+                left, upper, right, lower = map(int, match.groups())
+                min_px = 48 * density_dpi / 160
+                assert right - left + 0.5 >= min_px, f'{mode}: {name} too narrow'
+                assert lower - upper + 0.5 >= min_px, f'{mode}: {name} too short'
     clickable = sum(n.get('clickable') == 'true' for n in nodes)
     assert clickable >= 5, f'{mode}: insufficient interactive UI: {clickable}'
     print(f'PASS Chrome/Vivaldi shell: {mode}, nodes={len(nodes)}, controls={clickable}')
@@ -60,6 +76,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('xml', type=Path)
     parser.add_argument('mode', choices=('home', 'menu', 'top-bar', 'settings',
-                                         'settings-tabs', 'settings-media'))
+                                         'settings-tabs', 'settings-media', 'address-ime'))
+    parser.add_argument('--density-dpi', type=int, default=160)
     args = parser.parse_args()
-    verify(args.xml, args.mode)
+    verify(args.xml, args.mode, args.density_dpi)

@@ -337,7 +337,8 @@ public final class ChromiumTestActivity extends Activity {
         locationIdentity.setContentDescription("サイト情報");
         locationIdentity.setOnClickListener(v -> showCurrentSiteInfo());
         addressRow.addView(locationIdentity,
-            new LinearLayout.LayoutParams(dp(35), dp(44)));
+            new LinearLayout.LayoutParams(dp(BrowserUiLayout.MIN_TOUCH_TARGET_DP),
+                dp(BrowserUiLayout.MIN_TOUCH_TARGET_DP)));
 
         address = new EditText(this);
         address.setSingleLine(true);
@@ -365,7 +366,8 @@ public final class ChromiumTestActivity extends Activity {
             "検索・ページを開く", this::loadAddress);
         addressAction.setVisibility(View.GONE);
         addressRow.addView(addressAction,
-            new LinearLayout.LayoutParams(dp(42), dp(42)));
+            new LinearLayout.LayoutParams(dp(BrowserUiLayout.MIN_TOUCH_TARGET_DP),
+                dp(BrowserUiLayout.MIN_TOUCH_TARGET_DP)));
 
         toolbarActions = new LinearLayout(this);
         toolbarActions.setGravity(Gravity.CENTER_VERTICAL);
@@ -461,7 +463,7 @@ public final class ChromiumTestActivity extends Activity {
         applyBrowserBarPosition();
         if (debugAudit && ("settings".equals(audit) || "tabs".equals(audit)
                 || "tabs-private".equals(audit) || "tabs-groups".equals(audit)
-                || "tabs-search".equals(audit)
+                || "tabs-search".equals(audit) || "address-ime".equals(audit)
                 || "settings-tabs".equals(audit) || "settings-media".equals(audit)
                 || "home".equals(audit) || "menu".equals(audit)
                 || "top-bar".equals(audit))) {
@@ -475,9 +477,14 @@ public final class ChromiumTestActivity extends Activity {
                     showSettingsCategory("メディア");
                 } else if ("menu".equals(audit)) {
                     showMenu();
+                } else if ("address-ime".equals(audit)) {
+                    focusAddress();
+                    // Read actual system/IME insets after the keyboard has opened.
+                    root.postDelayed(() -> logInsetsForAudit(root), 900L);
                 } else if ("home".equals(audit) || "top-bar".equals(audit)) {
                     // Home and toolbar are visible, without site navigation.
                     updateHomeState();
+                    logInsetsForAudit(root);
                 } else if (chromiumReady) {
                     if ("tabs-private".equals(audit)) {
                         // An isolated, blank private tab: no user content or JPEG.
@@ -1454,6 +1461,29 @@ public final class ChromiumTestActivity extends Activity {
             idle.close();
         }
         CefriumBrowser.reapUnusedRenderers();
+    }
+
+    /** Debug-only read-only WindowInsets evidence: never intercept dispatch or double-pad. */
+    private void logInsetsForAudit(View root) {
+        if ((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) == 0
+                || Build.VERSION.SDK_INT < 30) return;
+        android.view.WindowInsets insets = root.getRootWindowInsets();
+        if (insets == null) {
+            Log.i(TAG, "CEFInsetsAudit unavailable");
+            return;
+        }
+        android.graphics.Insets bars = insets.getInsets(
+            android.view.WindowInsets.Type.systemBars()
+                | android.view.WindowInsets.Type.displayCutout());
+        android.graphics.Insets ime = insets.getInsets(
+            android.view.WindowInsets.Type.ime());
+        int[] location = new int[2];
+        root.getLocationOnScreen(location);
+        Log.i(TAG, "CEFInsetsAudit bars=" + bars.toString()
+            + " ime=" + ime.toString()
+            + " imeVisible=" + insets.isVisible(android.view.WindowInsets.Type.ime())
+            + " root=" + location[0] + "," + location[1]
+            + "," + root.getWidth() + "x" + root.getHeight());
     }
 
     /** A per-tab desktop mode using Chromium's UA override; no fake viewport injection. */

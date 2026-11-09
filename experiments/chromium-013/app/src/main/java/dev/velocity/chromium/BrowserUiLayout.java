@@ -12,6 +12,7 @@ final class BrowserUiLayout {
     static final int SHEET_SIDE_PADDING_DP = 14;
     static final int CARD_GAP_DP = 10;
     static final int MIN_CARD_WIDTH_DP = 128;
+    static final int MIN_TOUCH_TARGET_DP = 48;
 
     static int columnsForAvailableWidthDp(int availableWidthDp) {
         // Real mobile tab switchers show two previews side-by-side even at
