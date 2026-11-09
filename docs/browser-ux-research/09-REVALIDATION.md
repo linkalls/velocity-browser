@@ -1,33 +1,56 @@
-# Verification, Revalidation & Empirical Testing Backlog
+# Independent Revalidation of Jules UX Research — 2026-11-09
 
-## 1. Audit Corrections & Reality Check
-Following independent review, several factual corrections and methodological precision guardrails have been codified into the Velocity Browser UX research corpus:
+## Verdict
 
-1. **Version Baseline Calibration:**
-   - **Google Chrome for Android:** Stable v157.0.8103.46 (released November 5, 2026); v158 Early Stable remains in limited staging rollout.
-   - **Vivaldi Browser for Android:** Stable v8.3.4192.64 (released November 6, 2026).
-2. **Current `main` Code Verification:**
-   - In `experiments/chromium-013/`, tab cards in `ChromiumTestActivity` already utilize viewport-bound `Supplier<View>` lazy card construction rather than inflating all card subtrees eagerly at initialization.
-   - The narrow 320dp layout already adapts to a 2-column grid (`BrowserUiLayout.columnsForAvailableWidthDp`).
-   - Hostname-at-rest with full-URL-on-focus and auto-select-all (`address.selectAll()`) is already implemented.
-   - Omnibox swipe detection is already scoped to address bounds in `ChromiumTestActivity`.
-3. **Explicit "NOT TESTED" Classification:**
-   - Internal WebContents residency caps in closed-source binaries, exact private `FLAG_SECURE` platform guarantees across OEM ROMs, tab OOM thresholds on diverse RAM configurations, and cross-browser FrameTimeline FPS values are strictly labeled **[NOT TESTED]** unless proven via reproducible AOSP/emulator perfetto traces.
-   - Tap counts and interaction sequences derived from secondary reviews are marked as **[ESTIMATED / SPECIFIED]** rather than verified runtime device telemetry.
-4. **P0 Engineering Plan Calibration:**
-   - The immediate P0 engineering priority begins with **WindowInsets edge-to-edge handling**, **touch target standardization (>=48dp)**, **string resource extraction (i18n)**, and **reproducible 20/100/500-tab memory and layout measurements**, rather than an immediate speculative rewrite of the layout hierarchy.
+**Research draft: revised; limited real-APK Android UI observation completed. Full hands-on competitor benchmark (Chrome 157, physical-device timing/performance): NOT PERFORMED.** PR #22 contains valuable UI ideas, but its original text conflated official vendor help pages with direct testing and misread parts of Velocity's merged source. This review corrects those issues **without modifying production application code**. Do not cite this PR as proof of browser FPS or Pixel 7 Pro touch ergonomics.
 
----
+## Reproducible reference version check
 
-## 2. Empirical Follow-Up Verification Backlog
+| Browser | Verified official version | Publication date | Reference |
+|---|---|---|---|
+| Chrome Android Stable | `157.0.8103.46` | Nov 5, 2026 | [Chrome Releases stable](https://chromereleases.googleblog.com/2026/11/chrome-for-android-update_01050980700.html) |
+| Chrome Android Early Stable | `158.0.8127.22` **small rollout** | Nov 5, 2026 | [Chrome Releases](https://chromereleases.googleblog.com/2026/) |
+| Vivaldi Android | `8.3.4192.64` | Nov 6, 2026 | [Official Android archive](https://vivaldi.com/download/archive/?platform=android), [Android updates](https://vivaldi.com/blog/android/updates/) |
 
-To achieve 100% empirical verification on target hardware, the following hands-on interaction and measurement protocol must be completed when a physical Android device or nested virtualization emulator becomes available:
+Chrome 131–134 are NOT November 2026 baseline releases. Version verified ≠ actual reference APK installed during this project.
 
-| Item | Target Device | Environment / Tools | Verification Goal | Status |
-|---|---|---|---|---|
-| **E-1** | Pixel 7 Pro (Physical) | ADB + Screencap | Capture real edge-to-edge insets under gesture navigation and 3-button navigation | Pending physical device |
-| **E-2** | Chrome v157 Stable APK | Physical device / AOSP | Measure exact omnibox translation animation duration with high-speed video / FrameTimeline | Pending device install |
-| **E-3** | Vivaldi v8.3 Stable APK | Physical device / AOSP | Verify bottom toolbar merge touch targets and menu width scaling | Pending device install |
-| **E-4** | Velocity 20-Tab Test | AOSP Emulator (API 36/37) | Profile PSS memory and frame latency during continuous vertical scroll | Pending JDK 25 runtime APK build |
-| **E-5** | Velocity 100-Tab Test | AOSP Emulator (API 36/37) | Measure `BoundedScrollView` view inflation times vs. `RecyclerView` prototype | Pending JDK 25 runtime APK build |
-| **E-6** | Velocity IME Transition | Physical device | Verify `WindowInsetsAnimationCompat` smooth translation without viewport clipping | Pending physical device |
+## Evidence map to actual source
+
+**Revision pinned:** [`main@8c9c3d1`](https://github.com/linkalls/velocity-browser/tree/8c9c3d11983a1eb56b3b21a2d58d9338b95649e3).
+
+| Claim rechecked | Code evidence | Corrected conclusion |
+|---|---|---|
+| Tab grid creates every view in advance | [`ChromiumTestActivity.java#L2197-L2300`](https://github.com/linkalls/velocity-browser/blob/8c9c3d11983a1eb56b3b21a2d58d9338b95649e3/experiments/chromium-013/app/src/main/java/dev/velocity/chromium/ChromiumTestActivity.java#L2197-L2300) | **False.** Row placeholders are allocated, but card view factories mount only near viewport and detach on scroll. |
+| 320dp is one column | [`BrowserUiLayout.java#L11-L36`](https://github.com/linkalls/velocity-browser/blob/8c9c3d11983a1eb56b3b21a2d58d9338b95649e3/experiments/chromium-013/app/src/main/java/dev/velocity/chromium/BrowserUiLayout.java#L11-L36) | **False.** Two columns at tested narrow viewport; width/side padding still matter. |
+| Address always shows full URL | [`ChromiumTestActivity.java#L1523-L1566`](https://github.com/linkalls/velocity-browser/blob/8c9c3d11983a1eb56b3b21a2d58d9338b95649e3/experiments/chromium-013/app/src/main/java/dev/velocity/chromium/ChromiumTestActivity.java#L1523-L1566) | **False.** Hostname at rest; full URL in edit state. |
+| URL isn't selected on focus | [`ChromiumTestActivity.java#L341-L405`](https://github.com/linkalls/velocity-browser/blob/8c9c3d11983a1eb56b3b21a2d58d9338b95649e3/experiments/chromium-013/app/src/main/java/dev/velocity/chromium/ChromiumTestActivity.java#L341-L405) | **False.** `setSelectAllOnFocus` and `selectAll` present. |
+| Full-screen swipe steals webpage gestures | [`ChromiumTestActivity.java#L413-L442`](https://github.com/linkalls/velocity-browser/blob/8c9c3d11983a1eb56b3b21a2d58d9338b95649e3/experiments/chromium-013/app/src/main/java/dev/velocity/chromium/ChromiumTestActivity.java#L413-L442) | **False as described.** Listener belongs to the address field. Gesture collisions within that field still merit QA. |
+| 20+ tabs necessarily OOM | [`ChromiumTestActivity.java#L2119-L2300`](https://github.com/linkalls/velocity-browser/blob/8c9c3d11983a1eb56b3b21a2d58d9338b95649e3/experiments/chromium-013/app/src/main/java/dev/velocity/chromium/ChromiumTestActivity.java#L2119-L2300) | **Unverified performance prediction.** Benchmark 20/100/500 tabs before redesign. |
+| Private-mode profile fully isolated | `TabRegistry.java`, `ChromiumTestActivity.java`, Cefrium context handling | **Unverified as a security guarantee.** UI filtering and no-private-preview are not proof of cookie/storage isolation. |
+| Bottom toolbar single compact row | [`ChromiumTestActivity.java#L300-L390`](https://github.com/linkalls/velocity-browser/blob/8c9c3d11983a1eb56b3b21a2d58d9338b95649e3/experiments/chromium-013/app/src/main/java/dev/velocity/chromium/ChromiumTestActivity.java#L300-L390) | **False.** Two rows 51dp address + 49dp actions; one-row design remains an experiment. |
+| Exact device UX / FPS comparison | No Chrome/Vivaldi APK runtime test artifacts | **NOT TESTED**. No directly measured cross-browser timings. |
+
+## Primary-source behaviors actually confirmed
+
+- Chrome Android [address-bar location setting](https://support.google.com/chrome/answer/14181646?co=GENIE.Platform%3DAndroid&hl=en): top/bottom selection, long-press move, portrait-only choice; landscape stays top.
+- Chrome Android [tabs](https://support.google.com/chrome/answer/2391819?co=GENIE.Platform%3DAndroid&hl=en): groups, reorder, inactive section; docs say 14 days inactivity and options concerning six-month auto-close.
+- Vivaldi Android [interface](https://help.vivaldi.com/android/android-appearance/android-vivaldi-mobile-interface/): navigation bar, bottom location, tab bar and scroll toolbar settings.
+- Vivaldi Android [tabs](https://help.vivaldi.com/android/android-browse/android-tabs/): switcher, search and configurable tab options.
+- Vivaldi Android [stacks](https://help.vivaldi.com/android/android-browse/android-tab-stacks/): drag/group and accordion/two-level/stack toolbar.
+- Vivaldi Android [menu](https://help.vivaldi.com/android/android-appearance/main-menu-on-vivaldi-on-android/): customizable compact quick menu.
+- Android [targetSDK 35 edge-to-edge](https://developer.android.com/about/versions/15/behavior-changes-15) and [48dp target recommendation](https://developer.android.com/guide/topics/ui/accessibility/apps): OS design constraints; not evidence that Velocity presently clips or fails TalkBack.
+
+## Limitations and next reproducible experiment
+
+1. **Limited real screenshots now exist.** Android 15 Google Play emulator ran Chrome **124.0.6367.219** and checksum-verified Vivaldi **8.3.4192.64**. See [10 — real APK observations](10-REAL-ANDROID-UI-OBSERVATIONS.md). Chrome 157 remains unavailable for direct inspection; do not conflate it with emulator Chrome 124.
+2. **No measured tap counts, animation timings or FPS.** The source docs contain user paths; they do not reveal input latencies or scrolling smoothness.
+3. **No physical Pixel 7 Pro validation in this audit.** Previous Velocity-only Android 16/17 CI screenshots demonstrate Android rendering but not all lifecycle/audio or one-handed usability scenarios.
+4. **No app implementation changes.** Research-only PR #22 can be merged after corrected documents and research workflow pass CI. The SDK-only APK observations are reproducible; physical-device QA remains incomplete. Future P0 tasks need explicit tests and acceptance criteria.
+
+**Recommended next action:** P0 device matrix and tab baseline (not an unconditional `RecyclerView` rewrite), then tab search and responsive toolbar design experiment. See [07-IMPLEMENTATION-ROADMAP.md](07-IMPLEMENTATION-ROADMAP.md).
+
+## Follow-up executed 2026-11-09: native reference app capture
+
+- [Verified Android Actions run](https://github.com/linkalls/velocity-browser/actions/runs/42589447896): two actual browser packages, raw screencaps, `uiautomator` XML, package versions and action ledger.
+- Chrome 124 native home, page and single-card tab switcher; Vivaldi 8.3 native page, 2-column tab switcher, Speed Dial and customizable-looking menu layout. **Current Chrome 157 remained untested.**
+- See [10-REAL-ANDROID-UI-OBSERVATIONS.md](10-REAL-ANDROID-UI-OBSERVATIONS.md) for explicit bounds, what succeeded, and what was not tested. The previous “no emulator available” statement applied only to the original Jules sandbox and is no longer true of the GitHub Actions follow-up.
