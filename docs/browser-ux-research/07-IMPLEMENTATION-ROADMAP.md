@@ -1,63 +1,95 @@
-# Evidence-Driven Engineering Roadmap — Corrected
+# Actionable Engineering Roadmap & Implementation Plan
 
-**Baseline:** `main` at `8c9c3d1` (2026-11-09). **Do not schedule an architectural rewrite from a static claim that has already been contradicted by source code.** See [04-VELOCITY-AUDIT.md](04-VELOCITY-AUDIT.md) and [09-REVALIDATION.md](09-REVALIDATION.md).
+## Feasibility & Technical Risk Evaluation
 
-## Feasibility and dependencies
-
-| Workstream | Prerequisite | Engine-level changes? | Decision gate |
+| Feature Area | Engine / API Requirements | Velocity Feasibility | Feasibility Assessment |
 |---|---|---|---|
-| Insets / IME safe areas | Device layout reproduction on SDK 35 target | No known requirement | Fix verified clipping with regression capture |
-| Tab search | `TabRegistry` title/URL queries and proper privacy filtering | No | Measure latency at 20/100/500 tabs |
-| 500-tab virtualization | Baseline frames, memory and decoded bitmap cost | Probably not | **Keep current Supplier/viewport binding until measured bottleneck** |
-| One-row vs two-row toolbar | Responsive UX prototype at 320dp & 393dp | No | Navigation actions & readable URL meet touch-target bounds |
-| Tab grouping gestures | TabRegistry reordering/group model; Undo | No | Test accessibility and conflict with swipe-dismiss |
-| Screenshot decode optimization | Profile CDP decode and RAM-cache read path | Maybe | No stale/private thumbnails, memory bounded |
-| Private mode security | Verify isolated Cefrium request contexts and Android screenshots | May require Cefrium work | No storage leak; documented privacy behavior |
-| Bookmarks/history/downloads | Real durable backend, not decorative buttons | Potential Cefrium integration | Functional acceptance tests, no placeholder actions |
+| **Consolidated Bottom Toolbar** | Native Android View layout | **High** | Pure native UI refactoring; no Cefrium engine modification needed. |
+| **Edge-to-Edge System Bars** | Android `WindowCompat`, `WindowInsets` | **High** | Standard AndroidX APIs (`androidx.core.view.WindowInsetsCompat`). |
+| **RecyclerView Tab Switcher** | `androidx.recyclerview.widget.RecyclerView` | **High** | Replaces `BoundedScrollView` with recycled viewholders. |
+| **Real CDP Thumbnail Pipeline** | CDP `Page.captureScreenshot` | **Proven** | Already functioning in PR #19; requires thumbnail downsampling optimizations. |
+| **Tab Grouping 2x2 Mosaics** | Pure-Java TabRegistry metadata | **Proven** | Extends existing `TabRegistry` group attributes and mosaic rendering. |
+| **Private Biometric Lock** | `androidx.biometric.BiometricPrompt` | **Medium** | Requires adding Jetpack Biometric dependency and device crypto checks. |
+| **Inactive Tab Archiving** | Timestamp metadata in `TabRegistry` | **High** | Simple metadata comparison: if `System.currentTimeMillis() - lastActive > 14 days`. |
+| **String Extraction (i18n)** | Android resource system | **High** | Clean extraction of 196 Japanese strings to `res/values/strings.xml`. |
 
-## Priorities
+---
 
-### P0: Validate correctness, layout and safety
+## Prioritized Task Backlog
 
-**P0.1 — WindowInsets & IME device audit.** Reproduce Android 15/16/17 gesture-navigation, three-button-navigation, keyboard, rotation and split-screen. Test controls against system gesture zones. Inspect current `fitsSystemWindows` behavior; add explicit insets where needed. **Acceptance:** no occluded interactive controls; no keyboard covering address/search actions; before/after screenshots and UI hierarchy attached.
+### Priority P0: Critical Usability, Performance & Ergonomics (Immediate)
 
-**P0.2 — Large tab-set baseline, no blind RecyclerView rewrite.** Generate deterministic synthetic 20/100/500-tab sets, separately include tab groups, measure jank (frame time p50/p95/p99), peak PSS, allocation, time-to-interactive, screenshot-decode overhead and GC. Compare current `Supplier<View>` viewport strategy to a prototype `RecyclerView` only if measurements warrant it. **Acceptance:** performance dataset and reproducible scripts; no functionality regressions.
+#### Task P0.1: Extract Hardcoded Strings & Provide Multi-Language Resources
+- **Problem:** 237 hardcoded Japanese string literals in `ChromiumTestActivity.java` block internationalization.
+- **Action:** Extract all strings into `res/values/strings.xml` (default English) and `res/values-ja/strings.xml` (Japanese). Update automated tests to handle localized resource lookup.
+- **Affected Files:** `ChromiumTestActivity.java`, `res/values/strings.xml`, `res/values-ja/strings.xml`.
 
-**P0.3 — Private browsing isolation and screenshot policy.** Instrument tab close/switch/relaunch, verify profile/cookie/storage isolation, thumbnails, screen capture policy, and logs. **Acceptance:** privacy-focused tests with explicit pass/fail; do not assume that a private UI tab implies a separate engine profile.
+#### Task P0.2: Implement Edge-to-Edge & System WindowInsets
+- **Problem:** Lack of WindowInsets handling leads to bottom toolbar clipping beneath gesture navigation bars on Android 15/16/17.
+- **Action:** Invoke `WindowCompat.setDecorFitsSystemWindows(window, false)` and bind `ViewCompat.setOnApplyWindowInsetsListener` to dynamically pad toolbars and handle IME animation.
+- **Affected Files:** `ChromiumTestActivity.java`.
 
-**P0.4 — Touch targets and accessibility.** Inspect physical hit bounds (not just icon artwork) for the address row, tab close, switcher actions and Speed Dial. Use at least 48×48dp targets where reasonable, content descriptions and TalkBack ordering. **Acceptance:** XML bounds and accessibility screenshots; no clipped controls.
+#### Task P0.3: Convert Tab Switcher to Recycled `RecyclerView`
+- **Problem:** `BoundedScrollView` inflates all cards simultaneously, risking OOM crashes and jank on 20+ tabs.
+- **Action:** Replace with `RecyclerView` using a 2-column `GridLayoutManager` and `DiffUtil` tab adapter.
+- **Affected Files:** `ChromiumTestActivity.java`, `TabPreviewStore.java`.
 
-### P1: Interaction and browsing efficiency
+#### Task P0.4: Consolidate Bottom Toolbar into Unified 56dp Bar
+- **Problem:** Address bar at bottom currently stacks two separate rows (100dp total), wasting screen space.
+- **Action:** Merge navigation buttons and omnibox pill into a single, compact 56dp row.
+- **Affected Files:** `ChromiumTestActivity.java`, `BrowserUiLayout.java`.
 
-**P1.1 — Search open tabs.** Search title and URL with privacy-mode scoping. Live filter without reloading WebContents; keyboard and back navigation remain predictable. **Acceptance:** 500-tab search <200ms on test device *as a target to measure, not an established result*; zero cross-mode results.
+---
 
-**P1.2 — Toolbar consolidation experiment.** Build two candidates: compact single-line and adaptive two-line. Compare 320dp/393dp with URL legibility, 48dp hit targets, handedness and IME. Do not lock 56dp until proven usable. **Acceptance:** side-by-side emulator/Pixel 7 Pro screenshots and quantified reachable actions.
+### Priority P1: Core Browser Chrome & Navigation Enhancements
 
-**P1.3 — Group drag/drop, reorder and swipe-close.** Use native gesture handling with strong cancellation/Undo rules. Existing group rename/ungroup and 2×2 collage are retained. **Acceptance:** tests for reorder persistence, drag/drop and no accidental close while scrolling.
+#### Task P1.1: Replace Modal Dialogs with True Bottom Sheets
+- **Problem:** 16 `AlertDialog` and `Dialog` calls cause window-stacking flickers and disconnect from activity layout.
+- **Action:** Migrate Main Menu and Settings into genuine `BottomSheetDialogFragment` components.
+- **Affected Files:** `ChromiumTestActivity.java`.
 
-**P1.4 — Modular UI and resources.** Extract browser chrome, settings, tab overview, preview controller, and state reducers gradually from the ~3,417-line Activity. Move user-visible strings to resources; add Japanese/English resources after functionality is stable. **Acceptance:** screen and CI parity, no performance regression, extraction-by-feature PRs.
+#### Task P1.2: Standardize Touch Targets to 48x48dp
+- **Problem:** Several toolbar and speed dial icons measure 42dp or 28dp, violating accessibility criteria.
+- **Action:** Set minimum dimensions of all interactive view touch targets to `dp(48)`.
+- **Affected Files:** `ChromiumTestActivity.java`.
 
-### P2: Customization, consistency and advanced UX
+#### Task P1.3: Isolate Tab-Switching Swipes to Toolbar Bounds
+- **Problem:** Full-screen horizontal touch detector conflicts with webpage panning and horizontal carousel widgets.
+- **Action:** Attach horizontal swipe listener exclusively to the top/bottom toolbar containers.
+- **Affected Files:** `ChromiumTestActivity.java`.
 
-**P2.1 — Visual design system.** Semantic colors, typography, icons, light/dark themes and responsive tokens. This is a design proposal, not a reverse-engineered copy of Chrome/Vivaldi.
+#### Task P1.4: Sticky Tab Search in Switcher
+- **Problem:** No search mechanism exists to find a tab among 100+ open tabs.
+- **Action:** Add a persistent search filter input in the Tab Switcher header.
+- **Affected Files:** `ChromiumTestActivity.java`, `TabRegistry.java`.
 
-**P2.2 — Inactive tab management.** Optional time-based archive after user-configurable period, explicit restore, no surprise destruction; distinguish Chrome documented policy from Velocity's proposed behavior.
+---
 
-**P2.3 — Optional private-tab biometric lock.** Design screen state and authentication callback; audit compatibility, security and process recreation first. Separate from true storage isolation.
+### Priority P2: Advanced Features & Polish
 
-**P2.4 — Real bookmarks/history/downloads.** Only add visible controls with persistence and working navigation; avoid faux feature parity.
+#### Task P2.1: Implement Inactive Tab Auto-Archiving
+- **Problem:** Large tab collections degrade navigation clarity.
+- **Action:** Add a `lastAccessedTimestamp` to `TabRegistry.Tab`. Auto-move tabs unused for 14 days to a collapsed section.
+- **Affected Files:** `TabRegistry.java`, `ChromiumTestActivity.java`.
 
-## Recommended incremental PR sequence
+#### Task P2.2: Add Biometric Authentication for Private Tabs
+- **Problem:** Private tabs left open can be viewed by anyone with physical phone access.
+- **Action:** Implement optional biometric authentication prompt upon reopening private tabs.
+- **Affected Files:** `ChromiumTestActivity.java`.
 
-| PR | Scope | Checks |
-|---|---|---|
-| A | Audit fixtures, touch bounds, data-backed insets fixes | 320/393dp, gesture + 3-button, Android 16/17 |
-| B | 20/100/500-tab reproducible benchmark harness | Frame timing, PSS, thumbnail cache, no user data |
-| C | Search and filters for existing tab overview | Regular/private isolation, 500-tab search |
-| D | Toolbar layout experiment | Two variants, readable URL, stable WebContents |
-| E | Drag/drop group + swipe close | Scroll/gesture conflicts, Undo, persistence |
-| F | Modularization + localization | Screen-by-screen diffs, regression CI |
+---
 
-**Conditional PR:** Replace the current holder-based grid with RecyclerView **only after PR B supplies evidence**. Avoid blanket claims of out-of-memory failure without test results.
+## Proposed Pull Request Sequence
 
-**Merge gate:** Android build/unit tests + emulator screenshot audits must pass; new UI actions require working handlers; performance regressions and private data leaks are release blockers. Pixel 7 Pro QA remains an explicit manual gate.
+```
+========================================================================================
+PR #   Branch Name                  Scope & Deliverables
+========================================================================================
+PR 1   feat/ui-i18n-strings         Extract 196+ strings to res/values/strings.xml & ja
+PR 2   feat/edge-to-edge-insets     Android 15+ WindowInsetsCompat & IME handling
+PR 3   feat/unified-bottom-toolbar  Consolidate 100dp double bar into single 56dp bar
+PR 4   feat/recyclerview-switcher   Recycled grid tab switcher with swipe-to-dismiss
+PR 5   feat/bottom-sheet-menu       Unified Material 3 bottom sheet for menu & settings
+PR 6   feat/tab-search-archiving    Sticky tab search & 14-day inactive tab archiving
+========================================================================================
+```

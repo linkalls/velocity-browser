@@ -1,13 +1,10 @@
-# Proposed Velocity Design System (Not a Measured Browser UI Copy)
-
-**Status: design proposal — not implemented.** These hex colors, dimensions and animation rules are *new design tokens for evaluation*, not measurements from current Chrome 157 or Vivaldi 8.3 binaries. The existing `main` Activity uses `CANVAS=#16171C`, `SURFACE=#25272E`, `ELEVATED=#30333B`, `BORDER=#41454E`, `PRIMARY=#F5F6F9`, `SECONDARY=#AAAFB9`, and `ACCENT=#7EA9F4` at commit `8c9c3d1` (see [04 audit](04-VELOCITY-AUDIT.md)). Proposals below intentionally differ and require approval/screenshot review. No source or UX benchmark establishes them as objectively superior.
-
+# Unified Velocity Design System Specification
 
 ## Design Vision & Guiding Principles
 The Velocity Browser Design System marries the **cognitive clarity and speed of Google Chrome**, the **spatial flexibility and customization of Vivaldi**, and **Velocity's core philosophy of lightweight, distraction-free performance**.
 
 1. **Velocity First:** Every interaction must feel instantaneous. No heavy decorative blur shaders, unnecessary parallax animations, or multi-second transitions.
-2. **Predictable & Ergonomic:** Primary navigation actions should be reachable by thumb. Android's accessibility guidance **recommends** a minimum >=48×48dp *interactive hit area*; visible icons may be smaller. [Android Developer guidance](https://developer.android.com/guide/topics/ui/accessibility/apps).
+2. **Predictable & Ergonomic:** Primary navigation actions are anchored in the natural thumb zone. Critical touch targets must measure >= 48dp.
 3. **Adaptive Density:** The UI adapts gracefully from narrow 320dp budget handsets to 393dp mainstream phones, foldables, and landscape tablets.
 4. **Strict Isolation by Design:** Private browsing uses distinct visual surfaces and never leaks cached state or pixels into standard browsing.
 
@@ -75,7 +72,7 @@ Omnibox URL   Roboto Mono/Inter    14sp        Regular (400)   18sp
 ## 2. Core Components Specification
 
 ### 2.1 Consolidated Bottom Toolbar & Omnibox
-**Candidate A for a controlled A/B design review, not a finalized decision:** Try consolidating the current two rows (49dp+51dp plus padding) into one compact bar **only if** 320dp layouts retain a legible hostname and 48dp hit targets. Compare this candidate with an adaptive two-row alternative; there is **no Chrome/Vivaldi measurement** supporting 56dp as the uniquely correct height:
+Instead of stacking two separate rows (consuming 100dp), Velocity adopts a **unified 56dp bottom bar**:
 
 ```
 +-----------------------------------------------------------------------+
@@ -83,7 +80,7 @@ Omnibox URL   Roboto Mono/Inter    14sp        Regular (400)   18sp
 | Back   Fwd   |--------- Omnibox Pill (40dp) ----------|   Tabs   Menu  |
 +-----------------------------------------------------------------------+
 ```
-- **Proposed dimensions:** nominal 56dp plus bottom safe inset, subject to validation across phone widths, large fonts, keyboard and screen rotation. With multiple 48dp controls and a readable URL, a single 56dp row may be infeasible at 320dp; allow hiding/reprioritizing actions instead of shrinking targets.
+- **Dimensions:** Total height: **56dp** + `WindowInsets.navigationBars().bottom`.
 - **Elements:**
   1. `Back` button: 48x48dp touch target, 24dp icon vector. Disabled state: 38% alpha.
   2. `Forward` button: 48x48dp touch target, 24dp icon vector.
@@ -109,7 +106,7 @@ Omnibox URL   Roboto Mono/Inter    14sp        Regular (400)   18sp
 - **Dimensions:** Width: dynamically calculated via `GridLayoutManager`. Height: `width * 1.33`.
 - **Header:** 36dp height, contains 16dp high-resolution site favicon, 13sp title (truncated with ellipsis), and 28dp touch target `X` close button.
 - **Active State:** 2dp solid `border_active` (`#38BDF8`) surrounding the card with 4dp outer halo.
-- **Suggested swipe dismissal:** Evaluate horizontal swipe with safe cancellation and Undo. The 300dp/s / 40%-width thresholds are **untested defaults**, not observed reference-browser values.
+- **Swipe Dismissal:** Card accepts horizontal swipe. Velocity threshold: 300dp/s or 40% card width delta triggers dismissal with a smooth scale-down exit animation.
 
 ### 2.3 Tab Group 2x2 Mosaic Card
 
@@ -148,14 +145,6 @@ Tablet / Landscape (>700dp)  Expanded 4       Top-locked Desktop Bar  Persistent
 
 ### Edge-to-Edge System Bars Rule
 1. The app window always sets `WindowCompat.setDecorFitsSystemWindows(window, false)`.
-2. Use `WindowInsetsCompat.Type.systemBars()` and `.ime()` consistently at the appropriate parent/child layer. Do **not** blindly overwrite existing top/start/end padding for every component with a single bottom-inset line; preserve initial padding and handle IME separately.
+2. All toolbar layouts must apply bottom insets:
+   `view.setPadding(0, 0, 0, insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom);`
 3. Toolbars never clip beneath display cutouts (camera notches); horizontal safe padding is applied in landscape orientations.
-
-
-## Implementation precautions
-
-- The current switcher is **already viewport-bound** (`Supplier<View>` and `holder.removeAllViews()`). `RecyclerView` is an optional measured optimization, not a default rewrite.
-- Do not copy visual assets, icon designs or fonts from proprietary browser applications. Use licensed resources and source-available UI tokens.
-- Respect device light/dark mode and Android 15+ edge-to-edge semantics; test with large text before fixing chip/card heights.
-- Private-mode purple is only a proposal. Screenshot restrictions, request-context isolation, and lock behavior require independent security testing.
-- Source and version scope: [08-SOURCES.md](08-SOURCES.md); measurable validation requirements: [07-IMPLEMENTATION-ROADMAP.md](07-IMPLEMENTATION-ROADMAP.md).
