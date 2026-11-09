@@ -47,6 +47,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.ScrollView;
+import android.widget.HorizontalScrollView;
 import android.widget.Switch;
 import android.widget.PopupWindow;
 import android.widget.GridLayout;
@@ -2795,7 +2796,10 @@ public final class ChromiumTestActivity extends Activity {
         };
         String[] quickNames = {"進む", "更新", "新規", "共有", "ホーム"};
         Runnable[] quickActions = {
-            () -> { if (engine != null && engine.canGoForward()) engine.goForward(); },
+            () -> {
+                TabRegistry.Tab active = tabRegistry.current();
+                if (engine != null && active != null && active.canGoForward) engine.goForward();
+            },
             () -> { if (engine != null) engine.reload(); },
             () -> createTab("about:blank", false),
             this::shareCurrentPage,
