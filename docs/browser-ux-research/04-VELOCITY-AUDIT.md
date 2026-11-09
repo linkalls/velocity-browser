@@ -1,82 +1,69 @@
-# Technical & UX Audit of Velocity Browser (Current Prototype)
+# Velocity Browser — Main-Branch Code Audit (Corrected)
 
-## Executive Summary
-This document provides a forensic audit of the Velocity Browser implementation under `experiments/chromium-013/`, examining the architectural foundations, UI components, interaction paradigms, performance limits, and accessibility conformance introduced in PRs #19, #20, and #21.
+**Audit date:** 2026-11-09. **Baseline:** `main` commit `8c9c3d1` (PRs #19, #20, #21 merged). **Method:** static code inspection and previously completed Velocity-only Android emulator CI. **Not performed:** Chrome/Vivaldi APK installation, side-by-side measured interaction testing, or a fresh Pixel 7 Pro physical-device test. Do not present source-level findings as measured FPS or real-device UX.
 
-While the existing implementation successfully proves that real Chromium/Cefrium rendering, CDP-based thumbnail capture, and tab persistence can function without heavy external dependencies, the user interface currently exhibits severe architectural and usability shortcomings that prevent it from feeling like a polished, production-grade Android browser.
+## Source locations
 
----
+All paths below are relative to the repository root, at the audited commit. Line ranges are approximate anchors and should be refreshed after future edits.
 
-## 1. Codebase Architecture & Cefrium Integration
+- `experiments/chromium-013/app/src/main/java/dev/velocity/chromium/ChromiumTestActivity.java` (**Activity**)
+- `experiments/chromium-013/app/src/main/java/dev/velocity/chromium/BrowserUiLayout.java` (**layout arithmetic**)
+- `experiments/chromium-013/app/src/main/java/dev/velocity/chromium/TabRegistry.java` (**tab metadata**)
+- `experiments/chromium-013/app/src/main/java/dev/velocity/chromium/TabPreviewStore.java` (**disk + RAM thumbnail cache**)
+- `experiments/chromium-013/app/build.gradle.kts` (**target SDK**)
+- `experiments/chromium-013/tools/ui-layout-screenshot-smoke.sh` (**Android CI screenshot workflow**)
 
-### 1.1 Monolithic Activity Anti-pattern
-- **The Core Issue:** `ChromiumTestActivity.java` spans **3,417 lines of code** in a single file.
-- **Architectural Consequences:**
-  - UI construction, layout calculations, touch gesture handling, CDP JSON protocol parsing, SharedPreferences persistence, dialog lifecycles, and engine event dispatches are coupled into a single god class.
-  - Testability is severely impaired. Aside from `BrowserUiLayoutTest.java` (which tests static arithmetic in isolation), none of the actual view hierarchy or user interaction flows can be unit-tested without booting an emulator.
-  - UI states frequently race with asynchronous Cefrium callbacks. For example, closing a tab while an asynchronous CDP screenshot is executing can post a completed bitmap into `TabPreviewStore` for a tab that was already deleted.
+## Confirmed current behavior (do not reimplement as if missing)
 
-### 1.2 Programmatic UI Construction vs. Modern Declarative Architecture
-- The entire UI is built programmatically using raw Android View instances (`new LinearLayout(this)`, `new TextView(this)`).
-- **Maintenance Deficiencies:**
-  - 255 separate invocations of the custom helper `dp(int v)`.
-  - Inline hardcoded color constants (`PRIMARY`, `SECONDARY`, `BG`, `CARD`, `ACCENT`, `BORDER`).
-  - No integration of standard Android theme attributes, Material Design components, or modern Jetpack Compose layouts.
-
----
-
-## 2. Forensic UI/UX Component Deficiencies
-
-### 2.1 Hardcoded Strings & Missing Localization (i18n)
-- **Finding:** The activity contains **237 hardcoded Japanese string literals** across 196 unique values (e.g., `"ショートカットを追加"`, `"ブラウザメニュー"`, `"新しい非公開タブ"`, `"タブ一覧"`).
-- **Impact:**
-  - Zero strings are extracted to `strings.xml`.
-  - Non-Japanese users cannot understand critical navigation or privacy prompts.
-  - Changing a label requires modifying Java business logic and risks breaking automated uiautomator tests that assert against hardcoded Japanese strings (e.g., `verify_browser_shell_ui.py`).
-
-### 2.2 Modal Dialogs vs. Standard Bottom Sheets
-- **Finding:** The prototype makes heavy use of Android `Dialog` and `AlertDialog` instances (16 separate `new AlertDialog` occurrences) styled to look like bottom sheets.
-- **Usability Failures:**
-  - When an `AlertDialog` or `Dialog` opens, it creates a separate top-level `PhoneWindow`. This forcibly pauses underlying window interactions and detaches the UI from the Activity’s view hierarchy.
-  - Opening a sub-menu (e.g., tapping "詳細ツール" or "設定" inside `showMenu()`) requires closing the parent `dialog[0].dismiss()` and constructing a whole new `Dialog` instance, causing visible window flicker and losing scroll positions.
-  - Back gestures trigger platform dialog dismissal rather than standard predictive back transitions.
-
-### 2.3 Bottom Layout Ergonomic Bloat
-- **Finding:** When the user toggles "アドレスバーを下に配置" (Address bar at bottom), the UI does not consolidate controls into a unified bar. Instead, it vertically stacks:
-  1. The navigation action row (`toolbarActions`, 49dp height)
-  2. The address input row (`addressRow`, 51dp height)
-- **Impact:** Stacking two bars consumes **100dp of vertical screen estate** at the bottom of the screen, severely crowding the web viewport and creating unnecessary visual noise.
-
-### 2.4 Lack of Edge-to-Edge & WindowInsets Handling
-- **Finding:** There is **zero integration with modern Android WindowInsets** (`WindowInsetsCompat.Type.systemBars()` or `ime()`).
-- **Impact on Android 15, 16, and 17:**
-  - Android 15+ strictly enforces edge-to-edge drawing. Because Velocity does not consume system bar insets, on edge-to-edge devices the bottom toolbar overlaps directly with the system gesture navigation bar.
-  - When the virtual keyboard (IME) opens, the window resizes abruptly without interpolation, causing visual stuttering and jumping.
-
-### 2.5 Touch Target & Accessibility Violations
-- **Finding:** Multiple interactive icons have touch targets below the Android Accessibility standard minimum of 48x48dp.
-  - Action icons inside the bottom toolbar measure 42x42dp or 43x43dp (`new LinearLayout.LayoutParams(dp(43), dp(43))`).
-  - Speed Dial delete buttons measure 28x28dp.
-  - Only 15 view elements have explicit `contentDescription` attributes; hundreds of clickable views (e.g., individual tab cards, close buttons, menu dividers) lack descriptive labels for screen readers.
-
-### 2.6 Scalability Limits in the Tab Switcher
-- **Finding:** The Tab Switcher is constructed using a `BoundedScrollView` wrapping a vertical `LinearLayout` with dynamically added card rows.
-- **Performance Danger:**
-  - Every open tab inflates an entire card view hierarchy and holds references to loaded thumbnail bitmaps.
-  - While this functions acceptably for 5–10 tabs in a test bed, opening **50 to 200 tabs will trigger immediate FrameTimeline jank, extreme garbage collection pressure, and Out-Of-Memory (OOM) crashes**.
-  - A production tab switcher must use a recycling view architecture (`RecyclerView` with `DiffUtil`).
-
----
-
-## 3. Summary of Velocity UI/UX Anti-Patterns
-
-| Anti-Pattern | Current Implementation | Severity | Corrective Architecture |
+| Feature | Actual `main` implementation | Evidence | Confidence |
 |---|---|---|---|
-| **Monolithic God Activity** | 3,417-line `ChromiumTestActivity.java` | High | Modularize into Controllers/Presenters per screen surface |
-| **Hardcoded Japanese Strings** | 237 string literals in Java code | High | Extract all strings to `res/values/strings.xml` with i18n support |
-| **Window-Stacking Modal Dialogs** | `new Dialog(this)` for menus/settings | High | Replace with true in-hierarchy `BottomSheetDialogFragment` |
-| **Stacked Double Bottom Bar** | 49dp actions + 51dp address = 100dp | Medium | Consolidate into a unified 56dp bottom omnibox bar |
-| **No WindowInsets / Edge-to-Edge** | 0 insets listeners | High | Implement `ViewCompat.setOnApplyWindowInsetsListener` |
-| **Sub-48dp Touch Targets** | 42dp and 43dp action targets | Medium | Standardize all clickable targets to >= 48dp |
-| **Un-recycled Tab Switcher** | `BoundedScrollView` + `LinearLayout` | High | Implement `RecyclerView` with grid layout manager |
-| **Gesture Navigation Conflicts** | Full-screen swipe listener for tabs | Medium | Restrict tab-switching gestures strictly to toolbar bounds |
+| Tab grid | `showTabOverview()` uses a `ScrollView` with lightweight row/holder placeholders and `Supplier<View>` factories; it binds cards near the visible viewport and calls `holder.removeAllViews()` offscreen. **It does not eagerly inflate every card.** | Activity L2119–2301, especially L2197 and L2270–2299 | High, static |
+| Narrow-phone columns | `BrowserUiLayout.columnsForAvailableWidthDp()` uses 2 columns when enough width remains after side padding, including the tested 320dp viewport. | `BrowserUiLayout.java` L11–36; `BrowserUiLayoutTest.java` | High, static + unit tests |
+| URL field | Unfocused URL displays hostname via `displayAddress()`; focusing selects the full URL for editing. | Activity L341, L393–405, L1523–1565 | High, static |
+| Tab swipe | Swipe detector is registered on `address.setOnTouchListener`; **not** on the entire webpage/root Surface. | Activity L413–442 | High, static |
+| Capture | CDP `Page.captureScreenshot` with fallbacks; previews excluded for private tabs, backed by `TabPreviewStore`. | Activity L1982+, `TabPreviewStore.java` | High, static; real-device behavior unverified |
+| Screenshot caching | 12MiB `LruCache` plus bounded app-private JPEG files. It is incorrect to describe thumbnails as an unlimited set of full-resolution bitmaps. | `TabPreviewStore.java` L23–128 | High, static |
+| Groups | Named groups, 2x2 mini-cards, expansion, rename and ungroup exist; drag-and-drop grouping is NOT implemented. | Activity L2119–2580 | High, static |
+| Private vs regular modes | Distinct tab-mode filtering and private preview exclusion exist. This **does not by itself prove cookie/storage partition isolation** or screenshot security. | `TabRegistry.java`, Activity mode handling, preview store | High for UI; unverified for engine isolation |
+| Closed tab history | RAM-only `recentlyClosedRegularTabs`, capped at 20; not a full browsing history. | Activity L106 and L2650–2690 | High, static |
+| Resident browser cap | `MAX_RESIDENT_BROWSERS = 6`; tab metadata can outnumber resident renderer instances. | Activity L111 and L1419+ | High, static |
+| Start page | Editable local Speed Dials (`readSpeedDials`, `editSpeedDial`) and native search affordance are implemented. | Activity L580–800 | High, static |
+| Menu / settings | Quick-action menu and category-based full-screen settings are implemented, though several UI surfaces still use native `Dialog`. | Activity L2775–3240 | High, static |
+| Bar placement | User preference `address_bar_bottom` repositions toolbar; layout currently uses separate address and actions rows. | Activity L300–390 and L1597+ | High, static |
+| Android target | `targetSdk = 35`, `compileSdk` release 37.1. Thus Android 15+ edge-to-edge requirements apply; proper insets and IME transitions need device verification. | `app/build.gradle.kts` L79–90; Android official docs | High for SDK; unresolved for interaction |
+| Existing tests | Android 16/17 emulator smoke and screenshots are present; they are **Velocity-only** tests, not real Chrome/Vivaldi benchmark recordings. | `.github/workflows/velocity-android-smoke.yml` and screenshot tool | High, repository/CI |
+
+## Verified defects and engineering risks (vs. hypotheses)
+
+### High-confidence design/maintenance issues
+
+1. **Large Activity:** `ChromiumTestActivity.java` is ~3,417 lines at the audited revision. Layout construction, tab state, preview callbacks, site policy, and dialogs live in one file. This is a maintainability and test-isolation problem, not proof of current performance failure.
+2. **Inline UI constants and strings:** UI colors and text are frequently authored in Java rather than semantic theme/resource tokens. Extracting strings improves maintainability/localization. The earlier precise counts of 237 strings / 196 unique strings were not reproduced in this re-audit and must not be treated as verified measurements.
+3. **Two stacked bottom rows:** `toolbarActions` is 49dp and the `addressRow` is 51dp, plus margins/padding. Combined native chrome occupies at least ~100dp. This is measurable from layout source; savings from a 56dp replacement require responsive design validation.
+4. **Touch-target audit:** Many controls have visual or layout dimensions below Google's recommended **48×48dp touch target**. Actual interactive bounds can be expanded by hit slop; inspect the real node bounds before reporting a user-visible accessibility failure.
+5. **Dialogs:** Menus and settings use Dialog-based UI surfaces; modal transitions and focus/keyboard interactions should be profiled on device before claiming a proven flicker.
+
+### Plausible risks that require testing (not already-proven failures)
+
+- **500-tab scrolling:** Visible-only binding reduces eager inflation but still creates holder rows for all tabs. Need frame-time percentiles, memory allocation counts, decode latency, and tests on 20 / 100 / 500 tabs before replacing with `RecyclerView`.
+- **Insets/IME:** No explicit `WindowInsetsCompat` coordinator appears in the Activity; targetSdk=35 makes safe-area behavior a priority. Existing `fitsSystemWindows` and platform layout may affect actual clipping. Verify device and gesture/3-button modes.
+- **Tab screenshot races:** Verify asynchronous capture identity and URL validation during close/reopen/rapid switch. Do not assume a stale write is possible without checking existing guards.
+- **Private mode:** Verify real cookie, cache, storage and screenshot behavior independently of tab list separation. Do not claim `FLAG_SECURE` or biometric lock is present if it has not been implemented.
+- **Inter-app audio ducking:** Earlier fixes did not prove a real Pixel 7 Pro audio-focus regression is eliminated. Keep a device-level reproduction path.
+
+## Correction log for Jules' first draft
+
+| Original claim | Correction |
+|---|---|
+| “Every tab card is inflated simultaneously” | False: viewport-bound `Supplier<View>` binding already exists. |
+| “One column at 320dp” | False: responsive arithmetic and tests provide two columns on the measured narrow viewport. |
+| “URL must be manually cleared” | False: full URL is selected on focus. |
+| “Tab swipe is on the root view” | False: listener is on address field. |
+| “Opening 20+ tabs causes OOM” | Unsupported. Requires repeatable performance data. |
+| “No accessibility descriptions anywhere” | Overstated: multiple buttons/cards have descriptions; a systematic coverage audit is still needed. |
+| “Activity-level `FLAG_SECURE` by default in other browsers” | Not established via direct tests; distinguish app privacy UI from screenshot policy. |
+| “Chrome/Vivaldi directly tested” | Not true of this research environment. Reference claims are documentation-derived. |
+
+## Validation gates for engineering work
+
+Before changing tab virtualization or native window architecture: record screen captures and XML hierarchy at 320dp/393dp, establish baseline profile frame times and `dumpsys meminfo` for 20/100/500 tabs, run in both navigation modes, check IME open/close, test regular/private tab switching, and repeat on Pixel 7 Pro. Reuse current CI and only replace architecture where the evidence justifies it.

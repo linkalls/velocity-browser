@@ -2,9 +2,9 @@
 
 ## Executive Overview
 
-This document presents an exhaustive, evidence-based investigation into the mobile UI, interaction design, architectural decisions, and usability characteristics of production Android web browsers, focusing primarily on **Google Chrome for Android** (v131–134 / Chromium 134 upstream baseline) and **Vivaldi Browser for Android** (v8.2–8.3, Snapshots 4190–4192), with comparative benchmarking against **Samsung Internet** (v26–27), **Brave Browser for Android** (v1.73–1.75 / v1.99.x Chromium baseline), **Mozilla Firefox for Android** (Fenix v132–134), and **Microsoft Edge for Android** (v131–133).
+This is a **documentation-derived** comparison, revalidated 2026-11-09. The contemporary baseline is **Chrome Android Stable 157.0.8103.46** (November 5 release; 158.0.8127.22 Early Stable was released separately to a small subset) and **Vivaldi Android 8.3.4192.64** (November 6 minor update). Version evidence: [Chrome stable](https://chromereleases.googleblog.com/2026/11/chrome-for-android-update_01050980700.html), [Chrome Early Stable](https://chromereleases.googleblog.com/2026/), [Vivaldi release](https://vivaldi.com/blog/vivaldi-on-mobile-8-3/), [Vivaldi Android archive](https://vivaldi.com/download/archive/?platform=android).
 
-Every observation recorded here is drawn from official developer documentation, Chromium open-source implementation manifests, official product release notes, and verified issue tracker reports.
+**Scope limitation:** Chrome/Vivaldi Android APKs were **not installed, screen-recorded, or exercised on a physical device or emulator** in this research session. The older original v131–134 baseline was wrong for November 2026; vendor-specific dimensions, gesture timing, compositor internals, session details and subjective rankings in the first draft must be treated as **unverified** unless explicitly supported below. Secondary browser versions and features were not freshly verified. The first version's claim that every observation was verified should be disregarded. Full provenance: [08-SOURCES.md](08-SOURCES.md).
 
 ---
 
@@ -14,16 +14,10 @@ Every observation recorded here is drawn from official developer documentation, 
 Google Chrome’s Android UI is built around **predictability, minimalism, and strict performance guardrails**. Rather than exposing arbitrary customizations, Chrome relies on automated behaviors (e.g., auto-collapsing toolbars, automated inactive tab archiving, and machine-learned omnibox action chips) that minimize user decision friction while enforcing aggressive memory capping.
 
 ### 1.2 Main Browsing Interface & Chrome Layout
-- **Toolbar Placement:** Historically top-only. Chrome introduced experimental bottom address bar support on iOS and subsequently behind flags (`#android-bottom-toolbar`, `chrome://flags/#bottom-toolbar-reconfiguration`) and A/B test rings on Android phone devices. In landscape mode and on tablets (sw >= 600dp), the address bar strictly locks to the top.
-- **Top / Bottom Layout Division:** When bottom omnibox is active, navigation actions and the search bar occupy the bottom bar (56dp height), while the system status bar at the top remains transparent with edge-to-edge drawing.
-- **Collapsing & Expanding Mechanics:**
-  - Chrome uses a scroll-driven coordinator layout (`ToolbarControlContainer` bound to CC compositor scroll events).
-  - *Down-scroll:* Toolbar translates vertically (-56dp for top toolbar, +56dp for bottom toolbar) off-screen using a direct compositor raster synchronization.
-  - *Up-scroll:* Immediate snap-back or interpolated slide-in upon detecting positive scroll delta > 8dp.
-  - *Compositor Synchronization:* The web view's viewport size does not resize on every scroll frame (which would trigger catastrophic CSS reflows / layout thrashing). Instead, the bottom insets remain stable while the toolbar slides over the viewport via an overlay layer until scroll completes.
-- **System Insets & Edge-to-Edge:**
-  - In alignment with Android 15/16/17 mandatory edge-to-edge enforcement, Chrome sets `enableEdgeToEdge()` and handles `WindowInsetsCompat.Type.systemBars()` and `WindowInsetsCompat.Type.ime()`.
-  - The status bar and 3-button/gesture navigation bars are translucent or transparent with dynamic contrast adaptation (`Window.setNavigationBarContrastEnforced(false)` when custom background protection is drawn).
+- **Toolbar Placement [A]:** Current Chrome Android supports **Settings > Address bar > Top/Bottom** and **long-press > Move address bar**. Google's Android Help explicitly says the position choice applies in **portrait**, and landscape remains at the top. Whether tablet layout behaves identically needs runtime verification. [Chrome Android Help](https://support.google.com/chrome/answer/14181646?co=GENIE.Platform%3DAndroid&hl=en). Do not substitute iPhone/iPad help pages or obsolete flags for current Android evidence.
+- **Top / Bottom Layout Division [E]:** A bottom address bar is documented. The precise 56dp bar dimension and distribution of action icons are **not measured** in this research.
+- **Scroll-driven bar behavior [E]:** Chrome's animations, exact scroll threshold, internal compositor coordination and per-frame viewport sizing were **not inspected in this session**. They are candidate areas for version-pinned runtime investigation, **not verified 8dp/56dp/200ms constants**.
+- **Insets & edge-to-edge [A/D]:** Android 15+ requires edge-to-edge treatment for apps targeting API 35; Chrome-specific internal implementation (`enableEdgeToEdge`, particular `WindowInsetsCompat` listeners) was **not audited here**. Platform rules: [Android target SDK 35 behavior](https://developer.android.com/about/versions/15/behavior-changes-15).
 
 ### 1.3 Address Bar & Search (Omnibox)
 - **Display URL vs. Editable URL:**
@@ -33,29 +27,26 @@ Google Chrome’s Android UI is built around **predictability, minimalism, and s
   - Replaced the historic lock icon with the "Tune" (sliders) settings icon (`ic_tune_24dp`), communicating that connection security is standard HTTPS by default and that site permissions (cookies, location, camera) are accessible there.
 - **Interaction Sequence & Autocomplete:**
   1. User taps omnibox.
-  2. Keyboard transitions up synchronously using `WindowInsetsAnimationCompat`.
-  3. Action buttons appear directly underneath: **Share**, **Copy Link**, **Edit URL** (pencil icon).
-  4. Autocomplete suggestion list appears with search queries, clipboard suggestions ("Link you copied"), and open tab search results ("Switch to this tab").
+  2. The keyboard appears and the user can submit a URL or search.
+  3. **Unverified in this session:** the exact action chips, animation class, suggestion ordering and clipboard presentation. Validate the selected Chrome APK before requiring feature parity.
 - **Swipe Gestures:**
   - Horizontal swipe across the top/bottom omnibox immediately switches to the adjacent tab (left = previous tab, right = next tab) with interactive physics.
-  - Downward swipe on the top omnibox directly opens the full-screen Tab Switcher grid.
+  - The tab-switcher gesture and direction should be confirmed on the installed current build; no direct gesture test was run.
 
 ### 1.4 Tab Switcher & Tab Management
 - **Visual Presentation:**
   - 2-column vertical scrolling grid on standard mobile viewports (<600dp), expanding to 3 or 4 columns on tablets and foldables.
-  - Tab cards maintain an aspect ratio of approximately 3:4 (width ~160dp, height ~210dp on a typical 393dp device).
+  - Card aspect ratio and width are **not measured** for Chrome 157 in this report. 3:4 is a **design candidate**, not a verified Chrome dimension.
 - **Tab Stacks & Tab Groups:**
   - Created by dragging one tab card directly on top of another.
   - A grouped card renders a **2x2 mosaic preview** showing mini-thumbnails or favicons of up to 4 grouped tabs.
   - Tapping a group opens a dedicated sub-view or bottom modal sheet displaying the group's contents.
-  - Tab groups support custom color badges (8 system pastel hues) and editable alphanumeric titles.
+  - Group naming/color options can vary with release and device; exact palette count is unverified here.
   - Links opened with "Open in new tab in group" create an in-flow bottom tab strip (pill-shaped tab icons) within the active browsing session.
 - **Inactive Tabs Archiving:**
   - Tabs unused for 14 or more days are automatically moved into an "Inactive Tabs" collapsable drawer at the top of the tab grid.
-  - Inactive tabs are auto-closed after 60–180 days (user-configurable). This prevents memory bloat and unbounded disk cache expansion without requiring users to manually cull hundreds of tabs.
-- **Thumbnail Lifecycle & Memory Management:**
-  - Uses an internal native Chromium `TabContentManager` backed by an in-memory LRU cache and persistent JPEG/WebP files in the application's private cache directory.
-  - Live WebContents instances are bounded: only 1–3 tabs remain resident in RAM. Background tabs are discarded to persistent `PageState` (serialized back-forward navigation entries).
+  - Google's Android help currently documents automatically closing inactive items **after six months** (with a setting to disable automatic closure); do **not** state an unverified 60–180 day range. [Chrome Android tabs help](https://support.google.com/chrome/answer/2391819?co=GENIE.Platform%3DAndroid&hl=en).
+- **Thumbnail lifecycle & memory [E]:** No Chrome 157 source-level trace, direct bitmap inspection, resident-WebContents count, or current file format audit was performed. The previous assertions about JPEG/WebP storage and a fixed **1–3 live tabs** limit are not established; **do not use them as architecture constraints for Velocity**.
 
 ### 1.5 Private Browsing (Incognito)
 - **Strict Visual & Isolation Separation:**
@@ -63,9 +54,8 @@ Google Chrome’s Android UI is built around **predictability, minimalism, and s
   - Incognito mask icon displayed permanently in the toolbar and tab switcher header.
   - Top tab switcher bar features an explicit segmented toggle: **Regular Tabs** (numbered badge) vs. **Incognito Tabs** (mask icon).
 - **Data Protection & Screenshot Blocking:**
-  - Window sets `FLAG_SECURE` by default to prevent Android recents overview capture and third-party screenshot logging (can be toggled in Privacy & Security settings).
-  - Private tabs **never write thumbnails to disk**. Thumbnails are kept strictly in RAM and cleared immediately when tabs are closed or the incognito session terminates.
-  - Separate cookie jar, storage partition, and cache.
+  - Exact Chrome 157 default Android `FLAG_SECURE` behavior, whether private preview bitmaps exist in RAM/disk, and screenshots in system Recents were **not verified here**. Separate Chrome's documented privacy promises from implementation details and test them with controlled data before claiming absolute guarantees.
+  - Incognito privacy is distinct from app/device screenshot restrictions; never infer one from the other.
 
 ---
 
@@ -107,7 +97,7 @@ Vivaldi’s Android UI is built around **deep user customization, spatial densit
     - *Two-Level Tab Bar:* On phones and tablets with Tab Bar enabled, active stacks show a second level sub-bar displaying child tabs.
     - *Accordion Tab Stacks:* Stacks expand inline on the tab bar.
     - *Tab Stacks Toolbar:* When the main Tab Bar is disabled, opening a stacked tab reveals a mini floating thumbnail/favicon pill bar just above the bottom toolbar with an upward chevron to expand the group.
-    - *Stack Naming & Colors:* Stacks can be given custom user names (replacing default "# tabs") and assigned 1 of 9 distinctive color dots.
+    - *Stack Naming & Colors:* Naming/customization may vary; the claimed **nine exact color choices** were not separately validated and should not be a fixed implementation requirement.
 
 ### 2.5 Start Page & Speed Dial
 - **Customization Engine:**
@@ -118,7 +108,10 @@ Vivaldi’s Android UI is built around **deep user customization, spatial densit
 
 ---
 
-## 3. Secondary Comparison Targets
+## 3. Secondary Comparison Targets — NOT FRESHLY VALIDATED
+
+The following are background leads preserved from the original draft. **Their listed version ranges, performance comparisons and subjective strengths/weaknesses were not verified against November 2026 APKs**. Re-check relevant official Android product sources before engineering from them; do not assign these browsers specific tap times or FPS rankings.
+
 
 ### 3.1 Samsung Internet (v26–27)
 - **Strengths:**
@@ -160,17 +153,26 @@ Vivaldi’s Android UI is built around **deep user customization, spatial densit
 
 ---
 
-## 4. Key Verified Findings Summary Table
+## 4. Feature Leads Table (Not a Full Verified Hands-On Benchmark)
 
 | Feature / UX Surface | Google Chrome (Android) | Vivaldi Browser (Android) | Samsung Internet | Brave Browser | Firefox (Fenix) |
 |---|---|---|---|---|---|
-| **Default Omnibox Position** | Top (Bottom opt-in via flags/settings) | Top (Bottom toggle in Settings) | Bottom (Configurable) | Bottom (Configurable) | Bottom (Default) |
+| **Default Omnibox Position** | Top/bottom documented in Android Settings | Top (Bottom toggle in Settings) | Bottom (Configurable) | Bottom (Configurable) | Bottom (Default) |
 | **Toolbar Auto-hide on Scroll** | Yes (Compositor-driven) | Yes (Can be disabled) | Yes (Can be disabled) | Yes | Yes |
 | **Tab Switcher Layout** | 2-Column Grid (Cards) | 2-Column Grid + Tab Bar | Grid, List, Stack | 2-Column Grid | Grid or List |
 | **Tab Grouping / Stacks** | Drag & drop 2x2 mosaics | Stacks (2-level bar, accordion, pill) | Groups (Folders) | Drag & drop grid | None |
-| **Inactive Tabs Management** | Automatic (14 days -> archived) | Configurable auto-close prompt | Manual close | Manual close | Inactive section |
+| **Inactive Tabs Management** | 14-day inactive section documented | Configurable auto-close prompt | Manual close | Manual close | Inactive section |
 | **Recently Closed Tabs** | In History / Recent Tabs | Dedicated Switcher Tab (Trash) | In Reopen Closed Tab | In History menu | In History menu |
-| **Private Tab Isolation** | Segregated Switcher view, `FLAG_SECURE` | Dedicated Switcher tab, Biometric Lock | Secret Mode (PIN/Biometrics) | Private Tab Switcher | Private Tab Switcher |
+| **Private Tab Isolation** | Incognito UI; `FLAG_SECURE` unverified | Dedicated Switcher tab, Biometric Lock | Secret Mode (PIN/Biometrics) | Private Tab Switcher | Private Tab Switcher |
 | **Start Page / Speed Dial** | Google Search + 8 Favicons + Feed | Multi-folder Speed Dial + Wallpapers | Quick Access tiles | Stats + Sponsored + Tiles | Shortcuts + Jump back in |
 | **Edge-to-Edge System Bars** | Android 15+ Transparent insets | Transparent with custom header | System One UI theme | Transparent | Transparent |
-| **One-Handed Usability** | Moderate (High if bottom bar enabled) | High (Bottom bar + address bar) | Very High (One UI design) | High | Very High |
+| **One-Handed Usability** | Not measured | Not measured | Not measured | High | Very High |
+
+---
+
+## 5. What is actually current in November 2026?
+
+1. Chrome Android Stable **157.0.8103.46** is confirmed in its November 5, 2026 release note; Chrome 158 Early Stable is a **small-percentage rollout** and not the same as broad stable.
+2. Vivaldi Android **8.3.4192.64** is listed in the official Android APK archive as of November 6, 2026. Vivaldi 8.3 introduced updated blocker and tab-stack/media work, but the documentation alone does not provide measured animations or card sizes.
+3. The supported design patterns with primary-source support are Chrome's Android address bar position setting, Chrome inactive tabs and grouping, and Vivaldi's configurable tab bars, tab switcher search, stacks, Speed Dial and menu customization.
+4. Any claim about exact pixel dimensions, internal performance thresholds, private screenshot behavior or subjective rankings must be checked with a real current APK.

@@ -1,6 +1,9 @@
-# Screen-by-Screen UI/UX Specifications
+# Screen-by-Screen UI/UX Concepts (Proposals, Not Current Behavior)
 
-This document specifies the exact component hierarchy, visual layout, interactive rules, transitions, accessibility parameters, and failure states for the **10 core user-facing surfaces** of Velocity Browser.
+> **Status — proposed future screens.** The layouts, animation numbers, tap sequences, biometric locks, Library screens and `BottomSheetDialogFragment` references below are **design hypotheses**. They are NOT evidence that Chrome 157 or Vivaldi 8.3 uses these exact measurements, and most are NOT implemented by Velocity `main`. The validated implementation inventory is in [04-VELOCITY-AUDIT.md](04-VELOCITY-AUDIT.md). Reference browsers were not installed in this research. Add actual screenshots and behavior recordings before treating these wireframes as product acceptance tests.
+
+
+This document sketches candidate component hierarchies, interaction states and 10 future screen concepts. Numeric dimensions are **design targets only**, subject to usability/physical-device validation at 320dp, 393dp, landscape and accessibility font scaling.
 
 ---
 
@@ -77,13 +80,13 @@ The primary web content viewport with an auto-collapsing unified toolbar.
 +-------------------------------------------------------------+
 ```
 
-### 2.2 Interaction Rules & Scroll Dynamics
-- **Compositor-driven Translation:**
+### 2.2 Proposed Interaction Rules & Scroll Dynamics
+- **Proposed scroll-following animation (not implemented):**
   - When the user scrolls **down** on the page: The bottom bar translates down (`+56dp + navBarInset`) into the bottom inset.
-  - When the user scrolls **up** > 8dp: The bar snaps back up smoothly using standard deceleration interpolator (200ms duration).
+  - On upward scroll, reveal the bar using an animation whose threshold and duration are selected **after profiling**. `8dp` and `200ms` in the first draft were guesses, not benchmarks.
   - The web content viewport does not resize on every scroll tick, eliminating reflow jank.
-- **Swipe-to-Switch Gesture:**
-  - Swiping horizontally directly on the 56dp bottom bar transitions to adjacent tabs with real-time horizontal translation physics.
+- **Swipe-to-Switch Gesture (proposal):**
+  - Preserve current address-field swipe behavior while testing whether a wider toolbar gesture improves one-handed use. Do not intercept webpage horizontal swipes.
 
 ---
 
@@ -143,7 +146,7 @@ The overlay that appears when the user taps the omnibox to type or search.
 ```
 
 ### 4.2 Interaction Rules
-- **RecyclerView Grid:** 2 columns on phones, 3–4 columns on larger screens.
+- **Grid:** Existing source uses viewport-bound `ScrollView` holders. Keep it unless 20/100/500-tab benchmark data supports replacing it with `RecyclerView`. Candidate columns: 2 on phones, 3–4 on larger screens.
 - **Card Interaction:** Single tap selects and focuses tab. Top-right `X` closes tab.
 - **Swipe-to-Dismiss:** Horizontal swipe dismisses the card with an immediate undo toast at the bottom: `Tab closed [Undo]`.
 - **Drag-and-Drop Stacking:** Dragging card A over card B highlights card B with an accent border; releasing creates a new tab group.
@@ -188,7 +191,7 @@ Opened when a user taps a 2x2 mosaic tab group card in the tab switcher.
 ### 6.1 Purpose & Layout
 Identical layout to the standard browsing and tab switcher screens, but styled with a **distinctive dark security palette** (`#0A0D12` canvas, `#1E2430` elevated bars, `#A78BFA` violet accents).
 - **Incognito Mask:** Displayed permanently in the omnibox and top switcher bar.
-- **Data Protection:** `FLAG_SECURE` prevents system screenshots. Thumbnails are rendered in RAM only and never written to disk.
+- **Privacy requirements (future tests):** Explicitly decide screenshot policy (`FLAG_SECURE` as an optional proposal), verify storage/profile separation, and never write private thumbnails to disk. Do not claim those controls are all implemented now.
 
 ---
 
@@ -219,7 +222,7 @@ Identical layout to the standard browsing and tab switcher screens, but styled w
 |   [Gear]   Settings                                         |
 +-------------------------------------------------------------+
 ```
-- Implemented as a genuine `BottomSheetDialogFragment` with fluid drag dismiss gestures.
+- **Proposed architecture:** an in-Activity sheet or `BottomSheetDialogFragment` with predictable Back/dismiss/IME handling. Current code still uses `Dialog`; this wireframe is not implemented.
 
 ---
 
@@ -238,3 +241,11 @@ Clean, standard Android settings hierarchy with search bar at the top:
 ## Screens 9 & 10: Library (Bookmarks/History) & Share Flows
 - **Screen 9 (Library):** Unified 3-tab bottom sheet: **Bookmarks** | **History** | **Downloads**.
 - **Screen 10 (Share Flow):** Clean action sheet offering "Copy URL", "Send to Device", "QR Code", and direct invoke of Android System Sharesheet (`Intent.ACTION_SEND`).
+
+
+## Reality check before implementing any screen
+
+1. Compare each proposed control against the source-backed implemented UI: Speed Dial editing, top/bottom address toggle, existing menu quick actions, the 2×2 group mosaic, current private-mode picker and real-CDP thumbnail path already exist.
+2. Do not draw a bookmarks/history/downloads panel or biometric lock as if it works without implementing and testing the underlying data/security behavior.
+3. Every new UI entry must have a real action, stable Back flow, keyboard/IME behavior, touch target and accessibility label.
+4. Capture Velocity screenshots in the Android 16/17 CI; capture Chrome/Vivaldi reference screens separately only when their apps are actually installed.
