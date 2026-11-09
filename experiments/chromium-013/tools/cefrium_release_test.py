@@ -51,7 +51,7 @@ class CefriumReleaseTest(unittest.TestCase):
 
     def test_only_active_workflows_remain(self):
         directory = ROOT / ".github" / "workflows"
-        self.assertEqual({"android.yml", "velocity-signed-apk.yml", "velocity-android-smoke.yml"},
+        self.assertEqual({"android.yml", "velocity-signed-apk.yml", "velocity-android-smoke.yml", "browser-reference-ui-audit.yml"},
                          {f.name for f in directory.glob("*.yml")})
 
     def test_external_audio_priority_does_not_auto_resume_media(self):
