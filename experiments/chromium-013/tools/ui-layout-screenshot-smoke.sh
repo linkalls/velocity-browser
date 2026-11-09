@@ -57,6 +57,9 @@ done
 # orange, green and blue bands; a generic icon or fabricated bitmap FAILS.
 # This is a separate debug-only Activity intent, never user web content.
 adb shell am force-stop "$APP" || true
+# Remove prior synthetic screenshots from the disposable emulator app to
+# avoid passing with the previous boot-smoke page's JPEG.
+adb shell run-as "$APP" rm -r files/tab_previews 2>/dev/null || true
 sleep 5
 adb wait-for-device
 if ! start_audit_activity preview "dist/cefrium-ui-audit/preview-launch.txt"; then
@@ -65,6 +68,12 @@ if ! start_audit_activity preview "dist/cefrium-ui-audit/preview-launch.txt"; th
 fi
 sleep 17
 adb logcat -d -v brief > dist/cefrium-ui-audit/preview-logcat.txt || true
+if ! grep -q 'TABSHOT fixture orange and green pixels verified' \
+    dist/cefrium-ui-audit/preview-logcat.txt; then
+  echo 'ERROR: Chromium did NOT capture the real colored offline fixture' >&2
+  grep 'TABSHOT' dist/cefrium-ui-audit/preview-logcat.txt | tail -25 || true
+  exit 1
+fi
 # A SUCCESSFUL real capture is persisted to the app's private directory.
 # Do not pass a test just because its UI displays a site icon.
 if ! adb shell run-as "$APP" ls files/tab_previews/ \

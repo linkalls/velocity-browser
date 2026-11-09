@@ -89,6 +89,9 @@ class CefriumReleaseTest(unittest.TestCase):
         self.assertIn('velocity_debug_ui_audit', activity)
         self.assertIn('ORANGE TEST REGION', activity)
         self.assertIn('REAL CHROMIUM PIXELS', activity)
+        self.assertIn('hasOfflineFixtureColors(bitmap)', activity)
+        self.assertIn('TABSHOT fixture orange and green pixels verified', script)
+        self.assertIn('rm -r files/tab_previews', script)
         self.assertIn("assert data.startswith(b'\\xff\\xd8')", script)
         self.assertIn('files/tab_previews/', script)
 

@@ -142,6 +142,7 @@ public final class ChromiumTestActivity extends Activity {
     private boolean destroyed;
     private static final String TAG = "VelocityCefStartup";
     private boolean syntheticSmokeRequested;
+    private boolean previewFixtureRequested;
     private long syntheticLoadStartedAtMs = -1L;
     private long syntheticPaintStartedAtMs = -1L;
 
@@ -684,6 +685,7 @@ public final class ChromiumTestActivity extends Activity {
                     & ApplicationInfo.FLAG_DEBUGGABLE) != 0 && getIntent() != null
                     && "preview".equals(getIntent().getStringExtra("velocity_debug_ui_audit"));
                 if (debugPreview) {
+                    previewFixtureRequested = true;
                     String previewFixture = "<!doctype html><html><head>"
                         + "<meta name='viewport' content='width=device-width,initial-scale=1'>"
                         + "<title>Velocity preview fixture</title></head>"
@@ -1575,6 +1577,22 @@ public final class ChromiumTestActivity extends Activity {
     }
 
     /**
+     * DEBUG-only image-content assertion. A JPEG of a blank screen or the
+     * previous smoke page MUST NOT count as a screenshot of this fixture.
+     * Color checks intentionally read only 2 pixels; no private page data.
+     */
+    private static boolean hasOfflineFixtureColors(Bitmap image) {
+        if (image == null || image.isRecycled()
+                || image.getWidth() < 40 || image.getHeight() < 80) return false;
+        int orange = image.getPixel(image.getWidth() / 2, image.getHeight() / 6);
+        int green = image.getPixel(image.getWidth() / 2, image.getHeight() * 3 / 4);
+        return Color.red(orange) > Color.green(orange) + 28
+            && Color.green(orange) > Color.blue(orange) + 28
+            && Color.green(green) > Color.red(green) + 25
+            && Color.green(green) > Color.blue(green) + 20;
+    }
+
+    /**
      * Acquire and persist actual page pixels for a REGULAR tab only.
      * Multiple load/title/sheet events for the same tab share one request.
      * Asynchronous results are rejected after navigation or closing.
@@ -1606,6 +1624,16 @@ public final class ChromiumTestActivity extends Activity {
             List<ImageView> views = pendingThumbnailViews.remove(tabId);
             if (destroyed || tab.privateMode || tabRegistry.find(tabId) != tab
                     || !capturedUrl.equals(tab.url) || bitmap == null) return;
+            // In the offline emulator fixture, prove the *pixels* belong to
+            // the colored test page, not an earlier synthetic smoke page.
+            if (previewFixtureRequested
+                    && "Velocity preview fixture".equals(tab.title)) {
+                if (!hasOfflineFixtureColors(bitmap)) {
+                    Log.e(TAG, "TABSHOT fixture JPEG colors did not match");
+                    return;
+                }
+                Log.i(TAG, "TABSHOT fixture orange and green pixels verified");
+            }
             // Only the regular tab that produced this frame can cache it.
             previewStore.save(tabId, bitmap);
             if (views != null) for (ImageView image : views) {
