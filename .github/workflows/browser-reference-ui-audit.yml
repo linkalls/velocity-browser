@@ -1,0 +1,63 @@
+name: Chrome + Vivaldi Reference UI Audit (Research Only)
+
+on:
+  pull_request:
+    paths:
+      - 'docs/browser-ux-research/**'
+      - '.github/workflows/browser-reference-ui-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-reference-ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: android-actions/setup-android@v4.0.4
+        with:
+          packages: platform-tools
+      - name: Fetch pinned Vivaldi APK from official archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/browser-reference-ui
+          url='https://downloads.vivaldi.com/stable/Vivaldi.8.3.4192.64_x86-64.apk'
+          expected='97e45b190386a288912b99ae22f1676dc38d1c9b77280b901ea11503ebce8a29'
+          # Artifact stores only screenshots and metadata, NEVER redistributes APK.
+          if curl --fail --location --retry 2 --connect-timeout 20 --max-time 1200 \
+                -o "$RUNNER_TEMP/vivaldi-reference.apk" "$url"; then
+            printf '%s  %s\n' "$expected" "$RUNNER_TEMP/vivaldi-reference.apk" | sha256sum --check
+            printf 'OFFICIAL_SHA256_OK\n' > dist/browser-reference-ui/vivaldi-install-source.txt
+          else
+            printf 'OFFICIAL_DOWNLOAD_FAILED\n' > dist/browser-reference-ui/vivaldi-install-source.txt
+            rm -f "$RUNNER_TEMP/vivaldi-reference.apk"
+          fi
+      - name: Enable hardware acceleration
+        shell: bash
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 35
+          target: google_apis_playstore
+          arch: x86_64
+          profile: pixel_7_pro
+          disk-size: 6G
+          ram-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -memory 4096 -cores 4
+          script: bash docs/browser-ux-research/tools/run_reference_ui.sh
+      - name: Upload observations and real screenshots, no APK files
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: Chrome-Vivaldi-Android-Real-UI-Captures
+          path: dist/browser-reference-ui/**
+          if-no-files-found: warn
+          retention-days: 14
