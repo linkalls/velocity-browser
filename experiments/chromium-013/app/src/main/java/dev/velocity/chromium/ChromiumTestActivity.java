@@ -1811,6 +1811,7 @@ public final class ChromiumTestActivity extends Activity {
         // Content-sized for 1-3 tabs, scrolling only when enough cards exist.
         BoundedScrollView scroll = new BoundedScrollView();
         panel.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
+        final View[] currentCard = {null};
         LinearLayout groups = sheetPanel();
         scroll.addView(groups);
 
@@ -1850,6 +1851,7 @@ public final class ChromiumTestActivity extends Activity {
                     groups.addView(row, new LinearLayout.LayoutParams(-1, -2));
                 }
                 LinearLayout card = sheetPanel();
+                if (tab == tabRegistry.current()) currentCard[0] = card;
                 card.setBackground(rounded(SURFACE, 16,
                     tab == tabRegistry.current() ? ACCENT : BORDER));
                 card.setMinimumHeight(dp(previewHeightDp + 99));
@@ -1922,8 +1924,8 @@ public final class ChromiumTestActivity extends Activity {
                 card.addView(url, new LinearLayout.LayoutParams(-1, -2));
                 LinearLayout actionsRow = new LinearLayout(this);
                 actionsRow.setGravity(Gravity.CENTER_VERTICAL);
-                card.addView(actionsRow, new LinearLayout.LayoutParams(-1, dp(40)));
-                Button groupButton = makeButton("グループ", "タブをグループ分け", () -> {
+                card.addView(actionsRow, new LinearLayout.LayoutParams(-1, dp(48)));
+                Button groupButton = makeButton("整理", "タブをグループ分け", () -> {
                     shown[0].dismiss();
                     showTabGroupDialog(tab.id);
                 });
@@ -1934,12 +1936,12 @@ public final class ChromiumTestActivity extends Activity {
                     R.drawable.ic_browser_folder, 0, 0, 0);
                 groupButton.setCompoundDrawablePadding(dp(4));
                 groupButton.setPadding(dp(5), 0, 0, 0);
-                actionsRow.addView(groupButton, new LinearLayout.LayoutParams(0, dp(40), 1));
+                actionsRow.addView(groupButton, new LinearLayout.LayoutParams(0, dp(48), 1));
                 Button close = iconButton(R.drawable.ic_browser_close, "タブを閉じる", () -> {
                     shown[0].dismiss();
                     closeTabDirect(tab.id);
                 });
-                actionsRow.addView(close, new LinearLayout.LayoutParams(dp(40), dp(40)));
+                actionsRow.addView(close, new LinearLayout.LayoutParams(dp(48), dp(48)));
                 screenshot.setOnClickListener(v -> {
                     shown[0].dismiss();
                     selectTab(tab.id);
@@ -1967,6 +1969,17 @@ public final class ChromiumTestActivity extends Activity {
             }
         }
         shown[0] = bottomSheet(panel);
+        if (currentCard[0] != null) {
+            // Many restored tabs may precede the active one. Bring its card
+            // into view immediately instead of opening on a wall of old tabs.
+            scroll.post(() -> {
+                if (destroyed || !scroll.isAttachedToWindow()) return;
+                Rect target = new Rect();
+                currentCard[0].getDrawingRect(target);
+                groups.offsetDescendantRectToMyCoords(currentCard[0], target);
+                scroll.smoothScrollTo(0, Math.max(0, target.top - dp(8)));
+            });
+        }
     }
 
     private void showTabGroupDialog(String id) {

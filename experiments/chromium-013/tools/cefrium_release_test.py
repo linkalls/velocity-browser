@@ -112,7 +112,7 @@ class CefriumReleaseTest(unittest.TestCase):
         self.assertNotIn('int cardWidth =', activity)
         self.assertIn('"音声フォーカスの原因を調査"', activity)
         self.assertIn('"Webメディアを停止・音声フォーカスを解放"', activity)
-        self.assertIn('MIN_CARD_WIDTH_DP = 148', layout)
+        self.assertIn('MIN_CARD_WIDTH_DP = 128', layout)
 
     def test_youtube_rules_are_explicit_and_netlog_is_not_automatic(self):
         activity = (APP / "ChromiumTestActivity.java").read_text()
