@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 ENGINE = ROOT / "experiments" / "chromium-013"
 APP = ENGINE / "app" / "src" / "main" / "java" / "dev" / "velocity" / "chromium"
-VERSION = "0.17.0"
+VERSION = "0.18.0"
 
 
 class CefriumReleaseTest(unittest.TestCase):
@@ -28,11 +28,11 @@ class CefriumReleaseTest(unittest.TestCase):
         signed = (ROOT / ".github" / "workflows" /
                   "velocity-signed-apk.yml").read_text()
         activity = (APP / "ChromiumTestActivity.java").read_text()
-        self.assertIn("-PvelocityVersionName=0.17.0.$VERSION_CODE", signed)
-        self.assertIn("Cefrium 0.17.0", activity)
+        self.assertIn("-PvelocityVersionName=0.18.0.$VERSION_CODE", signed)
+        self.assertIn("Cefrium 0.18.0", activity)
         self.assertNotIn("Cefrium 0.16.0", activity)
         app_build = (ENGINE / "app" / "build.gradle.kts").read_text()
-        self.assertIn('.orElse("0.17.0")', app_build)
+        self.assertIn('.orElse("0.18.0")', app_build)
         self.assertIn('Velocity-Browser-$code-arm64.apk', signed)
         self.assertIn('GITHUB_RUN_ID / 50', signed)
         self.assertNotIn('Preview', signed)

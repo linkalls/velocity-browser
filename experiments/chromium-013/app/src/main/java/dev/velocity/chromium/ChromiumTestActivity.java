@@ -2020,7 +2020,7 @@ public final class ChromiumTestActivity extends Activity {
                     ? "ON · 失敗時は起動診断から解除できる" : "OFF · 標準起動を使用中",
             "GitHub Actionsの署名済みビルド", "クラッシュ・起動状態を確認",
             "ページ・プライバシー・Googleパスキーの設定",
-            "Cefrium 0.17.0 · 開発版",
+            "Cefrium 0.18.0 · 開発版",
             tabRegistry.current() != null && tabRegistry.current().desktopMode
                 ? "PC版リクエスト ON · スマホ版に戻す" : "スマホ版リクエスト ON · PC版に切替",
             "ページのURLをクリップボードにコピー", "80% / 100% / 125% / 150%"
@@ -2327,7 +2327,7 @@ public final class ChromiumTestActivity extends Activity {
 
     private void showInfo() {
         new AlertDialog.Builder(this).setTitle("Velocity Browser")
-            .setMessage("エンジン：Chromium（Cefrium 0.17.0）\n\n" +
+            .setMessage("エンジン：Chromium（Cefrium 0.18.0）\n\n" +
                 "これはAndroid標準WebViewではありません。\n\n" +
                 "Gecko/WPE版とは別アプリとしてインストールできます。\n\n" +
                 "通常・非公開タブ、URL復元、戻る・進む、検索と共有を追加しました。\n\n" +

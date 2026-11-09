@@ -5,6 +5,8 @@ pluginManagement {
     repositories {
         google()
         mavenCentral()
+        // 0.18.0 is initially available on the official Codeberg registry.
+        maven("https://codeberg.org/api/packages/cefrium/maven")
         gradlePluginPortal()
     }
 }
@@ -13,6 +15,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven("https://codeberg.org/api/packages/cefrium/maven")
     }
 }
 rootProject.name = "VelocityBrowser"

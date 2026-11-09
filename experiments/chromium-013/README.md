@@ -1,9 +1,9 @@
-# Velocity Chromium · Cefrium 0.17.0
+# Velocity Chromium · Cefrium 0.18.0
 
 Independent Java-renderer experiment; applicationId `dev.velocity.browser.chromium013`.
 
 See [migration, build instructions and verification](../../docs/chromium-cefrium-013.md).
-The 0.9.4 baseline is in `../chromium/`; this root uses the 0.17.0 SDK and Gradle plugin.
+The 0.9.4 baseline is in `../chromium/`; this root uses the 0.18.0 SDK and Gradle plugin.
 
 The tabbed/private Cefrium migration is tracked in
 [the migration tracker](../../docs/chromium-cefrium-013-migration.md).
@@ -18,6 +18,14 @@ The Preview browser now has a compact bottom address bar and native tab
 management. See the [UX plan](../../docs/velocity-cefrium-preview-ux.md)
 and [signed APK update guide](../../docs/velocity-cefrium-signing.md).
 The fixed-key APK is not upgrade-compatible with older debug-signed builds.
+
+## Cefrium 0.18.0 upgrade (2026-11-09)
+
+Cefrium 0.18.0 adds the in-process `executeDevToolsMethod` used to create
+real tab thumbnails with `Page.captureScreenshot` independently from Android
+`PixelCopy`. Both plugin and SDK are pinned to 0.18.0 from the upstream
+Codeberg registry while Maven Central is accepting no uploads. See the
+[official release notes](https://cefrium.com/releases/#v0.18.0).
 
 ## Cefrium 0.17.0 upgrade (2026-10-31)
 
