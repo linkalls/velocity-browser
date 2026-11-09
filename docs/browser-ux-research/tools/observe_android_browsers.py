@@ -150,7 +150,7 @@ def dismiss_onboarding(nodes: list[dict[str, Any]], prefix: Path, steps: list[di
         r"^accept & continue$", r"^agree and continue$", r"^accept$",
         r"^use without an account$", r"^use without account$", r"^no thanks$",
         r"^not now$", r"^skip$", r"^skip for now$", r"^got it$",
-        r"^continue without.*$", r"^continue as guest$", r"^start browsing$",
+        r"^don.t allow$", r"^continue without.*$", r"^continue as guest$", r"^start browsing$",
         r"^set as default later$", r"^maybe later$", r"^finish$",
         r"^done$", r"^continue$", r"^next$",
     ]
@@ -201,8 +201,8 @@ def browser_audit(name: str, package: str) -> dict[str, Any]:
 
     # Native package-specific semantics are determined by accessibility labels.
     clicked = click_labels(nodes, [
-        r"switch tabs", r"tab switcher", r"show tabs", r"tab overview",
-        r"open tabs", r"\b\d+ tabs\b", r"tab count", r"tabs button",
+        r"switch or close tabs", r"switch tabs", r"tab switcher", r"show tabs", r"tab overview",
+        r"see \d+ tabs", r"open tabs", r"\b\d+ tabs\b", r"tab count", r"tabs button",
     ], actions, "open tab switcher")
     if clicked:
         nodes = screenshot(folder / "04-tabs", observations, "Tab switcher reached through accessibility label")
@@ -217,8 +217,9 @@ def browser_audit(name: str, package: str) -> dict[str, Any]:
     time.sleep(5)
     nodes = dump_ui(folder / "before-menu")
     opened = click_labels(nodes, [
-        r"more options", r"\bmore\b", r"vivaldi menu", r"browser menu",
-        r"menu button", r"customize and control", r"^menu$",
+        r"customize and control vivaldi", r"customize and control google chrome",
+        r"vivaldi menu", r"browser menu", r"menu button",
+        r"^more options$", r"^more$", r"^menu$",
     ], actions, "open browser menu")
     if opened:
         nodes = screenshot(folder / "06-menu", observations, "Native browser menu")
