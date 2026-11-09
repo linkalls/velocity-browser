@@ -116,6 +116,11 @@ public final class TabRegistry {
         return Collections.unmodifiableList(matches);
     }
 
+    /** Search exclusively within this privacy mode; never reveal other-mode metadata. */
+    public List<Tab> searchForMode(boolean privateMode, String query) {
+        return Collections.unmodifiableList(TabSearch.filter(tabsForMode(privateMode), query));
+    }
+
     public int countForMode(boolean privateMode) {
         int count = 0;
         for (Tab tab : tabs) if (tab.privateMode == privateMode) count++;

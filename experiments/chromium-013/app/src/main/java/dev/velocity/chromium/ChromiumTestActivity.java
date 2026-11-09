@@ -29,6 +29,8 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.os.Trace;
 import android.text.InputType;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.ViewGroup;
@@ -452,6 +454,7 @@ public final class ChromiumTestActivity extends Activity {
         applyBrowserBarPosition();
         if (debugAudit && ("settings".equals(audit) || "tabs".equals(audit)
                 || "tabs-private".equals(audit) || "tabs-groups".equals(audit)
+                || "tabs-search".equals(audit)
                 || "settings-tabs".equals(audit) || "settings-media".equals(audit)
                 || "home".equals(audit) || "menu".equals(audit)
                 || "top-bar".equals(audit))) {
@@ -482,6 +485,12 @@ public final class ChromiumTestActivity extends Activity {
                         }
                         if ("tabs-groups".equals(audit)) {
                             showTabOverview(TAB_VIEW_GROUPS, null);
+                        } else if ("tabs-search".equals(audit)) {
+                            // Synthetic, disconnected metadata only. A result
+                            // should appear outside the four-tab group mosaic.
+                            TabRegistry.Tab found = tabRegistry.add("https://example.com/research", false);
+                            found.title = "研究記事のサンプル";
+                            showTabOverview(TAB_VIEW_NORMAL, null, "研究");
                         } else {
                             showTabs(false);
                         }
@@ -2117,6 +2126,11 @@ public final class ChromiumTestActivity extends Activity {
     }
 
     private void showTabOverview(int mode, String expandedGroup) {
+        showTabOverview(mode, expandedGroup, "");
+    }
+
+    /** Search text survives a close/repaint only within this privacy mode. */
+    private void showTabOverview(int mode, String expandedGroup, String initialSearch) {
         if (!chromiumReady || destroyed) return;
         // Do this before opening the dialog. Android PixelCopy must never copy
         // the screen after a sheet, private page, or another tab is on top.
@@ -2162,7 +2176,7 @@ public final class ChromiumTestActivity extends Activity {
                 dialog[0].dismiss();
                 showTabOverview(mode, null);
             });
-            header.addView(back, new LinearLayout.LayoutParams(dp(42), dp(46)));
+            header.addView(back, new LinearLayout.LayoutParams(dp(48), dp(48)));
         }
         TextView heading = text(headingText, 24, PRIMARY, false);
         heading.setSingleLine(true);
@@ -2170,12 +2184,66 @@ public final class ChromiumTestActivity extends Activity {
         LinearLayout.LayoutParams headingLp = new LinearLayout.LayoutParams(0, -1, 1);
         headingLp.leftMargin = dp(4);
         header.addView(heading, headingLp);
+        // Search runs on tab metadata only; it never inspects live WebContents,
+        // loads pages, or crosses the current privacy-mode boundary.
+        EditText searchInput = new EditText(this);
+        searchInput.setSingleLine(true);
+        searchInput.setTextSize(15);
+        searchInput.setTextColor(PRIMARY);
+        searchInput.setHintTextColor(SECONDARY);
+        searchInput.setHint("タイトル・URL・グループを検索");
+        searchInput.setContentDescription("タブを検索する文字列");
+        searchInput.setSelectAllOnFocus(false);
+        searchInput.setInputType(InputType.TYPE_CLASS_TEXT);
+        searchInput.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
+        searchInput.setPadding(dp(14), 0, dp(10), 0);
+        searchInput.setBackground(rounded(TAB_SWITCHER_CARD, 15, Color.TRANSPARENT));
+        searchInput.setVisibility(View.GONE);
+        LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(0, dp(45), 1);
+        searchLp.leftMargin = dp(5);
+        header.addView(searchInput, searchLp);
         Button options = iconButton(R.drawable.ic_browser_menu, "タブ一覧のメニュー", () ->
             showTabOverviewMenu(dialog[0], mode));
-        header.addView(options, new LinearLayout.LayoutParams(dp(44), dp(48)));
+        header.addView(options, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        Button searchToggle = iconButton(R.drawable.ic_browser_search, "タブを検索", () -> {
+            boolean open = searchInput.getVisibility() != View.VISIBLE;
+            heading.setVisibility(open ? View.GONE : View.VISIBLE);
+            options.setVisibility(open ? View.GONE : View.VISIBLE);
+            searchInput.setVisibility(open ? View.VISIBLE : View.GONE);
+            if (open) {
+                searchInput.requestFocus();
+                searchInput.post(() -> {
+                    InputMethodManager ime = (InputMethodManager)
+                        getSystemService(Context.INPUT_METHOD_SERVICE);
+                    if (ime != null && dialog[0] != null && dialog[0].isShowing()) {
+                        ime.showSoftInput(searchInput, InputMethodManager.SHOW_IMPLICIT);
+                    }
+                });
+            } else {
+                searchInput.setText("");
+                searchInput.clearFocus();
+                InputMethodManager ime = (InputMethodManager)
+                    getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (ime != null) ime.hideSoftInputFromWindow(searchInput.getWindowToken(), 0);
+            }
+        });
+        header.addView(searchToggle, new LinearLayout.LayoutParams(dp(48), dp(48)));
         Button dismiss = iconButton(R.drawable.ic_browser_close, "タブ一覧を閉じる", () ->
             dialog[0].dismiss());
-        header.addView(dismiss, new LinearLayout.LayoutParams(dp(44), dp(48)));
+        header.addView(dismiss, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        // The current query belongs to this one dialog; switching between
+        // normal/private tabs creates a fresh, empty search input.
+        if (initialSearch != null && !initialSearch.isEmpty()) {
+            searchInput.setText(initialSearch);
+            heading.setVisibility(View.GONE);
+            options.setVisibility(View.GONE);
+            searchInput.setVisibility(View.VISIBLE);
+        }
+        TextView resultCount = text("", 12, SECONDARY, false);
+        resultCount.setPadding(dp(17), 0, dp(14), 0);
+        resultCount.setGravity(Gravity.CENTER_VERTICAL);
+        resultCount.setVisibility(View.GONE);
+        page.addView(resultCount, new LinearLayout.LayoutParams(-1, dp(29)));
 
         FrameLayout body = new FrameLayout(this);
         page.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -2192,81 +2260,13 @@ public final class ChromiumTestActivity extends Activity {
             getResources().getConfiguration().screenWidthDp);
         int columns = BrowserUiLayout.columnsForAvailableWidthDp(availableDp);
         int previewHeight = BrowserUiLayout.tabPreviewHeightDp(columns);
-        // Store inexpensive factories, not hundreds of Android view trees.
-        // A 448-tab profile only instantiates cards near the visible rows.
+        // The grid uses lightweight holder rows and binds actual preview cards
+        // *only near the viewport*. Rebuilding for a search never creates
+        // hundreds of ImageViews or instantiates additional browser renderers.
         List<java.util.function.Supplier<View>> entries = new ArrayList<>();
-        int activePosition = -1;
-        if (mode == TAB_VIEW_RECENT) {
-            for (TabRegistry.Tab closed : recentlyClosedRegularTabs) {
-                entries.add(() -> makeRecentTabCard(closed, dialog));
-            }
-        } else if (expandedGroup != null) {
-            for (TabRegistry.Tab member : namedGroups.getOrDefault(
-                    expandedGroup, Collections.emptyList())) {
-                entries.add(() -> makeOverviewTabCard(member, previewHeight, dialog,
-                    mode, expandedGroup));
-                if (member == tabRegistry.current()) activePosition = entries.size() - 1;
-            }
-        } else if (mode == TAB_VIEW_GROUPS) {
-            for (Map.Entry<String, List<TabRegistry.Tab>> group : namedGroups.entrySet()) {
-                String groupName = group.getKey();
-                List<TabRegistry.Tab> members = group.getValue();
-                entries.add(() -> makeOverviewGroupCard(groupName, members,
-                    previewHeight, dialog, mode));
-                if (members.contains(tabRegistry.current())) activePosition = entries.size() - 1;
-            }
-        } else {
-            Set<String> seenGroups = new HashSet<>();
-            for (TabRegistry.Tab tab : tabRegistry.tabsForMode(privateMode)) {
-                if (tab.group != null && !tab.group.isEmpty()) {
-                    if (seenGroups.add(tab.group)) {
-                        String groupName = tab.group;
-                        List<TabRegistry.Tab> members = namedGroups.get(groupName);
-                        entries.add(() -> makeOverviewGroupCard(groupName, members,
-                            previewHeight, dialog, mode));
-                        if (members.contains(tabRegistry.current())) {
-                            activePosition = entries.size() - 1;
-                        }
-                    }
-                } else {
-                    entries.add(() -> makeOverviewTabCard(tab, previewHeight, dialog,
-                        mode, null));
-                    if (tab == tabRegistry.current()) activePosition = entries.size() - 1;
-                }
-            }
-        }
-        if (entries.isEmpty()) {
-            TextView empty = text(mode == TAB_VIEW_PRIVATE ? "非公開タブはまだないよ"
-                : mode == TAB_VIEW_GROUPS ? "作成したタブグループがここに表示されるよ"
-                : mode == TAB_VIEW_RECENT ? "最近閉じたタブはないよ"
-                : "タブはまだないよ", 15, SECONDARY, false);
-            empty.setGravity(Gravity.CENTER);
-            empty.setPadding(dp(12), dp(80), dp(12), dp(80));
-            grid.addView(empty, new LinearLayout.LayoutParams(-1, -2));
-        }
-        int cellHeightDp = mode == TAB_VIEW_RECENT ? 80 : previewHeight + 53;
-        int rowHeightPx = dp(cellHeightDp + 12);
         List<FrameLayout> cellHolders = new ArrayList<>();
-        for (int i = 0; i < entries.size(); i += columns) {
-            LinearLayout row = new LinearLayout(this);
-            row.setGravity(Gravity.TOP);
-            LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1,
-                rowHeightPx);
-            grid.addView(row, rowParams);
-            for (int column = 0; column < columns; column++) {
-                int position = i + column;
-                FrameLayout holder = new FrameLayout(this);
-                LinearLayout.LayoutParams cell = new LinearLayout.LayoutParams(
-                    0, dp(cellHeightDp), 1);
-                if (column != 0) cell.leftMargin = dp(BrowserUiLayout.CARD_GAP_DP);
-                row.addView(holder, cell);
-                // Null records a trailing empty column, preserving equal widths.
-                cellHolders.add(position < entries.size() ? holder : null);
-            }
-        }
-        // Unlike an eager 448-card ScrollView, this recycles the contents of
-        // distant holders. FrameLayouts themselves are tiny and give the scroll
-        // a stable height, even while images are loading asynchronously.
+        int cellHeightDp = mode == TAB_VIEW_RECENT ? 80 : previewHeight + 58;
+        int rowHeightPx = dp(cellHeightDp + 12);
         Runnable bindViewport = () -> {
             if (destroyed || !scroll.isAttachedToWindow()) return;
             int viewport = Math.max(dp(320), scroll.getHeight());
@@ -2282,21 +2282,119 @@ public final class ChromiumTestActivity extends Activity {
                     holder.addView(entries.get(index).get(),
                         new FrameLayout.LayoutParams(-1, -1));
                 } else if (!nearby && holder.getChildCount() > 0) {
-                    // Detached ImageViews cannot retain large screenshot bitmaps.
                     holder.removeAllViews();
                 }
             }
         };
         scroll.setOnScrollChangeListener((View view, int x, int y,
                                            int oldX, int oldY) -> bindViewport.run());
-        int selectedPosition = activePosition;
-        scroll.post(() -> {
-            if (destroyed || !scroll.isAttachedToWindow()) return;
-            if (selectedPosition >= 0 && entries.size() > 4) {
-                int top = (selectedPosition / columns) * rowHeightPx;
-                scroll.scrollTo(0, Math.max(0, top - dp(8)));
+        Runnable renderGrid = () -> {
+            if (destroyed || dialog[0] == null || !dialog[0].isShowing()) return;
+            String query = searchInput.getText().toString();
+            boolean searching = !query.trim().isEmpty();
+            grid.removeAllViews();
+            entries.clear();
+            cellHolders.clear();
+            int activePosition = -1;
+            if (mode == TAB_VIEW_RECENT) {
+                for (TabRegistry.Tab closed : TabSearch.filter(recentlyClosedRegularTabs, query)) {
+                    entries.add(() -> makeRecentTabCard(closed, dialog));
+                }
+            } else if (expandedGroup != null) {
+                for (TabRegistry.Tab member : namedGroups.getOrDefault(
+                        expandedGroup, Collections.emptyList())) {
+                    if (!TabSearch.matches(member, query)) continue;
+                    entries.add(() -> makeOverviewTabCard(member, previewHeight, dialog,
+                        mode, expandedGroup, query));
+                    if (member == tabRegistry.current()) activePosition = entries.size() - 1;
+                }
+            } else if (mode == TAB_VIEW_GROUPS) {
+                for (Map.Entry<String, List<TabRegistry.Tab>> group : namedGroups.entrySet()) {
+                    String groupName = group.getKey();
+                    List<TabRegistry.Tab> members = group.getValue();
+                    if (!TabSearch.matchesGroup(groupName, members, query)) continue;
+                    entries.add(() -> makeOverviewGroupCard(groupName, members,
+                        previewHeight, dialog, mode));
+                    if (members.contains(tabRegistry.current())) activePosition = entries.size() - 1;
+                }
+            } else if (searching) {
+                // Crucial: return *individual* matching cards from a group,
+                // rather than hiding a found page inside its 2x2 group collage.
+                for (TabRegistry.Tab tab : tabRegistry.searchForMode(privateMode, query)) {
+                    entries.add(() -> makeOverviewTabCard(tab, previewHeight, dialog,
+                        mode, null, query));
+                    if (tab == tabRegistry.current()) activePosition = entries.size() - 1;
+                }
+            } else {
+                Set<String> seenGroups = new HashSet<>();
+                for (TabRegistry.Tab tab : tabRegistry.tabsForMode(privateMode)) {
+                    if (tab.group != null && !tab.group.isEmpty()) {
+                        if (seenGroups.add(tab.group)) {
+                            String groupName = tab.group;
+                            List<TabRegistry.Tab> members = namedGroups.get(groupName);
+                            entries.add(() -> makeOverviewGroupCard(groupName, members,
+                                previewHeight, dialog, mode));
+                            if (members.contains(tabRegistry.current())) {
+                                activePosition = entries.size() - 1;
+                            }
+                        }
+                    } else {
+                        entries.add(() -> makeOverviewTabCard(tab, previewHeight, dialog,
+                            mode, null, query));
+                        if (tab == tabRegistry.current()) activePosition = entries.size() - 1;
+                    }
+                }
             }
-            bindViewport.run();
+            resultCount.setVisibility(searching ? View.VISIBLE : View.GONE);
+            if (searching) resultCount.setText("検索結果 " + entries.size() + "件");
+            if (entries.isEmpty()) {
+                TextView empty = text(searching ? "一致するタブがないよ"
+                    : mode == TAB_VIEW_PRIVATE ? "非公開タブはまだないよ"
+                    : mode == TAB_VIEW_GROUPS ? "作成したタブグループがここに表示されるよ"
+                    : mode == TAB_VIEW_RECENT ? "最近閉じたタブはないよ"
+                    : "タブはまだないよ", 15, SECONDARY, false);
+                empty.setGravity(Gravity.CENTER);
+                empty.setPadding(dp(12), dp(80), dp(12), dp(80));
+                grid.addView(empty, new LinearLayout.LayoutParams(-1, -2));
+            }
+            for (int i = 0; i < entries.size(); i += columns) {
+                LinearLayout row = new LinearLayout(this);
+                row.setGravity(Gravity.TOP);
+                grid.addView(row, new LinearLayout.LayoutParams(-1, rowHeightPx));
+                for (int column = 0; column < columns; column++) {
+                    int position = i + column;
+                    FrameLayout holder = new FrameLayout(this);
+                    LinearLayout.LayoutParams cell = new LinearLayout.LayoutParams(
+                        0, dp(cellHeightDp), 1);
+                    if (column != 0) cell.leftMargin = dp(BrowserUiLayout.CARD_GAP_DP);
+                    row.addView(holder, cell);
+                    cellHolders.add(position < entries.size() ? holder : null);
+                }
+            }
+            final int selection = activePosition;
+            grid.post(() -> {
+                if (destroyed || !scroll.isAttachedToWindow()) return;
+                if (searching || selection < 0 || entries.size() <= 4) {
+                    scroll.scrollTo(0, 0);
+                } else {
+                    int top = (selection / columns) * rowHeightPx;
+                    scroll.scrollTo(0, Math.max(0, top - dp(8)));
+                }
+                bindViewport.run();
+            });
+        };
+        // 100ms debounce prevents repeated 500-holder layout passes when a
+        // user types quickly. The active keyboard does not reload WebContents.
+        Runnable debounceGrid = () -> {
+            if (dialog[0] != null && dialog[0].isShowing()) renderGrid.run();
+        };
+        searchInput.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                mainHandler.removeCallbacks(debounceGrid);
+                mainHandler.postDelayed(debounceGrid, 100L);
+            }
         });
         if (mode != TAB_VIEW_RECENT) {
             Button add = iconButton(R.drawable.ic_browser_plus,
@@ -2320,6 +2418,13 @@ public final class ChromiumTestActivity extends Activity {
         page.addView(makeTabOverviewBottomBar(dialog, mode),
             new LinearLayout.LayoutParams(-1, dp(66)));
         dialog[0] = fullScreenTabsDialog(page);
+        Window screenWindow = dialog[0].getWindow();
+        if (screenWindow != null) {
+            screenWindow.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+                | WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+        }
+        dialog[0].setOnDismissListener(d -> mainHandler.removeCallbacks(debounceGrid));
+        renderGrid.run();
     }
 
     private LinearLayout makeTabOverviewBottomBar(Dialog[] dialog, int mode) {
@@ -2407,7 +2512,8 @@ public final class ChromiumTestActivity extends Activity {
     }
 
     private View makeOverviewTabCard(TabRegistry.Tab tab, int previewHeight,
-                                     Dialog[] dialog, int mode, String expandedGroup) {
+                                     Dialog[] dialog, int mode, String expandedGroup,
+                                     String searchQuery) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         card.setPadding(dp(5), dp(5), dp(5), dp(5));
@@ -2415,12 +2521,18 @@ public final class ChromiumTestActivity extends Activity {
             tab == tabRegistry.current() ? TAB_SWITCHER_ACCENT : Color.TRANSPARENT));
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        card.addView(header, new LinearLayout.LayoutParams(-1, dp(43)));
+        card.addView(header, new LinearLayout.LayoutParams(-1, dp(48)));
         String site = SiteBlockPolicy.hostOf(tab.url);
         TextView identity = overviewIdentity(site == null ? tab.displayTitle() : site,
             tab.privateMode);
         header.addView(identity, new LinearLayout.LayoutParams(dp(29), dp(29)));
-        TextView name = text(tab.displayTitle(), 13, PRIMARY, false);
+        // In search results a group is flattened, so keep its identity visible.
+        String cardTitle = tab.displayTitle();
+        if (searchQuery != null && !searchQuery.trim().isEmpty()
+                && tab.group != null && !tab.group.isEmpty()) {
+            cardTitle += " · " + tab.group;
+        }
+        TextView name = text(cardTitle, 13, PRIMARY, false);
         name.setSingleLine(true);
         name.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams nameSize = new LinearLayout.LayoutParams(0, -1, 1);
@@ -2429,9 +2541,9 @@ public final class ChromiumTestActivity extends Activity {
         Button close = iconButton(R.drawable.ic_browser_close, "タブを閉じる", () -> {
             dialog[0].dismiss();
             closeTabDirect(tab.id);
-            showTabOverview(mode, expandedGroup);
+            showTabOverview(mode, expandedGroup, searchQuery);
         });
-        header.addView(close, new LinearLayout.LayoutParams(dp(33), dp(38)));
+        header.addView(close, new LinearLayout.LayoutParams(dp(48), dp(48)));
         FrameLayout preview = makeOverviewPreview(tab, false);
         LinearLayout.LayoutParams previewLp = new LinearLayout.LayoutParams(-1, dp(previewHeight));
         card.addView(preview, previewLp);
@@ -2456,7 +2568,7 @@ public final class ChromiumTestActivity extends Activity {
         card.setBackground(rounded(TAB_SWITCHER_CARD, 19, Color.TRANSPARENT));
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        card.addView(header, new LinearLayout.LayoutParams(-1, dp(43)));
+        card.addView(header, new LinearLayout.LayoutParams(-1, dp(48)));
         TextView identity = overviewIdentity("▣", false);
         identity.setBackground(rounded(Color.rgb(71, 99, 143), 10, Color.TRANSPARENT));
         header.addView(identity, new LinearLayout.LayoutParams(dp(29), dp(29)));
@@ -2471,7 +2583,7 @@ public final class ChromiumTestActivity extends Activity {
                 dialog[0].dismiss();
                 showTabGroupOptions(name, members, mode);
             });
-        header.addView(menu, new LinearLayout.LayoutParams(dp(33), dp(38)));
+        header.addView(menu, new LinearLayout.LayoutParams(dp(48), dp(48)));
         LinearLayout mosaic = new LinearLayout(this);
         mosaic.setOrientation(LinearLayout.VERTICAL);
         card.addView(mosaic, new LinearLayout.LayoutParams(-1, dp(previewHeight)));
