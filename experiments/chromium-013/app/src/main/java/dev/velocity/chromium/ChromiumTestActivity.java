@@ -2979,6 +2979,13 @@ public final class ChromiumTestActivity extends Activity {
             dialog[0].dismiss();
             findInPage();
         });
+        TabRegistry.Tab pdfTab = tabRegistry.current();
+        if (pdfTab != null && PdfLinkPolicy.canPreview(pdfTab.url)) {
+            addMenuItem(items, R.drawable.ic_browser_download, "このPDFをプレビュー", null, () -> {
+                dialog[0].dismiss();
+                if (engine != null) engine.startDownload(pdfTab.url);
+            });
+        }
         TabRegistry.Tab current = tabRegistry.current();
         boolean desktop = current != null && current.desktopMode;
         addMenuItem(items, R.drawable.ic_browser_globe, "PC版サイト",

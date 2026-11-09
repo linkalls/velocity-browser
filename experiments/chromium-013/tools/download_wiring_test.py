@@ -21,7 +21,7 @@ class NativeDownloadWiringTest(unittest.TestCase):
 
     def test_uses_original_authenticated_transfer_and_pending_mediastore(self):
         controller = CONTROLLER.read_text()
-        self.assertIn("callback.allow(temporary.getAbsolutePath())", controller)
+        self.assertIn("callback.allow(job.temporary.getAbsolutePath())", controller)
         self.assertIn("MediaStore.Downloads.IS_PENDING, 1", controller)
         self.assertIn("MediaStore.Downloads.IS_PENDING, 0", controller)
         self.assertNotIn("HttpURLConnection", controller)
