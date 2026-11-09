@@ -104,6 +104,9 @@ public final class ChromiumTestActivity extends Activity {
 
     private final TabRegistry tabRegistry = new TabRegistry();
     private TabPreviewStore previewStore;
+    private CefriumDownloadController downloads;
+    /** Tabs closed while CEF is downloading keep their engine until completion. */
+    private final Set<CefriumBrowser> closingAfterDownload = new HashSet<>();
     // RAM-only history. Private tabs never appear in the recently closed list.
     private final List<TabRegistry.Tab> recentlyClosedRegularTabs = new ArrayList<>();
     private OnBackInvokedCallback gestureBackCallback;
@@ -284,6 +287,10 @@ public final class ChromiumTestActivity extends Activity {
         root.setBackgroundColor(CANVAS);
         root.setFitsSystemWindows(true);
         setContentView(root);
+        downloads = new CefriumDownloadController(this, browser -> {
+            if (closingAfterDownload.remove(browser)) browser.close();
+            if (tabRegistry.current() != null) trimInactiveBrowsers(tabRegistry.current().id);
+        });
 
         // Title is retained as a state/accessibility sink. The old always-on
         // top bar wasted viewport height and added no useful browser control.
@@ -1263,6 +1270,7 @@ public final class ChromiumTestActivity extends Activity {
         try {
             attachSurface(browser);
             applyBrowserSettings(browser);
+            downloads.bind(browser, tab.privateMode);
             applyTabDisplayPreferences(browser, tab);
             // Per-browser origin snapshot avoids carrying a site's exemption
             // across the earliest subrequests of a top-level navigation.
@@ -1428,7 +1436,9 @@ public final class ChromiumTestActivity extends Activity {
         while (liveBrowsers.size() > MAX_RESIDENT_BROWSERS) {
             String oldestId = null;
             for (String id : liveBrowsers.keySet()) {
-                if (!id.equals(currentId)) { oldestId = id; break; }
+                if (!id.equals(currentId) && !downloads.isBusy(liveBrowsers.get(id))) {
+                    oldestId = id; break;
+                }
             }
             if (oldestId == null) break;
             CefriumBrowser idle = liveBrowsers.remove(oldestId);
@@ -2774,7 +2784,12 @@ public final class ChromiumTestActivity extends Activity {
         CefriumBrowser closing = liveBrowsers.remove(id);
         if (closing != null) {
             if (engine == closing) engine = null;
-            closing.close();
+            if (downloads.isBusy(closing)) {
+                closing.getSurfaceContainer().setVisibility(View.GONE);
+                closingAfterDownload.add(closing);
+            } else {
+                closing.close();
+            }
             // The SDK may keep empty renderer processes around for reuse.
             // Reap only zero-frame children; live renderers are unaffected.
             CefriumBrowser.reapUnusedRenderers();
@@ -2978,6 +2993,12 @@ public final class ChromiumTestActivity extends Activity {
         addMenuItem(items, R.drawable.ic_browser_search, "表示倍率を変更", null, () -> {
             dialog[0].dismiss();
             showPageZoom();
+        });
+        menuSection(items, "ファイル");
+        addMenuItem(items, R.drawable.ic_browser_download, "ダウンロード", null, () -> {
+            dialog[0].dismiss();
+            TabRegistry.Tab currentTab = tabRegistry.current();
+            downloads.show(currentTab != null && currentTab.privateMode);
         });
         menuSection(items, "アプリ");
         addMenuItem(items, R.drawable.ic_browser_settings, "設定", null, () -> {
@@ -3520,6 +3541,9 @@ public final class ChromiumTestActivity extends Activity {
         mainHandler.removeCallbacks(deferredTabSave);
         if (undoTimeout != null) mainHandler.removeCallbacks(undoTimeout);
         if (undoPopup != null) undoPopup.dismiss();
+        if (downloads != null) downloads.dispose();
+        for (CefriumBrowser browser : closingAfterDownload) browser.close();
+        closingAfterDownload.clear();
         for (CefriumBrowser browser : liveBrowsers.values()) browser.close();
         liveBrowsers.clear();
         engine = null;
