@@ -27,7 +27,7 @@ start_audit_activity() {
   return 1
 }
 
-for mode in settings tabs; do
+for mode in settings tabs tabs-private tabs-groups; do
   adb shell am force-stop "$APP" || true
   # Closing Chromium may briefly leave native child-process teardown active.
   # Give Android's ActivityManager time before a cold restart.
@@ -51,6 +51,10 @@ for mode in settings tabs; do
   if [[ "$mode" == settings ]]; then
     # Fails if the old screen was accidentally launched or build info omitted.
     grep -q 'Velocity 設定' "dist/cefrium-ui-audit/${mode}.xml" || true
+  fi
+  if [[ "$mode" == tabs* ]]; then
+    python3 experiments/chromium-013/tools/verify_tab_switcher_ui.py \
+      "dist/cefrium-ui-audit/${mode}.xml" "$mode"
   fi
 done
 # Real offline Chromium screenshot regression. The test page has distinct

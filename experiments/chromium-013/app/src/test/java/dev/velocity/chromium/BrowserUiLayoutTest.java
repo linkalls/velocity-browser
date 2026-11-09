@@ -34,6 +34,13 @@ public final class BrowserUiLayoutTest {
         }
     }
 
+    @Test public void thumbnailCardsStayReadableAtPhoneAndTabletWidths() {
+        assertEquals(264, BrowserUiLayout.tabPreviewHeightDp(1));
+        assertEquals(205, BrowserUiLayout.tabPreviewHeightDp(2));
+        assertEquals(168, BrowserUiLayout.tabPreviewHeightDp(3));
+        assertEquals(140, BrowserUiLayout.tabPreviewHeightDp(4));
+    }
+
     @Test public void shortSheetsShrinkButLongSheetsScroll() {
         assertEquals(300, BrowserUiLayout.sheetMaxHeightPx(300, 1100, 160));
         assertTrue(BrowserUiLayout.sheetMaxHeightPx(1200, 1100, 160) < 1100);

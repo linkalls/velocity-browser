@@ -101,6 +101,8 @@ public final class ChromiumTestActivity extends Activity {
 
     private final TabRegistry tabRegistry = new TabRegistry();
     private TabPreviewStore previewStore;
+    // RAM-only history. Private tabs never appear in the recently closed list.
+    private final List<TabRegistry.Tab> recentlyClosedRegularTabs = new ArrayList<>();
     private OnBackInvokedCallback gestureBackCallback;
     private final Map<String, CefriumBrowser> liveBrowsers = new LinkedHashMap<>(16, .75f, true);
     private static final String TAB_PREFS = "cefrium_tabs_v1";
@@ -413,18 +415,30 @@ public final class ChromiumTestActivity extends Activity {
         String audit = getIntent() == null ? null :
             getIntent().getStringExtra("velocity_debug_ui_audit");
         if ((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0
-                && ("settings".equals(audit) || "tabs".equals(audit))) {
+                && ("settings".equals(audit) || "tabs".equals(audit)
+                    || "tabs-private".equals(audit) || "tabs-groups".equals(audit))) {
             root.postDelayed(() -> {
                 if (destroyed || isFinishing()) return;
                 if ("settings".equals(audit)) {
                     showSettings();
                 } else if (chromiumReady) {
-                    // Additional empty tab metadata demonstrates 2-row grid,
-                    // no network access and no private-page screenshot data.
-                    for (int i = 0; i < 3; i++) {
-                        tabRegistry.add("about:blank", false);
+                    if ("tabs-private".equals(audit)) {
+                        // An isolated, blank private tab: no user content or JPEG.
+                        tabRegistry.add("about:blank", true);
+                        showTabs(true);
+                    } else {
+                        // Four deterministic empty tabs demonstrate the 2x2
+                        // group collage with no network or personal content.
+                        for (int i = 0; i < 5; i++) {
+                            TabRegistry.Tab debugTab = tabRegistry.add("about:blank", false);
+                            if (i < 4) debugTab.group = "開発グループ";
+                        }
+                        if ("tabs-groups".equals(audit)) {
+                            showTabOverview(TAB_VIEW_GROUPS, null);
+                        } else {
+                            showTabs(false);
+                        }
                     }
-                    showTabs(false);
                 }
             }, 9000L);
         }
@@ -1760,226 +1774,558 @@ public final class ChromiumTestActivity extends Activity {
         }, 6000L);
     }
 
-    /** Chrome/Vivaldi-style visual tab overview with persistent named groups. */
+    // Tab switcher modes are deliberately UI-only. A private tab never enters
+    // the normal/recently-closed sections or disk-backed screenshot cache.
+    private static final int TAB_VIEW_NORMAL = 0;
+    private static final int TAB_VIEW_PRIVATE = 1;
+    private static final int TAB_VIEW_GROUPS = 2;
+    private static final int TAB_VIEW_RECENT = 3;
+    private static final int TAB_SWITCHER_ACCENT = Color.rgb(79, 144, 232);
+    private static final int TAB_SWITCHER_BACKGROUND = Color.rgb(23, 25, 30);
+    private static final int TAB_SWITCHER_CARD = Color.rgb(49, 52, 59);
+    private static final int TAB_SWITCHER_PREVIEW = Color.rgb(31, 34, 40);
+
+    /**
+     * A full-height native tab screen, without creating a second Activity or
+     * abandoning the current Chromium WebContents. Cards and group mosaics are
+     * generated from stable TabRegistry IDs, so 400+ tabs don't force WebViews
+     * or page reloads. Only real cached compositor images are ever shown.
+     */
     private void showTabs() {
         TabRegistry.Tab current = tabRegistry.current();
-        showTabs(current != null && current.privateMode);
+        showTabOverview(current != null && current.privateMode
+            ? TAB_VIEW_PRIVATE : TAB_VIEW_NORMAL, null);
     }
 
     private void showTabs(boolean privateMode) {
-        if (!chromiumReady) return;
-        // Trigger a fresh screenshot while the webpage is still visible.
-        TabRegistry.Tab focusedTab = tabRegistry.current();
-        if (focusedTab != null && !focusedTab.privateMode) {
-            captureVisibleTabPreview(focusedTab, null);
+        showTabOverview(privateMode ? TAB_VIEW_PRIVATE : TAB_VIEW_NORMAL, null);
+    }
+
+    private Dialog fullScreenTabsDialog(LinearLayout content) {
+        Dialog screen = new Dialog(this);
+        screen.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        content.setBackgroundColor(TAB_SWITCHER_BACKGROUND);
+        screen.setContentView(content);
+        Window window = screen.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawable(new ColorDrawable(TAB_SWITCHER_BACKGROUND));
+            window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND
+                | WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+            window.setStatusBarColor(TAB_SWITCHER_BACKGROUND);
+            window.setNavigationBarColor(TAB_SWITCHER_BACKGROUND);
+            if (Build.VERSION.SDK_INT >= 29) window.setNavigationBarContrastEnforced(false);
         }
-        LinearLayout panel = sheetPanel();
-        TextView heading = text(privateMode ? "非公開タブ" : "タブ一覧", 21, PRIMARY, true);
-        heading.setMinHeight(dp(43));
-        panel.addView(heading, new LinearLayout.LayoutParams(-1, -2));
+        screen.show();
+        if (window != null) {
+            window.setGravity(Gravity.CENTER);
+            window.setLayout(-1, -1);
+        }
+        return screen;
+    }
 
-        final Dialog[] shown = new Dialog[1];
-        LinearLayout actions = new LinearLayout(this);
-        panel.addView(actions, new LinearLayout.LayoutParams(-1, dp(46)));
-        Button normal = iconButton(R.drawable.ic_browser_tabs,
-            "通常タブの一覧", () -> {
-                shown[0].dismiss();
-                showTabs(false);
-            });
-        normal.setText("通常  " + tabRegistry.countForMode(false));
-        normal.setTextSize(14);
-        normal.setTextColor(privateMode ? SECONDARY : ACCENT);
-        normal.setBackground(rounded(privateMode ? SURFACE : ELEVATED, 10, BORDER));
-        actions.addView(normal, new LinearLayout.LayoutParams(0, -1, 1));
-        Button incognito = iconButton(R.drawable.ic_browser_lock,
-            "非公開タブの一覧", () -> {
-                shown[0].dismiss();
-                showTabs(true);
-            });
-        incognito.setText("非公開  " + tabRegistry.countForMode(true));
-        incognito.setTextSize(14);
-        incognito.setTextColor(privateMode ? ACCENT : SECONDARY);
-        incognito.setBackground(rounded(privateMode ? ELEVATED : SURFACE, 10, BORDER));
-        actions.addView(incognito, new LinearLayout.LayoutParams(0, -1, 1));
-        Button add = iconButton(R.drawable.ic_browser_plus,
-            privateMode ? "新しい非公開タブ" : "新しい通常タブ", () -> {
-                shown[0].dismiss();
-                createTab("about:blank", privateMode);
-            });
-        actions.addView(add, new LinearLayout.LayoutParams(dp(47), -1));
-
-        // Content-sized for 1-3 tabs, scrolling only when enough cards exist.
-        BoundedScrollView scroll = new BoundedScrollView();
-        panel.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
-        final View[] currentCard = {null};
-        LinearLayout groups = sheetPanel();
-        scroll.addView(groups);
-
-        // Preserve stable group insertion order, and a dedicated ungrouped section.
-        Map<String, List<TabRegistry.Tab>> groupMap = new LinkedHashMap<>();
+    private void showTabOverview(int mode, String expandedGroup) {
+        if (!chromiumReady || destroyed) return;
+        // Do this before opening the dialog. Android PixelCopy must never copy
+        // the screen after a sheet, private page, or another tab is on top.
+        TabRegistry.Tab focused = tabRegistry.current();
+        if (focused != null && !focused.privateMode && !focused.startupHome
+                && mode != TAB_VIEW_PRIVATE) {
+            captureVisibleTabPreview(focused, null);
+        }
+        boolean privateMode = mode == TAB_VIEW_PRIVATE;
+        int normalCount = tabRegistry.countForMode(false);
+        int privateCount = tabRegistry.countForMode(true);
+        Map<String, List<TabRegistry.Tab>> namedGroups = new LinkedHashMap<>();
         for (TabRegistry.Tab tab : tabRegistry.tabsForMode(privateMode)) {
-            String label = tab.group == null ? "タブ" : tab.group;
-            groupMap.computeIfAbsent(label, key -> new ArrayList<>()).add(tab);
+            if (tab.group != null && !tab.group.isEmpty()) {
+                namedGroups.computeIfAbsent(tab.group, key -> new ArrayList<>()).add(tab);
+            }
         }
-        if (groupMap.isEmpty()) {
-            TextView empty = text(privateMode ? "非公開タブはまだないよ" : "通常タブはまだないよ",
-                16, SECONDARY, false);
-            empty.setPadding(dp(8), dp(38), dp(8), dp(38));
-            empty.setGravity(Gravity.CENTER);
-            groups.addView(empty);
-        }
-        // Use weighted rows rather than GridLayout's fixed pixel widths. The
-        // dialog's measured inner width is the source of truth, not full screen
-        // metrics (which ignore split screen, panel padding and font scaling).
-        int widthDp = getResources().getConfiguration().screenWidthDp;
-        int columns = BrowserUiLayout.columnsForAvailableWidthDp(
-            BrowserUiLayout.availableSheetWidthDp(widthDp));
-        int previewHeightDp = columns == 1 ? 168 : columns == 2 ? 137 : 122;
-        for (Map.Entry<String, List<TabRegistry.Tab>> group : groupMap.entrySet()) {
-            TextView section = text(group.getKey() + "  ·  " + group.getValue().size(),
-                15, ACCENT, true);
-            section.setPadding(dp(5), dp(10), 0, dp(5));
-            section.setMinHeight(dp(42));
-            groups.addView(section, new LinearLayout.LayoutParams(-1, -2));
-            LinearLayout row = null;
-            int itemIndex = 0;
-            for (TabRegistry.Tab tab : group.getValue()) {
-                if (itemIndex % columns == 0) {
-                    row = new LinearLayout(this);
-                    row.setOrientation(LinearLayout.HORIZONTAL);
-                    row.setGravity(Gravity.TOP);
-                    groups.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        // Only show normal browsing groups in the dedicated Groups section.
+        if (mode == TAB_VIEW_GROUPS) {
+            namedGroups.clear();
+            for (TabRegistry.Tab tab : tabRegistry.regularTabs()) {
+                if (tab.group != null && !tab.group.isEmpty()) {
+                    namedGroups.computeIfAbsent(tab.group, key -> new ArrayList<>()).add(tab);
                 }
-                LinearLayout card = sheetPanel();
-                if (tab == tabRegistry.current()) currentCard[0] = card;
-                card.setBackground(rounded(SURFACE, 16,
-                    tab == tabRegistry.current() ? ACCENT : BORDER));
-                card.setMinimumHeight(dp(previewHeightDp + 99));
-                LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
-                    0, -2, 1f);
-                cardLp.setMargins(dp(itemIndex % columns == 0 ? 0 :
-                    BrowserUiLayout.CARD_GAP_DP), dp(3), 0, dp(5));
-                row.addView(card, cardLp);
-                itemIndex++;
+            }
+        }
+        String headingText = expandedGroup != null ? expandedGroup
+            : mode == TAB_VIEW_PRIVATE ? "非公開タブ (" + privateCount + ")"
+            : mode == TAB_VIEW_GROUPS ? "グループ (" + namedGroups.size() + ")"
+            : mode == TAB_VIEW_RECENT ? "最近閉じたタブ"
+            : "タブ (" + normalCount + ")";
 
-                FrameLayout screenshot = new FrameLayout(this);
-                screenshot.setBackground(rounded(ELEVATED, 13, Color.TRANSPARENT));
-                screenshot.setClipToOutline(true);
-                card.addView(screenshot, new LinearLayout.LayoutParams(
-                    -1, dp(previewHeightDp)));
-                ImageView preview = new ImageView(this);
-                preview.setContentDescription("ページのプレビュー");
-                preview.setScaleType(ImageView.ScaleType.MATRIX);
-                preview.addOnLayoutChangeListener((view, l, t, r, b, ol, ot, orr, ob) ->
-                    positionTabThumbnail(preview));
-                screenshot.addView(preview, new FrameLayout.LayoutParams(-1, -1));
-                Bitmap bitmap = tab.privateMode ? null : previewStore.load(tab.id);
-                if (!tab.privateMode && !"about:blank".equals(tab.url)) {
-                    Log.i(TAG, "TABSHOT sheet card cached=" + (bitmap != null)
-                        + " foreground=" + (tab == tabRegistry.current()));
-                }
-                if (bitmap != null) {
-                    displayTabThumbnail(preview, bitmap);
-                } else {
-                    // A small site identity is more useful than a giant
-                    // "preview unavailable" warning. It is not a fake screenshot.
-                    String host = SiteBlockPolicy.hostOf(tab.url);
-                    boolean blank = "about:blank".equals(tab.url);
-                    FrameLayout placeholder = new FrameLayout(this);
-                    placeholder.setTag("velocity-tab-preview-fallback");
-                    screenshot.addView(placeholder, new FrameLayout.LayoutParams(-1, -1));
-                    TextView fallback = text(tab.privateMode ? "非公開" :
-                        blank ? "新しいタブ" : host == null ? "Webページ" : host,
-                        12, SECONDARY, false);
-                    fallback.setGravity(Gravity.CENTER);
-                    fallback.setPadding(dp(6), 0, dp(6), 0);
-                    fallback.setMaxLines(2);
-                    FrameLayout.LayoutParams fallbackLp = new FrameLayout.LayoutParams(
-                        -1, dp(43), Gravity.BOTTOM);
-                    fallbackLp.bottomMargin = dp(11);
-                    placeholder.addView(fallback, fallbackLp);
-                    ImageView symbol = iconView(tab.privateMode ? R.drawable.ic_browser_lock
-                        : blank ? R.drawable.ic_browser_plus : R.drawable.ic_browser_globe,
-                        SECONDARY);
-                    FrameLayout.LayoutParams mark = new FrameLayout.LayoutParams(dp(44), dp(44),
-                        Gravity.CENTER_HORIZONTAL | Gravity.TOP);
-                    mark.topMargin = dp(21);
-                    placeholder.addView(symbol, mark);
-                    if (tab == tabRegistry.current() && !blank && !tab.privateMode) {
-                        captureVisibleTabPreview(tab, preview);
-                    }
-                }
-                TextView name = text(tab.displayTitle(), 14, PRIMARY, true);
-                name.setSingleLine(true);
-                name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                name.setPadding(dp(8), 0, dp(8), 0);
-                name.setMinHeight(dp(35));
-                card.addView(name, new LinearLayout.LayoutParams(-1, -2));
-                TextView url = text(tab.privateMode ? "非公開" : tab.url,
-                    11, SECONDARY, false);
-                url.setSingleLine(true);
-                url.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                url.setPadding(dp(8), 0, dp(8), 0);
-                url.setMinHeight(dp(25));
-                card.addView(url, new LinearLayout.LayoutParams(-1, -2));
-                LinearLayout actionsRow = new LinearLayout(this);
-                actionsRow.setGravity(Gravity.CENTER_VERTICAL);
-                card.addView(actionsRow, new LinearLayout.LayoutParams(-1, dp(48)));
-                Button groupButton = makeButton("整理", "タブをグループ分け", () -> {
-                    shown[0].dismiss();
-                    showTabGroupDialog(tab.id);
-                });
-                groupButton.setTextSize(12);
-                groupButton.setSingleLine(true);
-                groupButton.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                groupButton.setCompoundDrawablesWithIntrinsicBounds(
-                    R.drawable.ic_browser_folder, 0, 0, 0);
-                groupButton.setCompoundDrawablePadding(dp(4));
-                groupButton.setPadding(dp(5), 0, 0, 0);
-                actionsRow.addView(groupButton, new LinearLayout.LayoutParams(0, dp(48), 1));
-                Button close = iconButton(R.drawable.ic_browser_close, "タブを閉じる", () -> {
-                    shown[0].dismiss();
-                    closeTabDirect(tab.id);
-                });
-                actionsRow.addView(close, new LinearLayout.LayoutParams(dp(48), dp(48)));
-                screenshot.setOnClickListener(v -> {
-                    shown[0].dismiss();
-                    selectTab(tab.id);
-                });
-                card.setOnClickListener(v -> {
-                    shown[0].dismiss();
-                    selectTab(tab.id);
-                });
-                card.setOnLongClickListener(v -> {
-                    shown[0].dismiss();
-                    showTabGroupDialog(tab.id);
-                    return true;
-                });
-            }
-            // Reserve unused columns in the last row so a single final card
-            // remains the same width as the cards above it.
-            if (row != null && itemIndex % columns != 0) {
-                for (int col = itemIndex % columns; col < columns; col++) {
-                    View spacer = new View(this);
-                    LinearLayout.LayoutParams empty = new LinearLayout.LayoutParams(
-                        0, 1, 1f);
-                    empty.leftMargin = dp(BrowserUiLayout.CARD_GAP_DP);
-                    row.addView(spacer, empty);
-                }
-            }
-        }
-        shown[0] = bottomSheet(panel);
-        if (currentCard[0] != null) {
-            // Many restored tabs may precede the active one. Bring its card
-            // into view immediately instead of opening on a wall of old tabs.
-            scroll.post(() -> {
-                if (destroyed || !scroll.isAttachedToWindow()) return;
-                Rect target = new Rect();
-                currentCard[0].getDrawingRect(target);
-                groups.offsetDescendantRectToMyCoords(currentCard[0], target);
-                scroll.smoothScrollTo(0, Math.max(0, target.top - dp(8)));
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        final Dialog[] dialog = new Dialog[1];
+
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(14), dp(9), dp(11), dp(8));
+        page.addView(header, new LinearLayout.LayoutParams(-1, dp(64)));
+        if (expandedGroup != null) {
+            Button back = iconButton(R.drawable.ic_browser_back, "タブ一覧に戻る", () -> {
+                dialog[0].dismiss();
+                showTabOverview(mode, null);
             });
+            header.addView(back, new LinearLayout.LayoutParams(dp(42), dp(46)));
         }
+        TextView heading = text(headingText, 24, PRIMARY, false);
+        heading.setSingleLine(true);
+        heading.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams headingLp = new LinearLayout.LayoutParams(0, -1, 1);
+        headingLp.leftMargin = dp(4);
+        header.addView(heading, headingLp);
+        Button options = iconButton(R.drawable.ic_browser_menu, "タブ一覧のメニュー", () ->
+            showTabOverviewMenu(dialog[0], mode));
+        header.addView(options, new LinearLayout.LayoutParams(dp(44), dp(48)));
+        Button dismiss = iconButton(R.drawable.ic_browser_close, "タブ一覧を閉じる", () ->
+            dialog[0].dismiss());
+        header.addView(dismiss, new LinearLayout.LayoutParams(dp(44), dp(48)));
+
+        FrameLayout body = new FrameLayout(this);
+        page.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
+        scroll.setClipToPadding(false);
+        scroll.setPadding(dp(14), dp(8), dp(14), dp(90));
+        body.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
+        LinearLayout grid = new LinearLayout(this);
+        grid.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(grid);
+        int availableDp = BrowserUiLayout.availableSheetWidthDp(
+            getResources().getConfiguration().screenWidthDp);
+        int columns = BrowserUiLayout.columnsForAvailableWidthDp(availableDp);
+        int previewHeight = BrowserUiLayout.tabPreviewHeightDp(columns);
+        // Store inexpensive factories, not hundreds of Android view trees.
+        // A 448-tab profile only instantiates cards near the visible rows.
+        List<java.util.function.Supplier<View>> entries = new ArrayList<>();
+        int activePosition = -1;
+        if (mode == TAB_VIEW_RECENT) {
+            for (TabRegistry.Tab closed : recentlyClosedRegularTabs) {
+                entries.add(() -> makeRecentTabCard(closed, dialog));
+            }
+        } else if (expandedGroup != null) {
+            for (TabRegistry.Tab member : namedGroups.getOrDefault(
+                    expandedGroup, Collections.emptyList())) {
+                entries.add(() -> makeOverviewTabCard(member, previewHeight, dialog,
+                    mode, expandedGroup));
+                if (member == tabRegistry.current()) activePosition = entries.size() - 1;
+            }
+        } else if (mode == TAB_VIEW_GROUPS) {
+            for (Map.Entry<String, List<TabRegistry.Tab>> group : namedGroups.entrySet()) {
+                String groupName = group.getKey();
+                List<TabRegistry.Tab> members = group.getValue();
+                entries.add(() -> makeOverviewGroupCard(groupName, members,
+                    previewHeight, dialog, mode));
+                if (members.contains(tabRegistry.current())) activePosition = entries.size() - 1;
+            }
+        } else {
+            Set<String> seenGroups = new HashSet<>();
+            for (TabRegistry.Tab tab : tabRegistry.tabsForMode(privateMode)) {
+                if (tab.group != null && !tab.group.isEmpty()) {
+                    if (seenGroups.add(tab.group)) {
+                        String groupName = tab.group;
+                        List<TabRegistry.Tab> members = namedGroups.get(groupName);
+                        entries.add(() -> makeOverviewGroupCard(groupName, members,
+                            previewHeight, dialog, mode));
+                        if (members.contains(tabRegistry.current())) {
+                            activePosition = entries.size() - 1;
+                        }
+                    }
+                } else {
+                    entries.add(() -> makeOverviewTabCard(tab, previewHeight, dialog,
+                        mode, null));
+                    if (tab == tabRegistry.current()) activePosition = entries.size() - 1;
+                }
+            }
+        }
+        if (entries.isEmpty()) {
+            TextView empty = text(mode == TAB_VIEW_PRIVATE ? "非公開タブはまだないよ"
+                : mode == TAB_VIEW_GROUPS ? "作成したタブグループがここに表示されるよ"
+                : mode == TAB_VIEW_RECENT ? "最近閉じたタブはないよ"
+                : "タブはまだないよ", 15, SECONDARY, false);
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(dp(12), dp(80), dp(12), dp(80));
+            grid.addView(empty, new LinearLayout.LayoutParams(-1, -2));
+        }
+        int cellHeightDp = mode == TAB_VIEW_RECENT ? 80 : previewHeight + 53;
+        int rowHeightPx = dp(cellHeightDp + 12);
+        List<FrameLayout> cellHolders = new ArrayList<>();
+        for (int i = 0; i < entries.size(); i += columns) {
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.TOP);
+            LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1,
+                rowHeightPx);
+            grid.addView(row, rowParams);
+            for (int column = 0; column < columns; column++) {
+                int position = i + column;
+                FrameLayout holder = new FrameLayout(this);
+                LinearLayout.LayoutParams cell = new LinearLayout.LayoutParams(
+                    0, dp(cellHeightDp), 1);
+                if (column != 0) cell.leftMargin = dp(BrowserUiLayout.CARD_GAP_DP);
+                row.addView(holder, cell);
+                // Null records a trailing empty column, preserving equal widths.
+                cellHolders.add(position < entries.size() ? holder : null);
+            }
+        }
+        // Unlike an eager 448-card ScrollView, this recycles the contents of
+        // distant holders. FrameLayouts themselves are tiny and give the scroll
+        // a stable height, even while images are loading asynchronously.
+        Runnable bindViewport = () -> {
+            if (destroyed || !scroll.isAttachedToWindow()) return;
+            int viewport = Math.max(dp(320), scroll.getHeight());
+            int visibleStart = Math.max(0, scroll.getScrollY() - viewport);
+            int visibleEnd = scroll.getScrollY() + viewport * 2;
+            for (int index = 0; index < entries.size(); index++) {
+                FrameLayout holder = cellHolders.get(index);
+                if (holder == null) continue;
+                int rowTop = (index / columns) * rowHeightPx;
+                boolean nearby = rowTop + rowHeightPx >= visibleStart
+                    && rowTop <= visibleEnd;
+                if (nearby && holder.getChildCount() == 0) {
+                    holder.addView(entries.get(index).get(),
+                        new FrameLayout.LayoutParams(-1, -1));
+                } else if (!nearby && holder.getChildCount() > 0) {
+                    // Detached ImageViews cannot retain large screenshot bitmaps.
+                    holder.removeAllViews();
+                }
+            }
+        };
+        scroll.setOnScrollChangeListener((View view, int x, int y,
+                                           int oldX, int oldY) -> bindViewport.run());
+        int selectedPosition = activePosition;
+        scroll.post(() -> {
+            if (destroyed || !scroll.isAttachedToWindow()) return;
+            if (selectedPosition >= 0 && entries.size() > 4) {
+                int top = (selectedPosition / columns) * rowHeightPx;
+                scroll.scrollTo(0, Math.max(0, top - dp(8)));
+            }
+            bindViewport.run();
+        });
+        if (mode != TAB_VIEW_RECENT) {
+            Button add = iconButton(R.drawable.ic_browser_plus,
+                privateMode ? "新しい非公開タブ" : "新しいタブ", () -> {
+                    dialog[0].dismiss();
+                    createTab("about:blank", privateMode);
+                });
+            add.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF),
+                rounded(TAB_SWITCHER_ACCENT, 36, Color.TRANSPARENT), null));
+            add.setOnLongClickListener(v -> {
+                showTabOverviewMenu(dialog[0], mode);
+                return true;
+            });
+            add.setElevation(dp(8));
+            FrameLayout.LayoutParams fab = new FrameLayout.LayoutParams(
+                dp(62), dp(62), Gravity.END | Gravity.BOTTOM);
+            fab.rightMargin = dp(18);
+            fab.bottomMargin = dp(18);
+            body.addView(add, fab);
+        }
+        page.addView(makeTabOverviewBottomBar(dialog, mode),
+            new LinearLayout.LayoutParams(-1, dp(66)));
+        dialog[0] = fullScreenTabsDialog(page);
+    }
+
+    private LinearLayout makeTabOverviewBottomBar(Dialog[] dialog, int mode) {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(dp(6), dp(4), dp(6), dp(5));
+        bar.setBackgroundColor(Color.rgb(29, 31, 37));
+        int[] icons = {R.drawable.ic_browser_tabs, R.drawable.ic_browser_lock,
+            R.drawable.ic_browser_layers, R.drawable.ic_browser_history};
+        String[] labels = {"通常", "非公開", "グループ", "最近閉じた"};
+        for (int index = 0; index < icons.length; index++) {
+            final int destination = index;
+            LinearLayout item = new LinearLayout(this);
+            item.setOrientation(LinearLayout.VERTICAL);
+            item.setGravity(Gravity.CENTER);
+            int foreground = mode == index ? TAB_SWITCHER_ACCENT : SECONDARY;
+            ImageView symbol = iconView(icons[index], foreground);
+            symbol.setPadding(dp(6), dp(5), dp(6), dp(3));
+            item.addView(symbol, new LinearLayout.LayoutParams(dp(39), dp(35)));
+            TextView caption = text(labels[index], 10, foreground, mode == index);
+            caption.setGravity(Gravity.CENTER);
+            item.addView(caption, new LinearLayout.LayoutParams(-1, dp(18)));
+            item.setContentDescription(labels[index] + "タブ画面");
+            item.setOnClickListener(v -> {
+                dialog[0].dismiss();
+                showTabOverview(destination, null);
+            });
+            bar.addView(item, new LinearLayout.LayoutParams(0, -1, 1));
+        }
+        return bar;
+    }
+
+    /** A compact site identity, never a network-dependent favicon download. */
+    private TextView overviewIdentity(String title, boolean privateMode) {
+        String visible = title == null || title.isEmpty() ? "?" : title.substring(0, 1);
+        TextView identity = text(privateMode ? "◈" : visible, 15, PRIMARY, true);
+        identity.setGravity(Gravity.CENTER);
+        identity.setBackground(rounded(privateMode ? Color.rgb(70, 76, 91)
+            : Color.rgb(69, 82, 104), 8, Color.TRANSPARENT));
+        identity.setContentDescription(privateMode ? "非公開" : "サイトアイコン");
+        return identity;
+    }
+
+    private FrameLayout makeOverviewPreview(TabRegistry.Tab tab, boolean compact) {
+        FrameLayout surface = new FrameLayout(this);
+        surface.setBackground(rounded(TAB_SWITCHER_PREVIEW, compact ? 7 : 11,
+            Color.TRANSPARENT));
+        surface.setClipToOutline(true);
+        ImageView image = new ImageView(this);
+        image.setContentDescription(compact ? "グループプレビュー" : "ページのプレビュー");
+        image.setScaleType(ImageView.ScaleType.MATRIX);
+        image.addOnLayoutChangeListener((view, l, t, r, b, ol, ot, orr, ob) ->
+            positionTabThumbnail(image));
+        surface.addView(image, new FrameLayout.LayoutParams(-1, -1));
+        Bitmap bitmap = tab.privateMode ? null : previewStore.load(tab.id);
+        if (bitmap != null) {
+            displayTabThumbnail(image, bitmap);
+        } else {
+            LinearLayout empty = new LinearLayout(this);
+            empty.setOrientation(LinearLayout.VERTICAL);
+            empty.setGravity(Gravity.CENTER);
+            ImageView icon = iconView(tab.privateMode ? R.drawable.ic_browser_lock
+                : "about:blank".equals(tab.url) ? R.drawable.ic_browser_plus
+                : R.drawable.ic_browser_globe, SECONDARY);
+            empty.addView(icon, new LinearLayout.LayoutParams(dp(43), dp(43)));
+            if (!compact) {
+                String host = SiteBlockPolicy.hostOf(tab.url);
+                TextView label = text(tab.privateMode ? "非公開"
+                    : "about:blank".equals(tab.url) ? "新しいタブ"
+                    : host == null ? "プレビューなし" : host,
+                    11, SECONDARY, false);
+                label.setSingleLine(true);
+                label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                label.setGravity(Gravity.CENTER);
+                empty.addView(label, new LinearLayout.LayoutParams(-1, dp(27)));
+            }
+            empty.setTag("velocity-tab-preview-fallback");
+            surface.addView(empty, new FrameLayout.LayoutParams(-1, -1));
+            if (tab == tabRegistry.current() && !tab.privateMode
+                    && !"about:blank".equals(tab.url)) {
+                captureVisibleTabPreview(tab, image);
+            }
+        }
+        return surface;
+    }
+
+    private View makeOverviewTabCard(TabRegistry.Tab tab, int previewHeight,
+                                     Dialog[] dialog, int mode, String expandedGroup) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(5), dp(5), dp(5), dp(5));
+        card.setBackground(rounded(TAB_SWITCHER_CARD, 19,
+            tab == tabRegistry.current() ? TAB_SWITCHER_ACCENT : Color.TRANSPARENT));
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        card.addView(header, new LinearLayout.LayoutParams(-1, dp(43)));
+        String site = SiteBlockPolicy.hostOf(tab.url);
+        TextView identity = overviewIdentity(site == null ? tab.displayTitle() : site,
+            tab.privateMode);
+        header.addView(identity, new LinearLayout.LayoutParams(dp(29), dp(29)));
+        TextView name = text(tab.displayTitle(), 13, PRIMARY, false);
+        name.setSingleLine(true);
+        name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams nameSize = new LinearLayout.LayoutParams(0, -1, 1);
+        nameSize.leftMargin = dp(7);
+        header.addView(name, nameSize);
+        Button close = iconButton(R.drawable.ic_browser_close, "タブを閉じる", () -> {
+            dialog[0].dismiss();
+            closeTabDirect(tab.id);
+            showTabOverview(mode, expandedGroup);
+        });
+        header.addView(close, new LinearLayout.LayoutParams(dp(33), dp(38)));
+        FrameLayout preview = makeOverviewPreview(tab, false);
+        LinearLayout.LayoutParams previewLp = new LinearLayout.LayoutParams(-1, dp(previewHeight));
+        card.addView(preview, previewLp);
+        card.setContentDescription(tab.displayTitle() + " タブ");
+        card.setOnClickListener(v -> {
+            dialog[0].dismiss();
+            selectTab(tab.id);
+        });
+        card.setOnLongClickListener(v -> {
+            dialog[0].dismiss();
+            showTabGroupDialog(tab.id);
+            return true;
+        });
+        return card;
+    }
+
+    private View makeOverviewGroupCard(String name, List<TabRegistry.Tab> members,
+                                       int previewHeight, Dialog[] dialog, int mode) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(5), dp(5), dp(5), dp(5));
+        card.setBackground(rounded(TAB_SWITCHER_CARD, 19, Color.TRANSPARENT));
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        card.addView(header, new LinearLayout.LayoutParams(-1, dp(43)));
+        TextView identity = overviewIdentity("▣", false);
+        identity.setBackground(rounded(Color.rgb(71, 99, 143), 10, Color.TRANSPARENT));
+        header.addView(identity, new LinearLayout.LayoutParams(dp(29), dp(29)));
+        TextView title = text(name + " · " + members.size(), 13, PRIMARY, false);
+        title.setSingleLine(true);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, -1, 1);
+        titleLp.leftMargin = dp(7);
+        header.addView(title, titleLp);
+        Button menu = iconButton(R.drawable.ic_browser_menu,
+            name + "のグループ設定", () -> {
+                dialog[0].dismiss();
+                showTabGroupOptions(name, members, mode);
+            });
+        header.addView(menu, new LinearLayout.LayoutParams(dp(33), dp(38)));
+        LinearLayout mosaic = new LinearLayout(this);
+        mosaic.setOrientation(LinearLayout.VERTICAL);
+        card.addView(mosaic, new LinearLayout.LayoutParams(-1, dp(previewHeight)));
+        for (int row = 0; row < 2; row++) {
+            LinearLayout inner = new LinearLayout(this);
+            LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, 0, 1);
+            if (row > 0) rowLp.topMargin = dp(5);
+            mosaic.addView(inner, rowLp);
+            for (int col = 0; col < 2; col++) {
+                int position = row * 2 + col;
+                View tile;
+                if (position == 3 && members.size() > 4) {
+                    TextView more = text("+" + (members.size() - 3), 20, PRIMARY, false);
+                    more.setGravity(Gravity.CENTER);
+                    more.setBackground(rounded(TAB_SWITCHER_PREVIEW, 7,
+                        Color.TRANSPARENT));
+                    tile = more;
+                } else if (position < members.size()) {
+                    tile = makeOverviewPreview(members.get(position), true);
+                } else {
+                    View blank = new View(this);
+                    blank.setBackground(rounded(TAB_SWITCHER_PREVIEW, 7,
+                        Color.TRANSPARENT));
+                    tile = blank;
+                }
+                LinearLayout.LayoutParams tileLp = new LinearLayout.LayoutParams(0, -1, 1);
+                if (col != 0) tileLp.leftMargin = dp(5);
+                inner.addView(tile, tileLp);
+            }
+        }
+        card.setContentDescription(name + " グループ " + members.size() + "件");
+        card.setOnClickListener(v -> {
+            dialog[0].dismiss();
+            showTabOverview(mode, name);
+        });
+        card.setOnLongClickListener(v -> {
+            dialog[0].dismiss();
+            showTabGroupOptions(name, members, mode);
+            return true;
+        });
+        return card;
+    }
+
+    private void showTabGroupOptions(String groupName, List<TabRegistry.Tab> members,
+                                     int mode) {
+        // The group is a *metadata* association. Removing a group never
+        // closes the underlying tabs or discards page/scroll state.
+        new AlertDialog.Builder(this).setTitle(groupName)
+            .setItems(new String[]{"グループを開く", "名前を変更", "グループを解除"},
+                (unused, selected) -> {
+                    if (selected == 0) {
+                        showTabOverview(mode, groupName);
+                    } else if (selected == 1) {
+                        EditText input = new EditText(this);
+                        input.setSingleLine(true);
+                        input.setText(groupName);
+                        new AlertDialog.Builder(this).setTitle("グループ名を変更")
+                            .setView(input).setPositiveButton("保存", (d, which) -> {
+                                String next = input.getText().toString().trim();
+                                if (next.isEmpty()) return;
+                                next = next.substring(0, Math.min(40, next.length()));
+                                for (TabRegistry.Tab member : members) member.group = next;
+                                saveRegularTabs();
+                                showTabOverview(mode, null);
+                            }).setNegativeButton("キャンセル", (d, which) ->
+                                showTabOverview(mode, null)).show();
+                    } else {
+                        new AlertDialog.Builder(this).setTitle("グループを解除する？")
+                            .setMessage("タブは閉じず、そのまま一覧に戻すよ。")
+                            .setNegativeButton("キャンセル", (d, which) ->
+                                showTabOverview(mode, null))
+                            .setPositiveButton("解除", (d, which) -> {
+                                for (TabRegistry.Tab member : members) member.group = null;
+                                saveRegularTabs();
+                                showTabOverview(mode, null);
+                            }).show();
+                    }
+                }).setOnCancelListener(d -> showTabOverview(mode, null)).show();
+    }
+
+    private View makeRecentTabCard(TabRegistry.Tab closed, Dialog[] dialog) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(10), dp(12), dp(10), dp(12));
+        card.setBackground(rounded(TAB_SWITCHER_CARD, 15, Color.TRANSPARENT));
+        ImageView icon = iconView(R.drawable.ic_browser_globe, SECONDARY);
+        card.addView(icon, new LinearLayout.LayoutParams(dp(40), dp(40)));
+        LinearLayout labels = new LinearLayout(this);
+        labels.setOrientation(LinearLayout.VERTICAL);
+        TextView title = text(closed.displayTitle(), 14, PRIMARY, true);
+        title.setSingleLine(true);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        labels.addView(title);
+        TextView url = text(closed.url, 11, SECONDARY, false);
+        url.setSingleLine(true);
+        url.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        labels.addView(url);
+        card.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+        card.setContentDescription("閉じたタブを復元 " + closed.displayTitle());
+        card.setOnClickListener(v -> {
+            dialog[0].dismiss();
+            recentlyClosedRegularTabs.remove(closed);
+            createTab(closed.url, false);
+        });
+        return card;
+    }
+
+    private void showTabOverviewMenu(Dialog dialog, int mode) {
+        new AlertDialog.Builder(this).setTitle("タブの操作")
+            .setItems(new String[]{"新しい通常タブ", "新しい非公開タブ",
+                "現在のタブをグループに追加", "この一覧のタブを全て閉じる"},
+                (d, option) -> {
+                    if (option == 0 || option == 1) {
+                        dialog.dismiss();
+                        createTab("about:blank", option == 1);
+                    } else if (option == 2) {
+                        TabRegistry.Tab current = tabRegistry.current();
+                        if (current != null) {
+                            dialog.dismiss();
+                            showTabGroupDialog(current.id);
+                        }
+                    } else {
+                        boolean privateMode = mode == TAB_VIEW_PRIVATE;
+                        List<TabRegistry.Tab> candidates = new ArrayList<>(
+                            tabRegistry.tabsForMode(privateMode));
+                        if (mode == TAB_VIEW_GROUPS || mode == TAB_VIEW_RECENT) {
+                            Toast.makeText(this, "通常か非公開の一覧で実行してね",
+                                Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        new AlertDialog.Builder(this).setTitle("全タブを閉じる？")
+                            .setMessage(candidates.size() + "件の" +
+                                (privateMode ? "非公開" : "通常") +
+                                "タブを閉じるよ。ホームは残すよ。")
+                            .setNegativeButton("キャンセル", null)
+                            .setPositiveButton("閉じる", (confirm, which) -> {
+                                dialog.dismiss();
+                                for (TabRegistry.Tab candidate : candidates) {
+                                    if (candidate.startupHome) continue;
+                                    closeTabDirect(candidate.id);
+                                }
+                                showTabOverview(mode, null);
+                            }).show();
+                    }
+                }).show();
     }
 
     private void showTabGroupDialog(String id) {
@@ -2030,6 +2376,12 @@ public final class ChromiumTestActivity extends Activity {
             CefriumBrowser.reapUnusedRenderers();
         }
         tabRegistry.close(id);
+        if (!victim.privateMode && !victim.startupHome && isPersistable(victim.url)) {
+            recentlyClosedRegularTabs.add(0, victim);
+            if (recentlyClosedRegularTabs.size() > 20) {
+                recentlyClosedRegularTabs.remove(recentlyClosedRegularTabs.size() - 1);
+            }
+        }
         if (!victim.privateMode) previewStore.remove(victim.id);
         if (tabRegistry.current() == null) tabRegistry.add("about:blank", false);
         if (wasCurrent) activateCurrentTab();
