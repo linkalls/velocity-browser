@@ -23,6 +23,8 @@
             android:name=".StartupDiagnosticActivity"
             android:process=":diagnostic"
             android:exported="true" />
+        <!-- Only our own MediaStore content URIs may be rendered. -->
+        <activity android:name=".PdfPreviewActivity" android:exported="false" />
         <activity
             android:name=".ChromiumTestActivity"
             android:launchMode="singleTop"

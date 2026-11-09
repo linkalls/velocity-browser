@@ -64,6 +64,7 @@ final class CefriumDownloadController {
         long received;
         long total = -1;
         Uri saved;
+        boolean previewWhenReady;
         Job(CefriumBrowser browser, CefriumBrowser.DownloadItem item,
                 String name, boolean privateMode, File temporary) {
             this.browser = browser;
@@ -145,24 +146,23 @@ final class CefriumDownloadController {
                 if (!jobs.get(i).busy()) { jobs.remove(i--); extra--; }
             }
         }
-        AlertDialog confirm = new AlertDialog.Builder(activity)
+        boolean pdf = job.mime.equals("application/pdf")
+            || job.name.toLowerCase(java.util.Locale.ROOT).endsWith(".pdf");
+        AlertDialog.Builder builder = new AlertDialog.Builder(activity)
             .setTitle("ファイルを保存")
             .setMessage(safe + (privateMode
                 ? "\n\n非公開タブで保存したファイルも端末のダウンロードに残るよ。"
                 : "\n\n完了後、端末の「ダウンロード」に表示するよ。"))
-            .setPositiveButton("ダウンロード", (dialog, which) -> {
-                if (!decided.compareAndSet(false, true)) return;
-                if (disposed) { callback.cancel(); job.state = State.CANCELED; return; }
-                job.state = State.DOWNLOADING;
-                callback.allow(temporary.getAbsolutePath());
-                repaint();
-            })
+            .setPositiveButton("ダウンロード", (dialog, which) ->
+                accept(job, callback, decided, false))
             .setNegativeButton("キャンセル", (dialog, which) -> {
                 if (decided.compareAndSet(false, true)) callback.cancel();
                 job.state = State.CANCELED;
                 idle(browser);
-            })
-            .create();
+            });
+        if (pdf) builder.setNeutralButton("保存してPDFを開く", (dialog, which) ->
+            accept(job, callback, decided, true));
+        AlertDialog confirm = builder.create();
         confirm.setOnCancelListener(dialog -> {
             if (decided.compareAndSet(false, true)) callback.cancel();
             job.state = State.CANCELED;
@@ -177,6 +177,20 @@ final class CefriumDownloadController {
             job.state = State.CANCELED;
             idle(browser);
         }
+    }
+
+    private void accept(Job job, CefriumBrowser.BeforeDownloadCallback callback,
+            AtomicBoolean decided, boolean preview) {
+        if (!decided.compareAndSet(false, true)) return;
+        if (disposed) {
+            callback.cancel();
+            job.state = State.CANCELED;
+            return;
+        }
+        job.previewWhenReady = preview;
+        job.state = State.DOWNLOADING;
+        callback.allow(job.temporary.getAbsolutePath());
+        repaint();
     }
 
     private void updated(CefriumBrowser browser, CefriumBrowser.DownloadItem item) {
@@ -252,6 +266,7 @@ final class CefriumDownloadController {
             CefriumBrowser completedBrowser = job.browser;
             idle(completedBrowser);
             job.browser = null;
+            if (result != null && job.previewWhenReady) showPdf(job);
             repaint();
         });
     }
@@ -331,7 +346,20 @@ final class CefriumDownloadController {
         }
     }
 
+    private void showPdf(Job job) {
+        if (job.saved == null) return;
+        Intent preview = new Intent(activity, PdfPreviewActivity.class);
+        preview.setData(job.saved);
+        preview.putExtra(PdfPreviewActivity.EXTRA_PRIVATE, job.privateMode);
+        activity.startActivity(preview);
+    }
+
     private void openSaved(Job job) {
+        if (job.mime.equals("application/pdf")
+                || job.name.toLowerCase(java.util.Locale.ROOT).endsWith(".pdf")) {
+            showPdf(job);
+            return;
+        }
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW);
             intent.setDataAndType(job.saved, job.mime);
