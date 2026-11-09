@@ -142,6 +142,8 @@ public final class ChromiumTestActivity extends Activity {
     private TextView title;
     private Button back;
     private Button forward;
+    private ImageView locationIdentity;
+    private Button addressAction;
     private boolean destroyed;
     private static final String TAG = "VelocityCefStartup";
     private boolean syntheticSmokeRequested;
@@ -152,13 +154,13 @@ public final class ChromiumTestActivity extends Activity {
 
     // Deliberately restrained palette. No novelty gradients, false neon
     // borders, or extra Material dependencies on the critical launch path.
-    private static final int CANVAS = Color.rgb(12, 16, 22);
-    private static final int SURFACE = Color.rgb(24, 31, 42);
-    private static final int ELEVATED = Color.rgb(37, 47, 61);
-    private static final int BORDER = Color.rgb(58, 71, 85);
-    private static final int PRIMARY = Color.rgb(241, 246, 250);
-    private static final int SECONDARY = Color.rgb(167, 181, 194);
-    private static final int ACCENT = Color.rgb(111, 220, 187);
+    private static final int CANVAS = Color.rgb(22, 23, 28);
+    private static final int SURFACE = Color.rgb(37, 39, 46);
+    private static final int ELEVATED = Color.rgb(48, 51, 59);
+    private static final int BORDER = Color.rgb(65, 69, 78);
+    private static final int PRIMARY = Color.rgb(245, 246, 249);
+    private static final int SECONDARY = Color.rgb(170, 175, 185);
+    private static final int ACCENT = Color.rgb(126, 169, 244);
 
     private int dp(int v) {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
@@ -321,16 +323,18 @@ public final class ChromiumTestActivity extends Activity {
         LinearLayout.LayoutParams addressLp = new LinearLayout.LayoutParams(-1, dp(51));
         footer.addView(addressRow, addressLp);
 
-        ImageView searchMark = iconView(R.drawable.ic_browser_search, ACCENT);
-        searchMark.setContentDescription("URLと検索");
-        addressRow.addView(searchMark, new LinearLayout.LayoutParams(dp(31), dp(44)));
+        locationIdentity = iconView(R.drawable.ic_browser_search, SECONDARY);
+        locationIdentity.setContentDescription("サイト情報");
+        locationIdentity.setOnClickListener(v -> showCurrentSiteInfo());
+        addressRow.addView(locationIdentity,
+            new LinearLayout.LayoutParams(dp(35), dp(44)));
 
         address = new EditText(this);
         address.setSingleLine(true);
         address.setTextColor(PRIMARY);
         address.setHintTextColor(SECONDARY);
         address.setHint("検索またはアドレスを入力");
-        address.setTextSize(15);
+        address.setTextSize(14);
         address.setPadding(0, 0, dp(5), 0);
         address.setBackgroundColor(Color.TRANSPARENT);
         address.setSelectAllOnFocus(true);
@@ -347,9 +351,11 @@ public final class ChromiumTestActivity extends Activity {
         });
         addressRow.addView(address, new LinearLayout.LayoutParams(0, dp(48), 1f));
 
-        Button go = iconButton(R.drawable.ic_browser_forward, "入力したURLを開く", this::loadAddress);
-        go.setTextColor(ACCENT);
-        addressRow.addView(go, new LinearLayout.LayoutParams(dp(44), dp(44)));
+        addressAction = iconButton(R.drawable.ic_browser_forward,
+            "検索・ページを開く", this::loadAddress);
+        addressAction.setVisibility(View.GONE);
+        addressRow.addView(addressAction,
+            new LinearLayout.LayoutParams(dp(42), dp(42)));
 
         toolbarActions = new LinearLayout(this);
         toolbarActions.setGravity(Gravity.CENTER_VERTICAL);
@@ -363,15 +369,21 @@ public final class ChromiumTestActivity extends Activity {
         forward = iconButton(R.drawable.ic_browser_forward, "次のページへ進む", () -> {
             if (engine != null && !tabRegistry.isStartupHomeCurrent()) engine.goForward();
         });
-        Button reload = iconButton(R.drawable.ic_browser_refresh, "ページを再読み込み", () -> {
-            if (engine != null) engine.reload();
-        });
+        Button home = iconButton(R.drawable.ic_browser_home,
+            "ホームを表示", this::goHome);
         tabsButton = iconButton(R.drawable.ic_browser_tabs, "タブ一覧", this::showTabs);
-        tabsButton.setTextSize(12);
+        tabsButton.setTextSize(13);
+        tabsButton.setBackground(rounded(SURFACE, 12, BORDER));
+        tabsButton.setOnLongClickListener(v -> {
+            new AlertDialog.Builder(this).setItems(new String[]{
+                "新しい通常タブ", "新しい非公開タブ"}, (d, index) ->
+                createTab("about:blank", index == 1)).show();
+            return true;
+        });
         Button menu = iconButton(R.drawable.ic_browser_menu, "ブラウザメニュー", this::showMenu);
         toolbarActions.addView(back, new LinearLayout.LayoutParams(0, dp(48), 1));
         toolbarActions.addView(forward, new LinearLayout.LayoutParams(0, dp(48), 1));
-        toolbarActions.addView(reload, new LinearLayout.LayoutParams(0, dp(48), 1));
+        toolbarActions.addView(home, new LinearLayout.LayoutParams(0, dp(48), 1));
         toolbarActions.addView(tabsButton, new LinearLayout.LayoutParams(0, dp(48), 1.25f));
         toolbarActions.addView(menu, new LinearLayout.LayoutParams(0, dp(48), 1));
 
@@ -379,10 +391,21 @@ public final class ChromiumTestActivity extends Activity {
         // appears, drop the duplicate toolbar instead of hiding the URL input.
         address.setOnFocusChangeListener((v, hasFocus) -> {
             toolbarActions.setVisibility(hasFocus ? View.GONE : View.VISIBLE);
-            go.setContentDescription(hasFocus ? "検索・ページを開く" : "アドレスを開く");
-            if (hasFocus) address.selectAll();
+            addressAction.setVisibility(hasFocus ? View.VISIBLE : View.GONE);
+            if (hasFocus) {
+                TabRegistry.Tab activeTab = tabRegistry.current();
+                if (activeTab != null) {
+                    address.setText(activeTab.url.equals("about:blank") ? "" : activeTab.url);
+                }
+                address.selectAll();
+                locationIdentity.setImageResource(R.drawable.ic_browser_search);
+            } else {
+                updateNavigation();
+            }
         });
 
+        // Chrome/Vivaldi-style vertical swipe opens the tab switcher;
+        // horizontal swipes continue navigating within the same privacy mode.
         // Horizontal swiping on the unfocused address field switches tabs.
         // Once focused, Android's native EditText owns all gestures for
         // selection and cursor manipulation without interception.
@@ -397,11 +420,15 @@ public final class ChromiumTestActivity extends Activity {
                     float velocityX, float velocityY) {
                     if (down == null || up == null) return false;
                     float displacement = up.getX() - down.getX();
+                    float vertical = up.getY() - down.getY();
+                    if (vertical > dp(76) && Math.abs(velocityY) > dp(250)
+                            && Math.abs(vertical) > Math.abs(displacement) * 1.25f) {
+                        showTabs();
+                        return true;
+                    }
                     if (Math.abs(displacement) < dp(80)
                             || Math.abs(velocityX) < dp(250)
-                            || Math.abs(displacement) < Math.abs(up.getY() - down.getY())) {
-                        return false;
-                    }
+                            || Math.abs(displacement) < Math.abs(vertical)) return false;
                     switchTabBy(displacement < 0 ? 1 : -1);
                     return true;
                 }
@@ -409,18 +436,37 @@ public final class ChromiumTestActivity extends Activity {
         address.setOnTouchListener((v, event) ->
             address.hasFocus() ? false : addressGesture.onTouchEvent(event));
         root.requestFocus();
-
-        // Screenshot-only UI audit hook in DEBUG builds. This never ships in a
-        // signed release or handles remote instructions in the production app.
+        // Screenshot-only UI audit hook in DEBUG builds. Never change user
+        // preferences in a signed build or on an ordinary app launch.
         String audit = getIntent() == null ? null :
             getIntent().getStringExtra("velocity_debug_ui_audit");
-        if ((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0
-                && ("settings".equals(audit) || "tabs".equals(audit)
-                    || "tabs-private".equals(audit) || "tabs-groups".equals(audit))) {
+        boolean debugAudit = (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0
+            && audit != null;
+        if (debugAudit) {
+            getSharedPreferences(TAB_PREFS, MODE_PRIVATE).edit()
+                .putBoolean("address_bar_bottom", !"top-bar".equals(audit)).apply();
+        }
+        // The toolbar is genuinely reparented. It never duplicates its controls
+        // and it preserves the active Cefrium Surface and keyboard focus.
+        applyBrowserBarPosition();
+        if (debugAudit && ("settings".equals(audit) || "tabs".equals(audit)
+                || "tabs-private".equals(audit) || "tabs-groups".equals(audit)
+                || "settings-tabs".equals(audit) || "settings-media".equals(audit)
+                || "home".equals(audit) || "menu".equals(audit)
+                || "top-bar".equals(audit))) {
             root.postDelayed(() -> {
                 if (destroyed || isFinishing()) return;
                 if ("settings".equals(audit)) {
                     showSettings();
+                } else if ("settings-tabs".equals(audit)) {
+                    showSettingsCategory("タブ");
+                } else if ("settings-media".equals(audit)) {
+                    showSettingsCategory("メディア");
+                } else if ("menu".equals(audit)) {
+                    showMenu();
+                } else if ("home".equals(audit) || "top-bar".equals(audit)) {
+                    // Home and toolbar are visible, without site navigation.
+                    updateHomeState();
                 } else if (chromiumReady) {
                     if ("tabs-private".equals(audit)) {
                         // An isolated, blank private tab: no user content or JPEG.
@@ -497,12 +543,190 @@ public final class ChromiumTestActivity extends Activity {
     }
 
     /** A native home never fetches remote data during cold start. */
+    /** Local shortcuts use a bounded private preference; never fetch favicon URLs. */
+    private static final String SPEED_DIALS_KEY = "velocity_speed_dials_v2";
+
+    private static final class SpeedDial {
+        final String name;
+        final String url;
+        SpeedDial(String name, String url) {
+            this.name = name;
+            this.url = url;
+        }
+    }
+
+    private List<SpeedDial> readSpeedDials() {
+        String saved = getSharedPreferences(TAB_PREFS, MODE_PRIVATE)
+            .getString(SPEED_DIALS_KEY, null);
+        List<SpeedDial> list = new ArrayList<>();
+        if (saved == null) {
+            for (int i = 0; i < SITE_URLS.length; i++) {
+                list.add(new SpeedDial(SITE_NAMES[i], SITE_URLS[i]));
+            }
+            return list;
+        }
+        try {
+            JSONArray json = new JSONArray(saved);
+            for (int i = 0; i < json.length() && list.size() < 30; i++) {
+                JSONObject entry = json.optJSONObject(i);
+                if (entry == null) continue;
+                String url = entry.optString("url", "");
+                String name = entry.optString("name", "");
+                if (!name.trim().isEmpty() && isPersistable(url)
+                        && !"about:blank".equals(url)) {
+                    list.add(new SpeedDial(name.substring(0, Math.min(32, name.length())), url));
+                }
+            }
+        } catch (org.json.JSONException invalid) {
+            Log.w(TAG, "Invalid saved Speed Dial configuration; using defaults");
+            for (int i = 0; i < SITE_URLS.length; i++) {
+                list.add(new SpeedDial(SITE_NAMES[i], SITE_URLS[i]));
+            }
+        }
+        return list;
+    }
+
+    private void saveSpeedDials(List<SpeedDial> entries) {
+        JSONArray array = new JSONArray();
+        for (SpeedDial entry : entries) {
+            try {
+                array.put(new JSONObject().put("name", entry.name).put("url", entry.url));
+            } catch (org.json.JSONException invalid) {
+                Log.w(TAG, "Could not encode Speed Dial entry");
+            }
+        }
+        getSharedPreferences(TAB_PREFS, MODE_PRIVATE).edit()
+            .putString(SPEED_DIALS_KEY, array.toString()).apply();
+        rebuildHome();
+    }
+
+    private void rebuildHome() {
+        if (browserContent == null) return;
+        if (homeOverlay != null) browserContent.removeView(homeOverlay);
+        buildHome(browserContent);
+        updateHomeState();
+    }
+
+    private int shortcutAccent(String name) {
+        final int[] swatches = {
+            Color.rgb(90, 119, 175), Color.rgb(108, 113, 159),
+            Color.rgb(78, 135, 132), Color.rgb(156, 110, 99),
+            Color.rgb(126, 104, 153), Color.rgb(126, 132, 98)
+        };
+        return swatches[(name.hashCode() & 0x7fffffff) % swatches.length];
+    }
+
+    private LinearLayout shortcutTile(SpeedDial entry, boolean privateTab) {
+        LinearLayout cell = new LinearLayout(this);
+        cell.setOrientation(LinearLayout.VERTICAL);
+        cell.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        cell.setPadding(dp(3), dp(7), dp(3), dp(4));
+        String initial = entry.name.isEmpty() ? "•" : entry.name.substring(0, 1);
+        TextView glyph = text(initial, 25, PRIMARY, true);
+        glyph.setGravity(Gravity.CENTER);
+        glyph.setBackground(rounded(shortcutAccent(entry.name), 19, Color.TRANSPARENT));
+        cell.addView(glyph, new LinearLayout.LayoutParams(dp(60), dp(60)));
+        TextView label = text(entry.name, 12, PRIMARY, false);
+        label.setGravity(Gravity.CENTER);
+        label.setSingleLine(true);
+        label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams caption = new LinearLayout.LayoutParams(-1, dp(30));
+        caption.topMargin = dp(3);
+        cell.addView(label, caption);
+        cell.setContentDescription(entry.name + " ショートカット");
+        cell.setOnClickListener(v -> navigateCurrentTab(entry.url));
+        cell.setOnLongClickListener(v -> {
+            editSpeedDial(entry);
+            return true;
+        });
+        return cell;
+    }
+
+    private LinearLayout addShortcutTile() {
+        LinearLayout cell = new LinearLayout(this);
+        cell.setOrientation(LinearLayout.VERTICAL);
+        cell.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        cell.setPadding(dp(3), dp(7), dp(3), dp(4));
+        ImageView symbol = iconView(R.drawable.ic_browser_plus, SECONDARY);
+        symbol.setPadding(dp(17), dp(17), dp(17), dp(17));
+        symbol.setBackground(rounded(SURFACE, 19, BORDER));
+        cell.addView(symbol, new LinearLayout.LayoutParams(dp(60), dp(60)));
+        TextView label = text("追加", 12, SECONDARY, false);
+        label.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams labelSize = new LinearLayout.LayoutParams(-1, dp(30));
+        labelSize.topMargin = dp(3);
+        cell.addView(label, labelSize);
+        cell.setContentDescription("ショートカットを追加");
+        cell.setOnClickListener(v -> editSpeedDial(null));
+        return cell;
+    }
+
+    private void editSpeedDial(SpeedDial original) {
+        LinearLayout fields = new LinearLayout(this);
+        fields.setOrientation(LinearLayout.VERTICAL);
+        fields.setPadding(dp(22), dp(5), dp(22), dp(2));
+        EditText name = new EditText(this);
+        name.setSingleLine(true);
+        name.setHint("名前");
+        name.setText(original == null ? "" : original.name);
+        fields.addView(name, new LinearLayout.LayoutParams(-1, dp(56)));
+        EditText url = new EditText(this);
+        url.setSingleLine(true);
+        url.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        url.setHint("https://example.com/");
+        url.setText(original == null ? "" : original.url);
+        fields.addView(url, new LinearLayout.LayoutParams(-1, dp(56)));
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this)
+            .setTitle(original == null ? "ショートカットを追加" : "ショートカットを編集")
+            .setView(fields)
+            .setNegativeButton("キャンセル", null)
+            .setPositiveButton("保存", null);
+        if (original != null) dialog.setNeutralButton("削除", (d, which) -> {
+            List<SpeedDial> entries = readSpeedDials();
+            entries.removeIf(e -> e.url.equals(original.url) && e.name.equals(original.name));
+            saveSpeedDials(entries);
+        });
+        AlertDialog popup = dialog.create();
+        popup.setOnShowListener(ignored -> popup.getButton(AlertDialog.BUTTON_POSITIVE)
+            .setOnClickListener(view -> {
+                String trimmedName = name.getText().toString().trim();
+                String target = url.getText().toString().trim();
+                // A Speed Dial stores only validated HTTP(S) URLs. A search
+                // query or JavaScript URL must not become a persistent link.
+                if (trimmedName.isEmpty() || !isPersistable(target)
+                        || "about:blank".equals(target)) {
+                    Toast.makeText(this, "名前とhttp(s)のURLを入力してね",
+                        Toast.LENGTH_LONG).show();
+                    return;
+                }
+                List<SpeedDial> entries = readSpeedDials();
+                if (original != null) {
+                    for (int i = 0; i < entries.size(); i++) {
+                        if (entries.get(i).name.equals(original.name)
+                                && entries.get(i).url.equals(original.url)) {
+                            entries.remove(i);
+                            break;
+                        }
+                    }
+                }
+                if (entries.size() >= 30) {
+                    Toast.makeText(this, "ショートカットは30件まで", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                entries.add(new SpeedDial(trimmedName.substring(0,
+                    Math.min(32, trimmedName.length())), target));
+                saveSpeedDials(entries);
+                popup.dismiss();
+            }));
+        popup.show();
+    }
+
+    /** Chrome's calm new-tab layout plus Vivaldi's editable Speed Dials. */
     private void buildHome(FrameLayout parent) {
         FrameLayout overlay = new FrameLayout(this);
         homeOverlay = overlay;
         overlay.setBackgroundColor(CANVAS);
         parent.addView(overlay, new FrameLayout.LayoutParams(-1, -1));
-
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setVerticalScrollBarEnabled(false);
@@ -510,72 +734,62 @@ public final class ChromiumTestActivity extends Activity {
 
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
-        body.setPadding(dp(24), dp(26), dp(24), dp(24));
+        body.setPadding(dp(18), dp(46), dp(18), dp(28));
         scroll.addView(body);
-
-        TextView eyebrow = text("YOUR BROWSER · YOUR SPACE", 11, ACCENT, true);
-        eyebrow.setLetterSpacing(0.09f);
-        body.addView(eyebrow, new LinearLayout.LayoutParams(-1, dp(30)));
-
-        TextView wordmark = text("Velocity", 36, PRIMARY, true);
-        wordmark.setLetterSpacing(-0.025f);
-        body.addView(wordmark, new LinearLayout.LayoutParams(-1, dp(58)));
-
-        TextView sub = text("必要なものへ、最短距離で。", 14, SECONDARY, false);
-        body.addView(sub, new LinearLayout.LayoutParams(-1, dp(32)));
-
-        Button search = makeButton("⌕    検索またはURLを入力", "アドレスバーに入力", this::focusAddress);
+        TextView wordmark = text("Velocity", 35, PRIMARY, true);
+        wordmark.setLetterSpacing(-0.035f);
+        wordmark.setGravity(Gravity.CENTER);
+        body.addView(wordmark, new LinearLayout.LayoutParams(-1, dp(70)));
+        TextView tagline = text("Browse your way", 12, SECONDARY, false);
+        tagline.setGravity(Gravity.CENTER);
+        body.addView(tagline, new LinearLayout.LayoutParams(-1, dp(24)));
+        Button search = makeButton("検索またはURLを入力", "ウェブを検索", this::focusAddress);
         search.setTextSize(15);
+        search.setTextColor(SECONDARY);
         search.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-        search.setPadding(dp(20), 0, dp(12), 0);
-        search.setBackground(rounded(SURFACE, 16, BORDER));
+        search.setPadding(dp(18), 0, dp(12), 0);
+        search.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_browser_search, 0, 0, 0);
+        search.setCompoundDrawableTintList(ColorStateList.valueOf(ACCENT));
+        search.setCompoundDrawablePadding(dp(12));
+        search.setBackground(rounded(SURFACE, 26, Color.TRANSPARENT));
         LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(-1, dp(56));
-        searchLp.topMargin = dp(32);
+        searchLp.topMargin = dp(28);
         body.addView(search, searchLp);
 
-        TextView caption = text("クイックアクセス", 14, PRIMARY, true);
-        LinearLayout.LayoutParams captionLp = new LinearLayout.LayoutParams(-1, dp(45));
-        captionLp.topMargin = dp(23);
-        body.addView(caption, captionLp);
+        LinearLayout rowTitle = new LinearLayout(this);
+        rowTitle.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams headerLp = new LinearLayout.LayoutParams(-1, dp(60));
+        headerLp.topMargin = dp(21);
+        body.addView(rowTitle, headerLp);
+        TextView section = text("ショートカット", 16, PRIMARY, true);
+        rowTitle.addView(section, new LinearLayout.LayoutParams(0, -1, 1));
+        Button edit = iconButton(R.drawable.ic_browser_plus, "ショートカットを追加",
+            () -> editSpeedDial(null));
+        edit.setBackground(rounded(SURFACE, 14, Color.TRANSPARENT));
+        rowTitle.addView(edit, new LinearLayout.LayoutParams(dp(42), dp(42)));
 
-        final int[] shortcutIcons = {
-            R.drawable.ic_browser_globe, R.drawable.ic_browser_search,
-            R.drawable.ic_browser_info, R.drawable.ic_browser_globe,
-            R.drawable.ic_browser_play, R.drawable.ic_browser_folder
-        };
-        for (int startIndex = 0; startIndex < SITE_NAMES.length; startIndex += 2) {
-            LinearLayout row = new LinearLayout(this);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            body.addView(row, new LinearLayout.LayoutParams(-1, dp(65)));
-            for (int col = 0; col < 2 && startIndex + col < SITE_NAMES.length; col++) {
-                final int index = startIndex + col;
-                Button shortcut = makeButton(SITE_NAMES[index], SITE_NAMES[index] + " を開く",
-                    () -> openHomeLink(index));
-                shortcut.setTextSize(13);
-                shortcut.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
-                shortcut.setPadding(dp(12), 0, dp(8), 0);
-                shortcut.setCompoundDrawablesWithIntrinsicBounds(
-                    shortcutIcons[index], 0, 0, 0);
-                shortcut.setCompoundDrawableTintList(ColorStateList.valueOf(ACCENT));
-                shortcut.setCompoundDrawablePadding(dp(10));
-                shortcut.setBackground(new RippleDrawable(ColorStateList.valueOf(0x28FFFFFF),
-                    rounded(SURFACE, 15, BORDER), null));
-                LinearLayout.LayoutParams cell = new LinearLayout.LayoutParams(0, dp(55), 1f);
-                if (col != 0) cell.leftMargin = dp(9);
-                row.addView(shortcut, cell);
+        List<SpeedDial> entries = readSpeedDials();
+        int widthDp = getResources().getConfiguration().screenWidthDp;
+        int columns = widthDp < 360 ? 3 : 4;
+        if (getSharedPreferences(TAB_PREFS, MODE_PRIVATE)
+                .getBoolean("show_speed_dials", true)) {
+            for (int i = 0; i < entries.size() + 1; i += columns) {
+                LinearLayout row = new LinearLayout(this);
+                row.setGravity(Gravity.TOP);
+                body.addView(row, new LinearLayout.LayoutParams(-1, dp(112)));
+                for (int col = 0; col < columns; col++) {
+                    int index = i + col;
+                    View tile = index < entries.size() ? shortcutTile(entries.get(index), false)
+                        : index == entries.size() ? addShortcutTile() : new View(this);
+                    row.addView(tile, new LinearLayout.LayoutParams(0, dp(108), 1));
+                }
             }
+        } else {
+            TextView empty = text("ショートカットは設定で表示できるよ", 13,
+                SECONDARY, false);
+            body.addView(empty, new LinearLayout.LayoutParams(-1, dp(55)));
         }
-        TextView privacy = text("ホーム画面自体はオフラインで使えます。", 12, SECONDARY, false);
-        LinearLayout.LayoutParams privacyLp = new LinearLayout.LayoutParams(-1, dp(45));
-        privacyLp.topMargin = dp(10);
-        body.addView(privacy, privacyLp);
     }
-
-    private void openHomeLink(int index) {
-        if (index < 0 || index >= SITE_URLS.length) return;
-        navigateCurrentTab(SITE_URLS[index]);
-    }
-
     private void updateHomeState() {
         if (homeOverlay == null) return;
         TabRegistry.Tab current = tabRegistry.current();
@@ -586,8 +800,10 @@ public final class ChromiumTestActivity extends Activity {
 
     private void positionChromiumSurface(FrameLayout surface, View header, View footer) {
         if (destroyed || !(surface.getParent() instanceof FrameLayout)) return;
-        int top = header.getHeight();
-        int bottom = footer.getHeight();
+        boolean footerAbovePage = browserRoot != null && browserContent != null
+            && browserRoot.indexOfChild(footer) < browserRoot.indexOfChild(browserContent);
+        int top = header.getHeight() + (footerAbovePage ? footer.getHeight() : 0);
+        int bottom = footerAbovePage ? 0 : footer.getHeight();
         ViewGroup.LayoutParams old = surface.getLayoutParams();
         if (old instanceof FrameLayout.LayoutParams &&
             old.width == -1 && old.height == -1 &&
@@ -995,6 +1211,13 @@ public final class ChromiumTestActivity extends Activity {
         }
         activateCurrentTab();
         saveRegularTabs();
+        if ("about:blank".equals(url)
+                && getSharedPreferences(TAB_PREFS, MODE_PRIVATE)
+                    .getBoolean("focus_new_tab", false)) {
+            mainHandler.postDelayed(() -> {
+                if (!destroyed && !isFinishing()) focusAddress();
+            }, 140L);
+        }
     }
 
     private void selectTab(String id) {
@@ -1085,7 +1308,7 @@ public final class ChromiumTestActivity extends Activity {
                 tab.url = url;
                 currentOriginHost.set(SiteBlockPolicy.hostOf(url));
                 if (tabRegistry.current() == tab) {
-                    if (!address.hasFocus()) address.setText(url);
+                    if (!address.hasFocus()) address.setText(displayAddress(url));
                     updateHomeState();
                 }
                 if (!tab.privateMode) scheduleRegularTabsSave();
@@ -1315,8 +1538,76 @@ public final class ChromiumTestActivity extends Activity {
             updateHomeState();
             title.setText((tab.privateMode ? "非公開 · " : "") + tab.displayTitle());
             if (!address.hasFocus()) {
-                address.setText(tab.url.equals("about:blank") ? "" : tab.url);
+                address.setText(displayAddress(tab.url));
             }
+            if (locationIdentity != null && !address.hasFocus()) {
+                locationIdentity.setImageResource(tab.url.equals("about:blank")
+                    ? R.drawable.ic_browser_search : R.drawable.ic_browser_globe);
+                locationIdentity.setColorFilter(tab.privateMode ? SECONDARY : ACCENT);
+            }
+        }
+    }
+
+    /** The location field is readable by default, editable in full on focus. */
+    private String displayAddress(String url) {
+        if (url == null || url.equals("about:blank")) return "";
+        try {
+            android.net.Uri parsed = android.net.Uri.parse(url);
+            String host = parsed.getHost();
+            if (host != null && !host.isEmpty()) {
+                return host.startsWith("www.") ? host.substring(4) : host;
+            }
+        } catch (RuntimeException ignored) {
+            // Internal synthetic fixtures or partial URLs keep a safe fallback.
+        }
+        return url.length() > 80 ? url.substring(0, 80) : url;
+    }
+
+    private void showCurrentSiteInfo() {
+        TabRegistry.Tab tab = tabRegistry.current();
+        if (tab == null || tab.url.equals("about:blank")) {
+            focusAddress();
+            return;
+        }
+        android.net.Uri parsed = android.net.Uri.parse(tab.url);
+        String host = parsed.getHost() == null ? "Webページ" : parsed.getHost();
+        boolean secure = "https".equalsIgnoreCase(parsed.getScheme());
+        new AlertDialog.Builder(this).setTitle(host)
+            .setMessage((secure ? "HTTPSで接続" : "暗号化されていない可能性がある接続")
+                + "\n\nURL: " + tab.url
+                + "\n\nサイトの許可と証明書検証はChromium側で処理されるよ。")
+            .setPositiveButton("閉じる", null).show();
+    }
+
+    private void goHome() {
+        if (tabRegistry.selectStartupHome() != null) {
+            hideKeyboard();
+            address.clearFocus();
+            activateCurrentTab();
+            saveRegularTabs();
+        }
+    }
+
+    private boolean addressBarAtBottom() {
+        return getSharedPreferences(TAB_PREFS, MODE_PRIVATE)
+            .getBoolean("address_bar_bottom", true);
+    }
+
+    private void applyBrowserBarPosition() {
+        if (browserRoot == null || browserFooter == null || browserContent == null) return;
+        int footerIndex = browserRoot.indexOfChild(browserFooter);
+        int contentIndex = browserRoot.indexOfChild(browserContent);
+        boolean bottom = addressBarAtBottom();
+        if (footerIndex < 0 || contentIndex < 0) return;
+        boolean alreadyBelow = footerIndex > contentIndex;
+        if (alreadyBelow == bottom) return;
+        browserRoot.removeView(browserFooter);
+        // A hidden internal header occupies index 0.
+        browserRoot.addView(browserFooter, bottom ? browserRoot.getChildCount() : 1,
+            new LinearLayout.LayoutParams(-1, -2));
+        if (engine != null) {
+            FrameLayout surface = engine.getSurfaceContainer();
+            surface.post(() -> positionChromiumSurface(surface, browserHeader, browserFooter));
         }
     }
 
@@ -1780,10 +2071,10 @@ public final class ChromiumTestActivity extends Activity {
     private static final int TAB_VIEW_PRIVATE = 1;
     private static final int TAB_VIEW_GROUPS = 2;
     private static final int TAB_VIEW_RECENT = 3;
-    private static final int TAB_SWITCHER_ACCENT = Color.rgb(79, 144, 232);
-    private static final int TAB_SWITCHER_BACKGROUND = Color.rgb(23, 25, 30);
-    private static final int TAB_SWITCHER_CARD = Color.rgb(49, 52, 59);
-    private static final int TAB_SWITCHER_PREVIEW = Color.rgb(31, 34, 40);
+    private static final int TAB_SWITCHER_ACCENT = Color.rgb(126, 169, 244);
+    private static final int TAB_SWITCHER_BACKGROUND = Color.rgb(22, 23, 28);
+    private static final int TAB_SWITCHER_CARD = Color.rgb(48, 51, 59);
+    private static final int TAB_SWITCHER_PREVIEW = Color.rgb(37, 39, 46);
 
     /**
      * A full-height native tab screen, without creating a second Activity or
@@ -2034,7 +2325,7 @@ public final class ChromiumTestActivity extends Activity {
         LinearLayout bar = new LinearLayout(this);
         bar.setGravity(Gravity.CENTER_VERTICAL);
         bar.setPadding(dp(6), dp(4), dp(6), dp(5));
-        bar.setBackgroundColor(Color.rgb(29, 31, 37));
+        bar.setBackgroundColor(SURFACE);
         int[] icons = {R.drawable.ic_browser_tabs, R.drawable.ic_browser_lock,
             R.drawable.ic_browser_layers, R.drawable.ic_browser_history};
         String[] labels = {"通常", "非公開", "グループ", "最近閉じた"};
@@ -2475,91 +2766,167 @@ public final class ChromiumTestActivity extends Activity {
         }
     }
 
+    /**
+     * A Chrome-style row of high-frequency tools, followed by a compact menu.
+     * Diagnostic/experimental controls are one level deeper so a normal user
+     * doesn't have to scroll past implementation details to find Settings.
+     */
     private void showMenu() {
-        String[] labels = {
-            "新しいタブ", "新しい非公開タブ", "現在のタブを閉じる",
-            "ページ内検索", "ページを共有", "比較サイト",
-            "広告・トラッカードメイン遮断", "広告枠の非表示を切替",
-            "このサイトの追加遮断を切替", "高速起動（実験・次回から）",
-            "更新APKを確認", "起動診断", "設定", "このブラウザについて",
-            "PC版サイト / スマホ版サイト", "URLをコピー", "ページの表示倍率"
-        };
-        int[] icons = {
-            R.drawable.ic_browser_plus, R.drawable.ic_browser_lock,
-            R.drawable.ic_browser_close, R.drawable.ic_browser_search,
-            R.drawable.ic_browser_share, R.drawable.ic_browser_globe,
-            R.drawable.ic_browser_shield, R.drawable.ic_browser_eye_off,
-            R.drawable.ic_browser_shield, R.drawable.ic_browser_speed,
-            R.drawable.ic_browser_download, R.drawable.ic_browser_flask,
-            R.drawable.ic_browser_settings, R.drawable.ic_browser_info,
-            R.drawable.ic_browser_globe, R.drawable.ic_browser_share, R.drawable.ic_browser_search
-        };
-        String[] hints = {
-            "通常のブラウジング", "終了時にURLを保存しない", "5秒以内ならURLを再度開ける",
-            "現在のページで探す", "Androidの共有メニューへ", "表示・スクロールを比較",
-            blockDomainsEnabled ? "追加遮断 ON" : "追加遮断 OFF",
-            cosmeticEnabled ? "要素非表示 ON" : "要素非表示 OFF",
-            "サイト別の例外設定（非公開モードは保存しない）",
-            isFastAttachEnabled()
-                    ? "ON · 失敗時は起動診断から解除できる" : "OFF · 標準起動を使用中",
-            "GitHub Actionsの署名済みビルド", "クラッシュ・起動状態を確認",
-            "ページ・プライバシー・Googleパスキーの設定",
-            "Cefrium 0.18.0 · 開発版",
-            tabRegistry.current() != null && tabRegistry.current().desktopMode
-                ? "PC版リクエスト ON · スマホ版に戻す" : "スマホ版リクエスト ON · PC版に切替",
-            "ページのURLをクリップボードにコピー", "80% / 100% / 125% / 150%"
-        };
         LinearLayout panel = sheetPanel();
-        TextView header = text("Velocity", 21, PRIMARY, true);
-        header.setPadding(dp(6), 0, 0, dp(12));
-        panel.addView(header, new LinearLayout.LayoutParams(-1, dp(45)));
+        final Dialog[] dialog = new Dialog[1];
+        LinearLayout heading = new LinearLayout(this);
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        heading.setPadding(dp(5), 0, dp(5), dp(8));
+        panel.addView(heading, new LinearLayout.LayoutParams(-1, dp(49)));
+        TextView title = text("Velocity", 21, PRIMARY, true);
+        heading.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
+        TextView hint = text("ブラウザメニュー", 11, SECONDARY, false);
+        heading.addView(hint, new LinearLayout.LayoutParams(-2, -1));
+
+        LinearLayout shortcuts = new LinearLayout(this);
+        shortcuts.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams shortcutsLp = new LinearLayout.LayoutParams(-1, dp(75));
+        shortcutsLp.bottomMargin = dp(10);
+        panel.addView(shortcuts, shortcutsLp);
+        int[] quickIcons = {
+            R.drawable.ic_browser_forward, R.drawable.ic_browser_refresh,
+            R.drawable.ic_browser_plus, R.drawable.ic_browser_share,
+            R.drawable.ic_browser_home
+        };
+        String[] quickNames = {"進む", "更新", "新規", "共有", "ホーム"};
+        Runnable[] quickActions = {
+            () -> { if (engine != null && engine.canGoForward()) engine.goForward(); },
+            () -> { if (engine != null) engine.reload(); },
+            () -> createTab("about:blank", false),
+            this::shareCurrentPage,
+            this::goHome
+        };
+        for (int i = 0; i < quickIcons.length; i++) {
+            final int index = i;
+            LinearLayout action = new LinearLayout(this);
+            action.setOrientation(LinearLayout.VERTICAL);
+            action.setGravity(Gravity.CENTER);
+            int tint = i == 2 ? ACCENT : PRIMARY;
+            ImageView icon = iconView(quickIcons[i], tint);
+            icon.setBackground(rounded(ELEVATED, 21, Color.TRANSPARENT));
+            action.addView(icon, new LinearLayout.LayoutParams(dp(43), dp(43)));
+            TextView label = text(quickNames[i], 11, SECONDARY, false);
+            label.setGravity(Gravity.CENTER);
+            action.addView(label, new LinearLayout.LayoutParams(-1, dp(24)));
+            shortcuts.addView(action, new LinearLayout.LayoutParams(0, -1, 1));
+            action.setContentDescription(quickNames[i]);
+            action.setOnClickListener(v -> {
+                dialog[0].dismiss();
+                quickActions[index].run();
+            });
+        }
+        View divider = new View(this);
+        divider.setBackgroundColor(BORDER);
+        panel.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
+
         BoundedScrollView scroll = new BoundedScrollView();
         panel.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout items = sheetPanel();
         scroll.addView(items);
-        final Dialog[] shown = new Dialog[1];
-
-        // Group actions by user intent instead of chronological implementation order.
-        final int[] menuOrder = {0, 1, 2, 3, 14, 16, 4, 15, 5, 6, 7, 8, 9, 10, 11, 12, 13};
-        for (int i : menuOrder) {
-            final int action = i;
-            String section = null;
-            if (i == 0) section = "タブ";
-            else if (i == 3) section = "ページ";
-            else if (i == 6) section = "プライバシーと保護";
-            else if (i == 9) section = "ブラウザ";
-            if (section != null) {
-                TextView sectionHeader = text(section, 13, ACCENT, true);
-                sectionHeader.setPadding(dp(11), dp(8), 0, dp(2));
-                items.addView(sectionHeader, new LinearLayout.LayoutParams(-1, dp(35)));
-            }
-            LinearLayout item = new LinearLayout(this);
-            item.setGravity(Gravity.CENTER_VERTICAL);
-            item.setPadding(dp(9), 0, dp(6), 0);
-            item.setBackground(new RippleDrawable(ColorStateList.valueOf(0x22FFFFFF),
-                rounded(SURFACE, 13, Color.TRANSPARENT), null));
-            item.setMinimumHeight(dp(63));
-            item.setPadding(dp(9), dp(8), dp(8), dp(8));
-            items.addView(item, new LinearLayout.LayoutParams(-1, -2));
-            item.addView(iconView(icons[i], i == 12 ? ACCENT : SECONDARY),
-                new LinearLayout.LayoutParams(dp(43), dp(43)));
-            LinearLayout detail = sheetPanel();
-            detail.setGravity(Gravity.CENTER_VERTICAL);
-            TextView label = text(labels[i], 15, PRIMARY, false);
-            TextView sub = text(hints[i], 11, SECONDARY, false);
-            label.setMinHeight(dp(23));
-            sub.setMaxLines(2);
-            sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            detail.addView(label, new LinearLayout.LayoutParams(-1, -2));
-            detail.addView(sub, new LinearLayout.LayoutParams(-1, -2));
-            item.addView(detail, new LinearLayout.LayoutParams(0, -1, 1));
-            item.setContentDescription(labels[i] + "、" + hints[i]);
-            item.setOnClickListener(v -> {
-                shown[0].dismiss();
-                runMenuAction(action);
+        // This order mirrors Chrome and Vivaldi's common tasks. Implemented
+        // actions only—no fake bookmark/download or sync navigation controls.
+        menuSection(items, "タブ");
+        addMenuItem(items, R.drawable.ic_browser_tabs, "タブ一覧", null, () -> {
+            dialog[0].dismiss();
+            showTabs();
+        });
+        addMenuItem(items, R.drawable.ic_browser_lock, "新しい非公開タブ", null, () -> {
+            dialog[0].dismiss();
+            createTab("about:blank", true);
+        });
+        addMenuItem(items, R.drawable.ic_browser_layers, "タブグループ", null, () -> {
+            dialog[0].dismiss();
+            showTabOverview(TAB_VIEW_GROUPS, null);
+        });
+        menuSection(items, "ページ");
+        addMenuItem(items, R.drawable.ic_browser_search, "ページ内検索", null, () -> {
+            dialog[0].dismiss();
+            findInPage();
+        });
+        TabRegistry.Tab current = tabRegistry.current();
+        boolean desktop = current != null && current.desktopMode;
+        addMenuItem(items, R.drawable.ic_browser_globe, "PC版サイト",
+            desktop ? "ON" : "OFF", () -> {
+                dialog[0].dismiss();
+                toggleDesktopMode();
             });
-        }
-        shown[0] = bottomSheet(panel);
+        addMenuItem(items, R.drawable.ic_browser_share, "URLをコピー", null, () -> {
+            dialog[0].dismiss();
+            copyCurrentPageUrl();
+        });
+        addMenuItem(items, R.drawable.ic_browser_search, "表示倍率を変更", null, () -> {
+            dialog[0].dismiss();
+            showPageZoom();
+        });
+        menuSection(items, "アプリ");
+        addMenuItem(items, R.drawable.ic_browser_settings, "設定", null, () -> {
+            dialog[0].dismiss();
+            showSettings();
+        });
+        addMenuItem(items, R.drawable.ic_browser_flask, "詳細ツール", null, () -> {
+            dialog[0].dismiss();
+            showAdvancedMenu();
+        });
+        dialog[0] = bottomSheet(panel);
+    }
+
+    private void menuSection(LinearLayout items, String label) {
+        TextView title = text(label, 12, ACCENT, true);
+        title.setPadding(dp(9), dp(8), dp(4), 0);
+        items.addView(title, new LinearLayout.LayoutParams(-1, dp(30)));
+    }
+
+    private void addMenuItem(LinearLayout items, int iconRes, String name,
+                             String state, Runnable click) {
+        LinearLayout item = new LinearLayout(this);
+        item.setGravity(Gravity.CENTER_VERTICAL);
+        item.setPadding(dp(5), 0, dp(7), 0);
+        items.addView(item, new LinearLayout.LayoutParams(-1, dp(50)));
+        item.addView(iconView(iconRes, SECONDARY),
+            new LinearLayout.LayoutParams(dp(40), dp(40)));
+        TextView title = text(name, 14, PRIMARY, false);
+        LinearLayout.LayoutParams titleSize = new LinearLayout.LayoutParams(0, -1, 1);
+        titleSize.leftMargin = dp(7);
+        item.addView(title, titleSize);
+        if (state != null) item.addView(text(state, 12, ACCENT, true),
+            new LinearLayout.LayoutParams(-2, -1));
+        item.setContentDescription(name + (state == null ? "" : " " + state));
+        item.setBackground(new RippleDrawable(ColorStateList.valueOf(0x20FFFFFF),
+            rounded(SURFACE, 11, Color.TRANSPARENT), null));
+        item.setOnClickListener(v -> click.run());
+    }
+
+    private void showAdvancedMenu() {
+        LinearLayout panel = sheetPanel();
+        TextView title = text("詳細ツール", 20, PRIMARY, true);
+        panel.addView(title, new LinearLayout.LayoutParams(-1, dp(48)));
+        BoundedScrollView scroll = new BoundedScrollView();
+        panel.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout items = sheetPanel();
+        scroll.addView(items);
+        final Dialog[] dialog = new Dialog[1];
+        addMenuItem(items, R.drawable.ic_browser_globe, "比較サイトを開く", null,
+            () -> { dialog[0].dismiss(); runMenuAction(5); });
+        addMenuItem(items, R.drawable.ic_browser_shield, "ドメイン遮断を切替", null,
+            () -> { dialog[0].dismiss(); runMenuAction(6); });
+        addMenuItem(items, R.drawable.ic_browser_eye_off, "広告枠の非表示を切替", null,
+            () -> { dialog[0].dismiss(); runMenuAction(7); });
+        addMenuItem(items, R.drawable.ic_browser_shield, "サイト別の遮断例外", null,
+            () -> { dialog[0].dismiss(); runMenuAction(8); });
+        addMenuItem(items, R.drawable.ic_browser_speed, "高速起動の実験", null,
+            () -> { dialog[0].dismiss(); runMenuAction(9); });
+        addMenuItem(items, R.drawable.ic_browser_download, "APK更新を確認", null,
+            () -> { dialog[0].dismiss(); runMenuAction(10); });
+        addMenuItem(items, R.drawable.ic_browser_flask, "起動診断", null,
+            () -> { dialog[0].dismiss(); runMenuAction(11); });
+        addMenuItem(items, R.drawable.ic_browser_info, "このブラウザについて", null,
+            () -> { dialog[0].dismiss(); runMenuAction(13); });
+        dialog[0] = bottomSheet(panel);
     }
 
     private void runMenuAction(int action) {
@@ -2665,6 +3032,8 @@ public final class ChromiumTestActivity extends Activity {
         row.setOnClickListener(view -> toggle.setChecked(!toggle.isChecked()));
         toggle.setOnCheckedChangeListener((button, enabled) -> {
             preferences.edit().putBoolean(key, enabled).apply();
+            if ("address_bar_bottom".equals(key)) applyBrowserBarPosition();
+            if ("show_speed_dials".equals(key)) rebuildHome();
             if ("external_audio_priority".equals(key) && enabled) {
                 for (CefriumBrowser browser : liveBrowsers.values()) {
                     browser.stopAllMedia();
@@ -2692,79 +3061,190 @@ public final class ChromiumTestActivity extends Activity {
         panel.addView(row, rowSpace);
     }
 
+    /** Full-screen category navigation rather than a cramped options sheet. */
     private void showSettings() {
-        LinearLayout panel = sheetPanel();
+        showSettingsCategory("外観");
+    }
+
+    private void addSettingsAction(LinearLayout parent, int icon, String title,
+                                   String details, Runnable action) {
+        LinearLayout item = new LinearLayout(this);
+        item.setGravity(Gravity.CENTER_VERTICAL);
+        item.setPadding(dp(10), dp(7), dp(11), dp(7));
+        item.setBackground(new RippleDrawable(ColorStateList.valueOf(0x1DFFFFFF),
+            rounded(ELEVATED, 15, Color.TRANSPARENT), null));
+        item.addView(iconView(icon, ACCENT), new LinearLayout.LayoutParams(dp(43), dp(43)));
+        LinearLayout labels = new LinearLayout(this);
+        labels.setOrientation(LinearLayout.VERTICAL);
+        labels.setPadding(dp(6), 0, dp(3), 0);
+        labels.addView(text(title, 14, PRIMARY, true));
+        if (details != null && !details.isEmpty()) {
+            TextView hint = text(details, 12, SECONDARY, false);
+            hint.setMaxLines(2);
+            hint.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            labels.addView(hint);
+        }
+        item.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+        item.setContentDescription(title);
+        item.setOnClickListener(v -> action.run());
+        LinearLayout.LayoutParams layout = new LinearLayout.LayoutParams(-1, dp(68));
+        layout.bottomMargin = dp(7);
+        parent.addView(item, layout);
+    }
+
+    private void showSettingsCategory(String category) {
+        final String[] categories = {"外観", "タブ", "プライバシー", "メディア", "詳細"};
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setBackgroundColor(CANVAS);
+        final Dialog[] dialog = new Dialog[1];
+
         LinearLayout heading = new LinearLayout(this);
         heading.setGravity(Gravity.CENTER_VERTICAL);
-        heading.addView(iconView(R.drawable.ic_browser_settings, ACCENT),
-            new LinearLayout.LayoutParams(dp(43), dp(43)));
-        heading.addView(text("Velocity 設定", 21, PRIMARY, true));
-        panel.addView(heading, new LinearLayout.LayoutParams(-1, dp(45)));
-        TextView version = text(installedVersionLabel(), 11, SECONDARY, false);
-        version.setPadding(dp(7), 0, 0, dp(6));
-        panel.addView(version, new LinearLayout.LayoutParams(-1, -2));
-        BoundedScrollView scroll = new BoundedScrollView();
-        panel.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
-        LinearLayout items = sheetPanel();
-        scroll.addView(items);
-        TextView displaySection = text("表示と操作", 14, ACCENT, true);
-        displaySection.setPadding(dp(5), dp(14), 0, dp(10));
-        items.addView(displaySection);
-        addSettingsToggle(items, "下に引いて更新", "ページの先頭から引き下ろして再読み込み",
-            "pull_to_refresh", true);
-        addSettingsToggle(items, "Webサイトのダークモード", "Chromiumのカラースキームを変更",
-            "force_dark", false);
-        addSettingsToggle(items, "動画と音声の自動再生", "自動再生の設定。音声フォーカスとは別",
-            "auto_play", false);
-        addSettingsToggle(items, "他アプリの音声を優先", "標準ON。ブラウザ復帰時の音声再開を抑制",
-            "external_audio_priority", true);
-        Button stopAudio = makeButton("Webメディアを停止・音声フォーカスを解放", "不要なWeb音声セッションを停止",
-            this::stopAllWebMedia);
-        stopAudio.setTextSize(13);
-        stopAudio.setSingleLine(false);
-        stopAudio.setMinHeight(dp(48));
-        stopAudio.setPadding(dp(12), dp(7), dp(10), dp(7));
-        stopAudio.setCompoundDrawablesWithIntrinsicBounds(
-            R.drawable.ic_browser_play, 0, 0, 0);
-        items.addView(stopAudio, new LinearLayout.LayoutParams(-1, -2));
-        Button audioDiagnostic = makeButton("音声フォーカスの原因を調査", "Androidの音声フォーカス診断手順",
-            this::showAudioFocusDiagnostic);
-        audioDiagnostic.setTextSize(13);
-        audioDiagnostic.setMinHeight(dp(48));
-        audioDiagnostic.setPadding(dp(12), dp(7), dp(10), dp(7));
-        audioDiagnostic.setCompoundDrawablesWithIntrinsicBounds(
-            R.drawable.ic_browser_info, 0, 0, 0);
-        items.addView(audioDiagnostic, new LinearLayout.LayoutParams(-1, -2));
-        TextView privacySection = text("タブとプライバシー", 14, ACCENT, true);
-        privacySection.setPadding(dp(5), dp(18), 0, dp(10));
-        items.addView(privacySection);
-        addSettingsToggle(items, "タブのプレビューを保存", "通常タブのみ、アプリ内に小さい画像を保存",
-            "save_previews", true);
-        addSettingsToggle(items, "追加の広告ドメイン遮断", "Velocity Block Lite のネットワーク遮断",
-            "block_domains", true);
-        addSettingsToggle(items, "広告枠を非表示", "静的CSSルールによる要素の非表示",
-            "cosmetic_elements", true);
-        Button provider = makeButton("Googleパスキーの設定を開く", "Android標準の認証情報サービスを設定",
-            this::openCredentialSettings);
-        provider.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_browser_key, 0, 0, 0);
-        provider.setCompoundDrawablePadding(dp(12));
-        provider.setTextSize(15);
-        provider.setPadding(dp(10), dp(6), dp(10), dp(6));
-        provider.setMinHeight(dp(58));
-        provider.setTextSize(14);
-        provider.setSingleLine(false);
-        items.addView(provider, new LinearLayout.LayoutParams(-1, -2));
-        TextView caveat = text("Googleパスワードマネージャーを外部サイトで使うには、" +
-            "ブラウザに対するGoogle側の承認も必要。Androidの設定変更だけでは解除できません。",
-            12, SECONDARY, false);
-        caveat.setPadding(dp(9), dp(9), dp(9), dp(9));
-        items.addView(caveat, new LinearLayout.LayoutParams(-1, -2));
-        TextView sessionInfo = text("タブ数は無制限。終了後は通常タブの一覧・履歴を保存し、" +
-            "非公開タブは保存しません。プロセス終了後のWebページは再生成が必要です。",
-            12, SECONDARY, false);
-        sessionInfo.setPadding(dp(9), dp(9), dp(9), dp(9));
-        items.addView(sessionInfo, new LinearLayout.LayoutParams(-1, -2));
-        bottomSheet(panel);
+        heading.setPadding(dp(12), dp(8), dp(12), dp(8));
+        page.addView(heading, new LinearLayout.LayoutParams(-1, dp(66)));
+        Button back = iconButton(R.drawable.ic_browser_back, "設定を閉じる", () ->
+            dialog[0].dismiss());
+        heading.addView(back, new LinearLayout.LayoutParams(dp(44), dp(46)));
+        TextView title = text("設定", 23, PRIMARY, true);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, -1, 1);
+        titleLp.leftMargin = dp(8);
+        heading.addView(title, titleLp);
+        Button close = iconButton(R.drawable.ic_browser_close, "設定を閉じる", () ->
+            dialog[0].dismiss());
+        heading.addView(close, new LinearLayout.LayoutParams(dp(44), dp(46)));
+
+        HorizontalScrollView categoryScroll = new HorizontalScrollView(this);
+        categoryScroll.setHorizontalScrollBarEnabled(false);
+        categoryScroll.setFillViewport(false);
+        page.addView(categoryScroll, new LinearLayout.LayoutParams(-1, dp(65)));
+        LinearLayout tabs = new LinearLayout(this);
+        tabs.setGravity(Gravity.CENTER_VERTICAL);
+        tabs.setPadding(dp(14), dp(6), dp(14), dp(10));
+        categoryScroll.addView(tabs, new android.widget.HorizontalScrollView.LayoutParams(
+            -2, -1));
+        final View[] selectedChip = {null};
+        for (String name : categories) {
+            boolean selected = name.equals(category);
+            TextView chip = text(name, 13, selected ? CANVAS : SECONDARY, selected);
+            chip.setGravity(Gravity.CENTER);
+            chip.setPadding(dp(15), 0, dp(15), 0);
+            chip.setBackground(rounded(selected ? ACCENT : SURFACE, 19,
+                selected ? Color.TRANSPARENT : BORDER));
+            LinearLayout.LayoutParams chipLp = new LinearLayout.LayoutParams(-2, dp(38));
+            chipLp.rightMargin = dp(8);
+            tabs.addView(chip, chipLp);
+            if (selected) selectedChip[0] = chip;
+            chip.setContentDescription(name + "設定");
+            chip.setOnClickListener(v -> {
+                if (selected) return;
+                dialog[0].dismiss();
+                showSettingsCategory(name);
+            });
+        }
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setVerticalScrollBarEnabled(false);
+        page.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(16), dp(8), dp(16), dp(32));
+        scroll.addView(content);
+        TextView categoryTitle = text(category, 19, PRIMARY, true);
+        categoryTitle.setPadding(dp(3), 0, 0, dp(12));
+        content.addView(categoryTitle, new LinearLayout.LayoutParams(-1, dp(52)));
+        switch (category) {
+            case "外観":
+                addSettingsToggle(content, "アドレスバーを下に配置",
+                    "Chrome・Vivaldiのように上下を選択", "address_bar_bottom", true);
+                addSettingsToggle(content, "ショートカットを表示",
+                    "ホームに編集可能なSpeed Dialを表示", "show_speed_dials", true);
+                addSettingsToggle(content, "Webサイトのダークモード",
+                    "Chromiumのカラースキームを変更", "force_dark", false);
+                addSettingsToggle(content, "下に引いて更新",
+                    "ページ先頭で引き下ろすと再読み込み", "pull_to_refresh", true);
+                addSettingsAction(content, R.drawable.ic_browser_plus,
+                    "ホームのショートカットを追加", "長押しすると編集・削除できるよ", () -> {
+                        dialog[0].dismiss();
+                        editSpeedDial(null);
+                    });
+                break;
+            case "タブ":
+                addSettingsToggle(content, "タブのプレビューを保存",
+                    "通常タブだけ、アプリ専用領域に画像を保存", "save_previews", true);
+                addSettingsToggle(content, "新しいタブで検索欄を選択",
+                    "新規タブを開くとキーボードを表示", "focus_new_tab", false);
+                addSettingsAction(content, R.drawable.ic_browser_tabs,
+                    "開いているタブ", "通常・非公開・グループを管理", () -> {
+                        dialog[0].dismiss();
+                        showTabs();
+                    });
+                break;
+            case "プライバシー":
+                addSettingsToggle(content, "トラッカー・広告ドメインを遮断",
+                    "Velocity Block Lite のネットワーク遮断", "block_domains", true);
+                addSettingsToggle(content, "広告枠を非表示",
+                    "限定的なCSSルールによる非表示", "cosmetic_elements", true);
+                addSettingsAction(content, R.drawable.ic_browser_key,
+                    "パスキー・自動入力の設定", "Android標準の認証情報サービスを開く", () -> {
+                        dialog[0].dismiss();
+                        openCredentialSettings();
+                    });
+                TextView caveat = text("Googleパスワードマネージャーとの完全な連携には、"
+                    + "ブラウザとしての承認も別途必要だよ。", 12, SECONDARY, false);
+                caveat.setPadding(dp(10), dp(10), dp(10), dp(10));
+                content.addView(caveat, new LinearLayout.LayoutParams(-1, -2));
+                break;
+            case "メディア":
+                addSettingsToggle(content, "動画と音声の自動再生",
+                    "音声フォーカスとは別の設定", "auto_play", false);
+                addSettingsToggle(content, "他アプリの音声を優先",
+                    "他アプリの音楽が小さくなるのを抑制", "external_audio_priority", true);
+                addSettingsAction(content, R.drawable.ic_browser_play,
+                    "Webメディアをすべて停止", "不要な再生・音声フォーカスを解放", () -> {
+                        dialog[0].dismiss();
+                        stopAllWebMedia();
+                    });
+                addSettingsAction(content, R.drawable.ic_browser_info,
+                    "音声フォーカスの診断", "原因調査の手順を確認", () -> {
+                        dialog[0].dismiss();
+                        showAudioFocusDiagnostic();
+                    });
+                break;
+            case "詳細":
+                addSettingsAction(content, R.drawable.ic_browser_download,
+                    "更新を確認", "GitHub Actionsの署名済みAPK", () -> {
+                        dialog[0].dismiss();
+                        openUpdatesPage();
+                    });
+                addSettingsAction(content, R.drawable.ic_browser_flask,
+                    "起動診断", "Chromiumの起動と子プロセスを検証", () -> {
+                        dialog[0].dismiss();
+                        startActivity(new Intent(this, StartupDiagnosticActivity.class));
+                    });
+                addSettingsAction(content, R.drawable.ic_browser_info,
+                    "このブラウザについて", "実装状況・制限を確認", () -> {
+                        dialog[0].dismiss();
+                        showInfo();
+                    });
+                TextView version = text(installedVersionLabel(), 11, SECONDARY, false);
+                version.setPadding(dp(9), dp(20), dp(5), dp(10));
+                content.addView(version, new LinearLayout.LayoutParams(-1, -2));
+                break;
+            default:
+                break;
+        }
+        dialog[0] = fullScreenTabsDialog(page);
+        // Horizontal categories must keep the currently selected tab visible.
+        // Without this, Media/Advanced looked unselected on narrow phones.
+        if (selectedChip[0] != null) {
+            categoryScroll.post(() -> {
+                if (dialog[0] != null && dialog[0].isShowing()) {
+                    categoryScroll.smoothScrollTo(Math.max(0, selectedChip[0].getLeft()
+                        - dp(16)), 0);
+                }
+            });
+        }
     }
 
     /** Surface the actual installed APK build, not a hardcoded marketing label. */

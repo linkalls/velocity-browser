@@ -110,8 +110,8 @@ class CefriumReleaseTest(unittest.TestCase):
         self.assertIn('class BoundedScrollView extends ScrollView', activity)
         self.assertIn('columnsForAvailableWidthDp', activity)
         self.assertNotIn('int cardWidth =', activity)
-        self.assertIn('"音声フォーカスの原因を調査"', activity)
-        self.assertIn('"Webメディアを停止・音声フォーカスを解放"', activity)
+        self.assertIn('"音声フォーカスの診断"', activity)
+        self.assertIn('"Webメディアをすべて停止"', activity)
         self.assertIn('MIN_CARD_WIDTH_DP = 128', layout)
 
     def test_vivaldi_like_switcher_has_real_groups_and_private_isolation(self):
@@ -131,6 +131,24 @@ class CefriumReleaseTest(unittest.TestCase):
         self.assertIn('tabs-private', smoke)
         self.assertIn('tabs-groups', smoke)
         self.assertIn('verify_tab_switcher_ui.py', smoke)
+
+    def test_chrome_vivaldi_shell_replaces_old_ui_with_working_controls(self):
+        activity = (APP / "ChromiumTestActivity.java").read_text()
+        smoke = (ENGINE / "tools/ui-layout-screenshot-smoke.sh").read_text()
+        self.assertIn('private void applyBrowserBarPosition()', activity)
+        self.assertIn('"address_bar_bottom", true', activity)
+        self.assertIn('private String displayAddress(String url)', activity)
+        self.assertIn('private void goHome()', activity)
+        self.assertIn('private void showCurrentSiteInfo()', activity)
+        self.assertIn('private List<SpeedDial> readSpeedDials()', activity)
+        self.assertIn('private void editSpeedDial(SpeedDial original)', activity)
+        self.assertIn('private void showSettingsCategory(String category)', activity)
+        self.assertIn('private void showAdvancedMenu()', activity)
+        self.assertIn('"show_speed_dials"', activity)
+        self.assertIn('"focus_new_tab"', activity)
+        self.assertIn('verify_browser_shell_ui.py', smoke)
+        self.assertNotIn('Button reload = iconButton(', activity)
+        self.assertNotIn('"軽く、速く、あなたのウェブへ。"', activity)
 
     def test_youtube_rules_are_explicit_and_netlog_is_not_automatic(self):
         activity = (APP / "ChromiumTestActivity.java").read_text()
