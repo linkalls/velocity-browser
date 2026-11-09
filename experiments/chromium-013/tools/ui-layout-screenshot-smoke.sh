@@ -27,7 +27,7 @@ start_audit_activity() {
   return 1
 }
 
-for mode in settings settings-tabs settings-media home menu top-bar tabs tabs-private tabs-groups tabs-search; do
+for mode in settings settings-tabs settings-media home menu top-bar address-ime tabs tabs-private tabs-groups tabs-search; do
   adb shell am force-stop "$APP" || true
   # Closing Chromium may briefly leave native child-process teardown active.
   # Give Android's ActivityManager time before a cold restart.
@@ -48,9 +48,20 @@ for mode in settings settings-tabs settings-media home menu top-bar tabs tabs-pr
     echo "ERROR: Velocity crashed while rendering ${mode} bottom sheet" >&2
     exit 1
   fi
-  if [[ "$mode" == settings* || "$mode" == home || "$mode" == menu || "$mode" == top-bar ]]; then
+  if [[ "$mode" == settings* || "$mode" == home || "$mode" == menu || "$mode" == top-bar || "$mode" == address-ime ]]; then
+    # Read the actual emulator density: px bounds must be checked in logical dp.
+    density_dpi=$(adb shell wm density | tr -d '\r' | awk '/density:/ { value=$NF } END { print value }')
+    test -n "$density_dpi"
     python3 experiments/chromium-013/tools/verify_browser_shell_ui.py \
-      "dist/cefrium-ui-audit/${mode}.xml" "$mode"
+      "dist/cefrium-ui-audit/${mode}.xml" "$mode" --density-dpi "$density_dpi"
+    if [[ "$mode" == "address-ime" ]]; then
+      adb logcat -d -v brief | grep 'CEFInsetsAudit' \
+        > dist/cefrium-ui-audit/address-ime-insets.txt || true
+      if ! grep -q 'imeVisible=true' dist/cefrium-ui-audit/address-ime-insets.txt; then
+        echo 'ERROR: keyboard IME insets not observed during address editing' >&2
+        exit 1
+      fi
+    fi
   fi
   if [[ "$mode" == tabs* ]]; then
     python3 experiments/chromium-013/tools/verify_tab_switcher_ui.py \

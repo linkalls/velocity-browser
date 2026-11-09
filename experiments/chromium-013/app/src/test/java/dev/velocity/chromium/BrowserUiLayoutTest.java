@@ -6,6 +6,9 @@ import org.junit.Test;
 
 /** Guards narrow-screen, tablet and very tall-font layout calculations. */
 public final class BrowserUiLayoutTest {
+    @org.junit.Test public void touchTargetMinimumMeets48DpGuideline() {
+        org.junit.Assert.assertEquals(48, BrowserUiLayout.MIN_TOUCH_TARGET_DP);
+    }
     @Test public void mobileWidthsDoNotForceCardsOffScreen() {
         assertEquals(1, BrowserUiLayout.columnsForAvailableWidthDp(
             BrowserUiLayout.availableSheetWidthDp(280)));
