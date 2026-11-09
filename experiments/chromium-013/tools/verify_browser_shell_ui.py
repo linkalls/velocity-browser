@@ -25,7 +25,7 @@ def verify(path: Path, mode: str) -> None:
                 'Yahoo!ニュース ショートカット', '検索またはURLを入力')
     elif mode == 'menu':
         require('Velocity', '進む', '更新', '新規', '共有', 'ホーム', 'タブ一覧')
-        require('新しい非公開タブ', 'ページ内検索')
+        require('新しい非公開タブ', 'ページ内検索', 'ダウンロード')
     elif mode.startswith('settings'):
         require('設定', '設定を閉じる')
         if mode == 'settings':
