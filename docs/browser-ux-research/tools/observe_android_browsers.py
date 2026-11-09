@@ -107,8 +107,12 @@ def choose(nodes: list[dict[str, Any]], patterns: list[str]) -> dict[str, Any] |
     """Select an explicit accessible UI node rather than guessing pixel coords."""
     for pattern in patterns:
         for node in nodes:
-            label = (node["text"] + " " + node["description"]).lower()
-            if re.search(pattern, label, re.IGNORECASE):
+            # Accessibility nodes can contain either text OR content-desc.
+            # Do not append a space to an exact-match label (the first run
+            # uncovered that this broke anchored onboarding buttons).
+            candidates = (node["text"].strip(), node["description"].strip())
+            if any(re.search(pattern, label, re.IGNORECASE)
+                   for label in candidates if label):
                 return node
     return None
 
@@ -147,6 +151,7 @@ def dismiss_onboarding(nodes: list[dict[str, Any]], prefix: Path, steps: list[di
         r"^use without an account$", r"^use without account$", r"^no thanks$",
         r"^not now$", r"^skip$", r"^skip for now$", r"^got it$",
         r"^continue without.*$", r"^continue as guest$", r"^start browsing$",
+        r"^set as default later$", r"^maybe later$", r"^finish$",
         r"^done$", r"^continue$", r"^next$",
     ]
     for index in range(6):
