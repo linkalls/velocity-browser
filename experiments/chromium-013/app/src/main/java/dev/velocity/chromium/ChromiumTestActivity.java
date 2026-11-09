@@ -12,6 +12,7 @@ import android.content.pm.ServiceInfo;
 import android.graphics.Color;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
 import android.graphics.Rect;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -143,18 +144,19 @@ public final class ChromiumTestActivity extends Activity {
     private static final String TAG = "VelocityCefStartup";
     private boolean syntheticSmokeRequested;
     private boolean previewFixtureRequested;
+    private boolean previewFixtureSheetShown;
     private long syntheticLoadStartedAtMs = -1L;
     private long syntheticPaintStartedAtMs = -1L;
 
     // Deliberately restrained palette. No novelty gradients, false neon
     // borders, or extra Material dependencies on the critical launch path.
-    private static final int CANVAS = Color.rgb(14, 19, 24);
-    private static final int SURFACE = Color.rgb(23, 30, 37);
-    private static final int ELEVATED = Color.rgb(37, 46, 55);
-    private static final int BORDER = Color.rgb(56, 67, 77);
-    private static final int PRIMARY = Color.rgb(238, 244, 245);
-    private static final int SECONDARY = Color.rgb(161, 176, 187);
-    private static final int ACCENT = Color.rgb(107, 221, 176);
+    private static final int CANVAS = Color.rgb(12, 16, 22);
+    private static final int SURFACE = Color.rgb(24, 31, 42);
+    private static final int ELEVATED = Color.rgb(37, 47, 61);
+    private static final int BORDER = Color.rgb(58, 71, 85);
+    private static final int PRIMARY = Color.rgb(241, 246, 250);
+    private static final int SECONDARY = Color.rgb(167, 181, 194);
+    private static final int ACCENT = Color.rgb(111, 220, 187);
 
     private int dp(int v) {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
@@ -497,11 +499,16 @@ public final class ChromiumTestActivity extends Activity {
         body.setPadding(dp(24), dp(26), dp(24), dp(24));
         scroll.addView(body);
 
-        TextView wordmark = text("Velocity", 32, PRIMARY, true);
-        body.addView(wordmark, new LinearLayout.LayoutParams(-1, dp(62)));
+        TextView eyebrow = text("YOUR BROWSER · YOUR SPACE", 11, ACCENT, true);
+        eyebrow.setLetterSpacing(0.09f);
+        body.addView(eyebrow, new LinearLayout.LayoutParams(-1, dp(30)));
 
-        TextView sub = text("軽く、速く、あなたのウェブへ。", 14, SECONDARY, false);
-        body.addView(sub, new LinearLayout.LayoutParams(-1, dp(35)));
+        TextView wordmark = text("Velocity", 36, PRIMARY, true);
+        wordmark.setLetterSpacing(-0.025f);
+        body.addView(wordmark, new LinearLayout.LayoutParams(-1, dp(58)));
+
+        TextView sub = text("必要なものへ、最短距離で。", 14, SECONDARY, false);
+        body.addView(sub, new LinearLayout.LayoutParams(-1, dp(32)));
 
         Button search = makeButton("⌕    検索またはURLを入力", "アドレスバーに入力", this::focusAddress);
         search.setTextSize(15);
@@ -512,11 +519,16 @@ public final class ChromiumTestActivity extends Activity {
         searchLp.topMargin = dp(32);
         body.addView(search, searchLp);
 
-        TextView caption = text("クイックアクセス", 13, SECONDARY, true);
+        TextView caption = text("クイックアクセス", 14, PRIMARY, true);
         LinearLayout.LayoutParams captionLp = new LinearLayout.LayoutParams(-1, dp(45));
         captionLp.topMargin = dp(23);
         body.addView(caption, captionLp);
 
+        final int[] shortcutIcons = {
+            R.drawable.ic_browser_globe, R.drawable.ic_browser_search,
+            R.drawable.ic_browser_info, R.drawable.ic_browser_globe,
+            R.drawable.ic_browser_play, R.drawable.ic_browser_folder
+        };
         for (int startIndex = 0; startIndex < SITE_NAMES.length; startIndex += 2) {
             LinearLayout row = new LinearLayout(this);
             row.setGravity(Gravity.CENTER_VERTICAL);
@@ -526,8 +538,14 @@ public final class ChromiumTestActivity extends Activity {
                 Button shortcut = makeButton(SITE_NAMES[index], SITE_NAMES[index] + " を開く",
                     () -> openHomeLink(index));
                 shortcut.setTextSize(13);
+                shortcut.setGravity(Gravity.CENTER_VERTICAL | Gravity.START);
+                shortcut.setPadding(dp(12), 0, dp(8), 0);
+                shortcut.setCompoundDrawablesWithIntrinsicBounds(
+                    shortcutIcons[index], 0, 0, 0);
+                shortcut.setCompoundDrawableTintList(ColorStateList.valueOf(ACCENT));
+                shortcut.setCompoundDrawablePadding(dp(10));
                 shortcut.setBackground(new RippleDrawable(ColorStateList.valueOf(0x28FFFFFF),
-                    rounded(SURFACE, 14, BORDER), null));
+                    rounded(SURFACE, 15, BORDER), null));
                 LinearLayout.LayoutParams cell = new LinearLayout.LayoutParams(0, dp(55), 1f);
                 if (col != 0) cell.leftMargin = dp(9);
                 row.addView(shortcut, cell);
@@ -681,9 +699,17 @@ public final class ChromiumTestActivity extends Activity {
                 // DEBUG-ONLY screenshot test: a distinctive offline page
                 // with blue/orange/green regions. No internet, cookies or
                 // private content. CI must verify a REAL captured JPEG.
-                boolean debugPreview = (getApplicationInfo().flags
-                    & ApplicationInfo.FLAG_DEBUGGABLE) != 0 && getIntent() != null
-                    && "preview".equals(getIntent().getStringExtra("velocity_debug_ui_audit"));
+                boolean debugAudit = (getApplicationInfo().flags
+                    & ApplicationInfo.FLAG_DEBUGGABLE) != 0 && getIntent() != null;
+                String auditMode = debugAudit
+                    ? getIntent().getStringExtra("velocity_debug_ui_audit") : null;
+                boolean debugPreview = "preview".equals(auditMode);
+                boolean debugRealSite = "real-site".equals(auditMode);
+                if (debugRealSite) {
+                    // Optional diagnostic only: public website, separate emulator
+                    // profile, never any user cookies, passwords, or private tabs.
+                    tabRegistry.add("https://news.yahoo.co.jp/", false);
+                }
                 if (debugPreview) {
                     previewFixtureRequested = true;
                     String previewFixture = "<!doctype html><html><head>"
@@ -706,6 +732,12 @@ public final class ChromiumTestActivity extends Activity {
                     }
                 }
                 activateCurrentTab();
+                if (debugRealSite) {
+                    // Capture the native tab sheet even if site ads keep loading.
+                    mainHandler.postDelayed(() -> {
+                        if (!destroyed && !isFinishing()) showTabs(false);
+                    }, 16000L);
+                }
             } finally {
                 Trace.endSection();
             }
@@ -952,8 +984,14 @@ public final class ChromiumTestActivity extends Activity {
     }
 
     private void selectTab(String id) {
+        TabRegistry.Tab previous = tabRegistry.current();
+        if (previous != null && !previous.id.equals(id) && !previous.privateMode
+                && !previous.startupHome) {
+            // Request the old compositor frame while the old tab is still
+            // foreground. Once hidden, PixelCopy cannot safely capture it.
+            captureVisibleTabPreview(previous, null);
+        }
         if (tabRegistry.select(id)) {
-            // Preserve the old tab preview before switching its native Surface off.
             activateCurrentTab();
             saveRegularTabs();
         }
@@ -1281,6 +1319,14 @@ public final class ChromiumTestActivity extends Activity {
             }
             activateCurrentTab();
         } else {
+            // Direct address/search navigation changes tab.url before Cefrium
+            // emits onUrlChanged. Invalidate here too: otherwise the previous
+            // page remains in the memory cache and shows in the tab sheet.
+            if (!current.privateMode && !url.equals(current.url)) {
+                previewStore.invalidatePreview(current.id);
+                thumbnailRequestsInFlight.remove(current.id);
+                pendingThumbnailViews.remove(current.id);
+            }
             current.url = url;
             updateHomeState();
             engine.loadUrl(url);
@@ -1345,8 +1391,14 @@ public final class ChromiumTestActivity extends Activity {
     /** Native compact bottom sheet instead of a full-screen, unlabeled list. */
     private Dialog bottomSheet(LinearLayout panel) {
         Dialog sheet = new Dialog(this);
-        panel.setPadding(dp(BrowserUiLayout.SHEET_SIDE_PADDING_DP), dp(16),
+        panel.setPadding(dp(BrowserUiLayout.SHEET_SIDE_PADDING_DP), dp(7),
             dp(BrowserUiLayout.SHEET_SIDE_PADDING_DP), dp(15));
+        View dragHandle = new View(this);
+        dragHandle.setBackground(rounded(BORDER, 3, Color.TRANSPARENT));
+        LinearLayout.LayoutParams handleLp = new LinearLayout.LayoutParams(dp(36), dp(4));
+        handleLp.gravity = Gravity.CENTER_HORIZONTAL;
+        handleLp.bottomMargin = dp(12);
+        panel.addView(dragHandle, 0, handleLp);
         panel.setBackground(rounded(SURFACE, 24, BORDER));
         sheet.setContentView(panel);
         Window window = sheet.getWindow();
@@ -1593,6 +1645,30 @@ public final class ChromiumTestActivity extends Activity {
     }
 
     /**
+     * A webpage screenshot is portrait, while overview cards are landscape.
+     * CENTER_CROP displays the *middle* of a page, often a blank article body,
+     * losing the page header entirely. Match Chrome's top-of-page preview:
+     * fill card width and clip from the TOP, without distorting its aspect ratio.
+     */
+    private void positionTabThumbnail(ImageView preview) {
+        if (preview.getDrawable() == null || preview.getWidth() < 1) return;
+        int sourceWidth = preview.getDrawable().getIntrinsicWidth();
+        if (sourceWidth < 1) return;
+        float scale = preview.getWidth() / (float) sourceWidth;
+        Matrix transform = new Matrix();
+        transform.setScale(scale, scale);
+        preview.setImageMatrix(transform);
+    }
+
+    private void displayTabThumbnail(ImageView preview, Bitmap image) {
+        if (image == null) return;
+        preview.setImageBitmap(image);
+        positionTabThumbnail(preview);
+        // A newly created bottom-sheet ImageView has no measured width yet.
+        // Its one layout listener will update the matrix after measuring.
+    }
+
+    /**
      * Acquire and persist actual page pixels for a REGULAR tab only.
      * Multiple load/title/sheet events for the same tab share one request.
      * Asynchronous results are rejected after navigation or closing.
@@ -1636,9 +1712,18 @@ public final class ChromiumTestActivity extends Activity {
             }
             // Only the regular tab that produced this frame can cache it.
             previewStore.save(tabId, bitmap);
+            // Smoke must validate the *card*, not just an orphan JPEG file.
+            // This path is reachable only for the debug-only offline fixture.
+            if (previewFixtureRequested && !previewFixtureSheetShown
+                    && "Velocity preview fixture".equals(tab.title)) {
+                previewFixtureSheetShown = true;
+                mainHandler.postDelayed(() -> {
+                    if (!destroyed && !isFinishing()) showTabs(false);
+                }, 400L);
+            }
             if (views != null) for (ImageView image : views) {
                 if (!image.isAttachedToWindow()) continue;
-                image.setImageBitmap(bitmap);
+                displayTabThumbnail(image, bitmap);
                 image.setVisibility(View.VISIBLE);
                 if (image.getParent() instanceof ViewGroup) {
                     View fallback = ((ViewGroup) image.getParent())
@@ -1689,8 +1774,8 @@ public final class ChromiumTestActivity extends Activity {
             captureVisibleTabPreview(focusedTab, null);
         }
         LinearLayout panel = sheetPanel();
-        TextView heading = text(privateMode ? "非公開タブ" : "通常タブ", 21, PRIMARY, true);
-        heading.setMinHeight(dp(47));
+        TextView heading = text(privateMode ? "非公開タブ" : "タブ一覧", 21, PRIMARY, true);
+        heading.setMinHeight(dp(43));
         panel.addView(heading, new LinearLayout.LayoutParams(-1, -2));
 
         final Dialog[] shown = new Dialog[1];
@@ -1765,7 +1850,7 @@ public final class ChromiumTestActivity extends Activity {
                     groups.addView(row, new LinearLayout.LayoutParams(-1, -2));
                 }
                 LinearLayout card = sheetPanel();
-                card.setBackground(rounded(ELEVATED, 13,
+                card.setBackground(rounded(SURFACE, 16,
                     tab == tabRegistry.current() ? ACCENT : BORDER));
                 card.setMinimumHeight(dp(previewHeightDp + 99));
                 LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
@@ -1776,17 +1861,23 @@ public final class ChromiumTestActivity extends Activity {
                 itemIndex++;
 
                 FrameLayout screenshot = new FrameLayout(this);
-                screenshot.setBackground(rounded(SURFACE, 10, Color.TRANSPARENT));
+                screenshot.setBackground(rounded(ELEVATED, 13, Color.TRANSPARENT));
                 screenshot.setClipToOutline(true);
                 card.addView(screenshot, new LinearLayout.LayoutParams(
                     -1, dp(previewHeightDp)));
                 ImageView preview = new ImageView(this);
                 preview.setContentDescription("ページのプレビュー");
-                preview.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                preview.setScaleType(ImageView.ScaleType.MATRIX);
+                preview.addOnLayoutChangeListener((view, l, t, r, b, ol, ot, orr, ob) ->
+                    positionTabThumbnail(preview));
                 screenshot.addView(preview, new FrameLayout.LayoutParams(-1, -1));
                 Bitmap bitmap = tab.privateMode ? null : previewStore.load(tab.id);
+                if (!tab.privateMode && !"about:blank".equals(tab.url)) {
+                    Log.i(TAG, "TABSHOT sheet card cached=" + (bitmap != null)
+                        + " foreground=" + (tab == tabRegistry.current()));
+                }
                 if (bitmap != null) {
-                    preview.setImageBitmap(bitmap);
+                    displayTabThumbnail(preview, bitmap);
                 } else {
                     // A small site identity is more useful than a giant
                     // "preview unavailable" warning. It is not a fake screenshot.
@@ -1816,14 +1907,14 @@ public final class ChromiumTestActivity extends Activity {
                         captureVisibleTabPreview(tab, preview);
                     }
                 }
-                TextView name = text(tab.displayTitle(), 13, PRIMARY, true);
+                TextView name = text(tab.displayTitle(), 14, PRIMARY, true);
                 name.setSingleLine(true);
                 name.setEllipsize(android.text.TextUtils.TruncateAt.END);
                 name.setPadding(dp(8), 0, dp(8), 0);
                 name.setMinHeight(dp(35));
                 card.addView(name, new LinearLayout.LayoutParams(-1, -2));
                 TextView url = text(tab.privateMode ? "非公開" : tab.url,
-                    10, SECONDARY, false);
+                    11, SECONDARY, false);
                 url.setSingleLine(true);
                 url.setEllipsize(android.text.TextUtils.TruncateAt.END);
                 url.setPadding(dp(8), 0, dp(8), 0);
@@ -1831,7 +1922,7 @@ public final class ChromiumTestActivity extends Activity {
                 card.addView(url, new LinearLayout.LayoutParams(-1, -2));
                 LinearLayout actionsRow = new LinearLayout(this);
                 actionsRow.setGravity(Gravity.CENTER_VERTICAL);
-                card.addView(actionsRow, new LinearLayout.LayoutParams(-1, dp(48)));
+                card.addView(actionsRow, new LinearLayout.LayoutParams(-1, dp(40)));
                 Button groupButton = makeButton("グループ", "タブをグループ分け", () -> {
                     shown[0].dismiss();
                     showTabGroupDialog(tab.id);
@@ -1843,12 +1934,12 @@ public final class ChromiumTestActivity extends Activity {
                     R.drawable.ic_browser_folder, 0, 0, 0);
                 groupButton.setCompoundDrawablePadding(dp(4));
                 groupButton.setPadding(dp(5), 0, 0, 0);
-                actionsRow.addView(groupButton, new LinearLayout.LayoutParams(0, dp(48), 1));
+                actionsRow.addView(groupButton, new LinearLayout.LayoutParams(0, dp(40), 1));
                 Button close = iconButton(R.drawable.ic_browser_close, "タブを閉じる", () -> {
                     shown[0].dismiss();
                     closeTabDirect(tab.id);
                 });
-                actionsRow.addView(close, new LinearLayout.LayoutParams(dp(48), dp(48)));
+                actionsRow.addView(close, new LinearLayout.LayoutParams(dp(40), dp(40)));
                 screenshot.setOnClickListener(v -> {
                     shown[0].dismiss();
                     selectTab(tab.id);
@@ -2177,7 +2268,10 @@ public final class ChromiumTestActivity extends Activity {
         SharedPreferences preferences = getSharedPreferences(TAB_PREFS, MODE_PRIVATE);
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(9), dp(8), dp(7), dp(8));
+        row.setPadding(dp(10), dp(9), dp(10), dp(9));
+        LinearLayout.LayoutParams rowSpace = new LinearLayout.LayoutParams(-1, -2);
+        rowSpace.bottomMargin = dp(5);
+        row.setBackground(rounded(ELEVATED, 13, Color.TRANSPARENT));
         int optionIcon;
         switch (key) {
             case "pull_to_refresh": optionIcon = R.drawable.ic_browser_refresh; break;
@@ -2189,11 +2283,11 @@ public final class ChromiumTestActivity extends Activity {
             case "external_audio_priority": optionIcon = R.drawable.ic_browser_play; break;
             default: optionIcon = R.drawable.ic_browser_settings; break;
         }
-        row.addView(iconView(optionIcon, SECONDARY), new LinearLayout.LayoutParams(dp(43), dp(43)));
+        row.addView(iconView(optionIcon, ACCENT), new LinearLayout.LayoutParams(dp(41), dp(41)));
         LinearLayout body = sheetPanel();
         body.setPadding(dp(4), dp(1), dp(8), dp(1));
-        TextView titleView = text(titleText, 15, PRIMARY, false);
-        TextView description = text(hint, 11, SECONDARY, false);
+        TextView titleView = text(titleText, 14, PRIMARY, true);
+        TextView description = text(hint, 12, SECONDARY, false);
         description.setMaxLines(3);
         description.setEllipsize(android.text.TextUtils.TruncateAt.END);
         body.addView(titleView, new LinearLayout.LayoutParams(-1, -2));
@@ -2230,7 +2324,7 @@ public final class ChromiumTestActivity extends Activity {
             }
         });
         row.setMinimumHeight(dp(70));
-        panel.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        panel.addView(row, rowSpace);
     }
 
     private void showSettings() {
@@ -2248,7 +2342,9 @@ public final class ChromiumTestActivity extends Activity {
         panel.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout items = sheetPanel();
         scroll.addView(items);
-        items.addView(text("表示と操作", 16, ACCENT, true));
+        TextView displaySection = text("表示と操作", 14, ACCENT, true);
+        displaySection.setPadding(dp(5), dp(14), 0, dp(10));
+        items.addView(displaySection);
         addSettingsToggle(items, "下に引いて更新", "ページの先頭から引き下ろして再読み込み",
             "pull_to_refresh", true);
         addSettingsToggle(items, "Webサイトのダークモード", "Chromiumのカラースキームを変更",
@@ -2274,7 +2370,9 @@ public final class ChromiumTestActivity extends Activity {
         audioDiagnostic.setCompoundDrawablesWithIntrinsicBounds(
             R.drawable.ic_browser_info, 0, 0, 0);
         items.addView(audioDiagnostic, new LinearLayout.LayoutParams(-1, -2));
-        items.addView(text("タブとプライバシー", 16, ACCENT, true));
+        TextView privacySection = text("タブとプライバシー", 14, ACCENT, true);
+        privacySection.setPadding(dp(5), dp(18), 0, dp(10));
+        items.addView(privacySection);
         addSettingsToggle(items, "タブのプレビューを保存", "通常タブのみ、アプリ内に小さい画像を保存",
             "save_previews", true);
         addSettingsToggle(items, "追加の広告ドメイン遮断", "Velocity Block Lite のネットワーク遮断",

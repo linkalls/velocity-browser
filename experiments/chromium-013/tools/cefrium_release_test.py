@@ -94,6 +94,13 @@ class CefriumReleaseTest(unittest.TestCase):
         self.assertIn('rm -r files/tab_previews', script)
         self.assertIn("assert data.startswith(b'\\xff\\xd8')", script)
         self.assertIn('files/tab_previews/', script)
+        self.assertIn('verify_preview_card.py', script)
+        self.assertIn('preview-tab-sheet.png', script)
+        self.assertIn('preview-tab-sheet.xml', script)
+        self.assertIn('previewFixtureSheetShown', activity)
+        self.assertIn('ImageView.ScaleType.MATRIX', activity)
+        self.assertIn('positionTabThumbnail(preview)', activity)
+        self.assertIn('previewStore.invalidatePreview(current.id)', activity)
 
     def test_settings_show_real_installed_build_and_adaptive_layout(self):
         activity = (APP / "ChromiumTestActivity.java").read_text()

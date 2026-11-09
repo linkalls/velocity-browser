@@ -74,6 +74,17 @@ if ! grep -q 'TABSHOT fixture orange and green pixels verified' \
   grep 'TABSHOT' dist/cefrium-ui-audit/preview-logcat.txt | tail -25 || true
   exit 1
 fi
+# Exercise the full pipeline: Chromium compositor -> in-memory cache ->
+# ImageView inside the visible tab overview, not merely a file on disk.
+# The debug fixture shows the native sheet after its first verified capture.
+adb exec-out screencap -p > dist/cefrium-ui-audit/preview-tab-sheet.png
+timeout 30s adb shell uiautomator dump /sdcard/velocity-preview-card.xml \
+  > dist/cefrium-ui-audit/preview-card-uiautomator.txt 2>&1
+adb shell cat /sdcard/velocity-preview-card.xml \
+  > dist/cefrium-ui-audit/preview-tab-sheet.xml
+python3 experiments/chromium-013/tools/verify_preview_card.py \
+  dist/cefrium-ui-audit/preview-tab-sheet.png \
+  dist/cefrium-ui-audit/preview-tab-sheet.xml
 # A SUCCESSFUL real capture is persisted to the app's private directory.
 # Do not pass a test just because its UI displays a site icon.
 if ! adb shell run-as "$APP" ls files/tab_previews/ \
@@ -121,6 +132,32 @@ for mode in settings tabs; do
     exit 1
   fi
 done
+# Best-effort REAL-WEBSITE diagnosis on an isolated, empty emulator.
+# This is *not* the pass/fail synthetic screenshot fixture above: public Yahoo
+# News may be unavailable in CI due to captive networks / CDN differences.
+# Preserve the screenshot and capture-stage log so a user-visible failure can
+# be distinguished from the JPEG-only fixture succeeding.
+adb shell am force-stop "$APP" || true
+sleep 4
+adb wait-for-device
+if start_audit_activity real-site "dist/cefrium-ui-audit/real-site-launch.txt"; then
+  sleep 24
+  adb exec-out screencap -p > dist/cefrium-ui-audit/real-site-tabs.png || true
+  timeout 30s adb shell uiautomator dump "/sdcard/velocity-real-site.xml" \
+    > dist/cefrium-ui-audit/real-site-uiautomator.txt 2>&1 || true
+  adb shell cat "/sdcard/velocity-real-site.xml" \
+    > dist/cefrium-ui-audit/real-site-tabs.xml 2>/dev/null || true
+  adb logcat -d -v brief | grep -E 'TABSHOT|VelocityTabPreview' \
+    | tail -120 > dist/cefrium-ui-audit/real-site-preview-log.txt || true
+  if grep -q 'TABSHOT CDP JPEG decoded' dist/cefrium-ui-audit/real-site-preview-log.txt; then
+    echo 'Real website produced compositor pixels (native tab card still needs device review)'
+  else
+    echo 'WARNING: no real-site CDP JPEG observed; see real-site-preview-log.txt'
+  fi
+else
+  echo 'WARNING: optional real-site screenshot could not be started' >&2
+fi
+
 # Android's focus dump can identify whether Cefrium requested audio focus
 # on an otherwise silent browser Home. No logged-in content is loaded here.
 adb shell dumpsys audio > dist/cefrium-ui-audit/audio-focus-after-browser.txt || true
