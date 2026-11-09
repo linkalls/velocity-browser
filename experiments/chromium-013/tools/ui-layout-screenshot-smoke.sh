@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Capture the actual Chromium activity and its Android-native bottom sheets in
-# an emulator. No screenshot includes a logged-in website or private tab.
+# Capture the actual Chromium activity and native browser surfaces in an
+# emulator, including the home, menu, settings and tab switcher. No screenshot includes a logged-in website or private tab.
 set -euo pipefail
 APP=dev.velocity.browser.chromium013
 ACTIVITY="$APP/dev.velocity.chromium.ChromiumTestActivity"
@@ -27,7 +27,7 @@ start_audit_activity() {
   return 1
 }
 
-for mode in settings tabs tabs-private tabs-groups; do
+for mode in settings settings-tabs settings-media home menu top-bar tabs tabs-private tabs-groups; do
   adb shell am force-stop "$APP" || true
   # Closing Chromium may briefly leave native child-process teardown active.
   # Give Android's ActivityManager time before a cold restart.
@@ -48,9 +48,9 @@ for mode in settings tabs tabs-private tabs-groups; do
     echo "ERROR: Velocity crashed while rendering ${mode} bottom sheet" >&2
     exit 1
   fi
-  if [[ "$mode" == settings ]]; then
-    # Fails if the old screen was accidentally launched or build info omitted.
-    grep -q 'Velocity 設定' "dist/cefrium-ui-audit/${mode}.xml" || true
+  if [[ "$mode" == settings* || "$mode" == home || "$mode" == menu || "$mode" == top-bar ]]; then
+    python3 experiments/chromium-013/tools/verify_browser_shell_ui.py \
+      "dist/cefrium-ui-audit/${mode}.xml" "$mode"
   fi
   if [[ "$mode" == tabs* ]]; then
     python3 experiments/chromium-013/tools/verify_tab_switcher_ui.py \
@@ -120,7 +120,7 @@ grep 'TABSHOT' dist/cefrium-ui-audit/preview-logcat.txt | tail -25 || true
 # Keep 160dpi so the physical test resolution equals the logical dp size.
 adb shell wm size 393x852
 adb shell wm density 160
-for mode in settings tabs; do
+for mode in settings home menu tabs; do
   adb shell am force-stop "$APP" || true
   sleep 4
   adb wait-for-device
