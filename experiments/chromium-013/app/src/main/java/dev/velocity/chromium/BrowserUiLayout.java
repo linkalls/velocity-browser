@@ -27,6 +27,12 @@ final class BrowserUiLayout {
         return 1;
     }
 
+    /** Cards show a useful portion of a portrait Web page, not a tiny strip. */
+    static int tabPreviewHeightDp(int columns) {
+        return columns <= 1 ? 264 : columns == 2 ? 205
+            : columns == 3 ? 168 : 140;
+    }
+
     static int availableSheetWidthDp(int viewportWidthDp) {
         return Math.max(1, viewportWidthDp - 2 * SHEET_SIDE_PADDING_DP);
     }

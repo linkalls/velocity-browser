@@ -114,6 +114,24 @@ class CefriumReleaseTest(unittest.TestCase):
         self.assertIn('"Webメディアを停止・音声フォーカスを解放"', activity)
         self.assertIn('MIN_CARD_WIDTH_DP = 128', layout)
 
+    def test_vivaldi_like_switcher_has_real_groups_and_private_isolation(self):
+        activity = (APP / 'ChromiumTestActivity.java').read_text()
+        smoke = (ENGINE / 'tools/ui-layout-screenshot-smoke.sh').read_text()
+        self.assertIn('private Dialog fullScreenTabsDialog(', activity)
+        self.assertIn('TAB_VIEW_PRIVATE', activity)
+        self.assertIn('TAB_VIEW_GROUPS', activity)
+        self.assertIn('TAB_VIEW_RECENT', activity)
+        self.assertIn('makeOverviewGroupCard(', activity)
+        self.assertIn('makeOverviewTabCard(', activity)
+        self.assertIn('position < members.size()', activity)
+        self.assertIn('members.size() - 3', activity)
+        self.assertIn('java.util.function.Supplier<View>', activity)
+        self.assertIn('holder.removeAllViews()', activity)
+        self.assertIn('if (!victim.privateMode && !victim.startupHome', activity)
+        self.assertIn('tabs-private', smoke)
+        self.assertIn('tabs-groups', smoke)
+        self.assertIn('verify_tab_switcher_ui.py', smoke)
+
     def test_youtube_rules_are_explicit_and_netlog_is_not_automatic(self):
         activity = (APP / "ChromiumTestActivity.java").read_text()
         application = (APP / "ChromiumDiagnosticApplication.java").read_text()
