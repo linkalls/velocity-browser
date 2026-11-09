@@ -90,7 +90,7 @@ android {
         // Legacy diagnostic/debug builds retain versionCode 1 by default.
         versionCode = providers.gradleProperty("velocityVersionCode").orElse("1").get().toInt()
         versionName = providers.gradleProperty("velocityVersionName")
-            .orElse("0.17.0").get()
+            .orElse("0.18.0").get()
         ndk { abiFilters += chromiumAbi }
         resValue("bool", "velocity_benchmark_fast_attach", benchmarkFastAttach.toString())
         resValue("integer", "velocity_native_prefetch_mib", velocityNativePrefetchMiB.toString())
@@ -131,6 +131,6 @@ android {
 }
 dependencies {
     // Full Chromium via an Android CEF port, not the Android OS WebView.
-    implementation("com.cefrium:cefrium-sdk:0.17.0")
+    implementation("com.cefrium:cefrium-sdk:0.18.0")
     testImplementation("junit:junit:4.13.2")
 }

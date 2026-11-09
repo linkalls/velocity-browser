@@ -89,7 +89,7 @@ jobs:
           gradle --no-daemon --max-workers=2 \
             -PchromiumAbi=arm64-v8a \
             "-PvelocityVersionCode=$VERSION_CODE" \
-            "-PvelocityVersionName=0.17.0.$VERSION_CODE" \
+            "-PvelocityVersionName=0.18.0.$VERSION_CODE" \
             :app:testDebugUnitTest :app:assembleRelease
 
       - name: Refuse incorrect certificate, package or version
@@ -160,4 +160,4 @@ jobs:
             "dist/$APK_NAME" dist/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --prerelease --title "Velocity Browser $VERSION_CODE" \
-            --notes "Velocity Browser for Android arm64, powered by Cefrium 0.17.0. Development build: device and security verification remains in progress."
+            --notes "Velocity Browser for Android arm64, powered by Cefrium 0.18.0. Development build: device and security verification remains in progress."

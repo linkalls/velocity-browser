@@ -9,18 +9,22 @@ final class BrowserUiLayout {
     private BrowserUiLayout() {}
 
     /** The sheet's outer horizontal padding on each side, in dp. */
-    static final int SHEET_SIDE_PADDING_DP = 18;
-    static final int CARD_GAP_DP = 8;
-    static final int MIN_CARD_WIDTH_DP = 148;
+    static final int SHEET_SIDE_PADDING_DP = 14;
+    static final int CARD_GAP_DP = 10;
+    static final int MIN_CARD_WIDTH_DP = 128;
 
     static int columnsForAvailableWidthDp(int availableWidthDp) {
-        // Do not try to fit two 148dp cards in a 320dp viewport with padding.
-        int columns = 1;
-        for (int next = 2; next <= 4; next++) {
-            int required = next * MIN_CARD_WIDTH_DP + (next - 1) * CARD_GAP_DP;
-            if (availableWidthDp >= required) columns = next;
+        // Real mobile tab switchers show two previews side-by-side even at
+        // 320dp. Do not let a giant blank Home card push the active site
+        // entirely below the fold. Narrow split-screen widths still use one.
+        int preferred = availableWidthDp >= 740 ? 4
+            : availableWidthDp >= 500 ? 3 : 2;
+        for (int columns = preferred; columns >= 2; columns--) {
+            int required = columns * MIN_CARD_WIDTH_DP
+                + (columns - 1) * CARD_GAP_DP;
+            if (required <= availableWidthDp) return columns;
         }
-        return columns;
+        return 1;
     }
 
     static int availableSheetWidthDp(int viewportWidthDp) {

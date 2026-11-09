@@ -8,6 +8,8 @@ import org.junit.Test;
 public final class BrowserUiLayoutTest {
     @Test public void mobileWidthsDoNotForceCardsOffScreen() {
         assertEquals(1, BrowserUiLayout.columnsForAvailableWidthDp(
+            BrowserUiLayout.availableSheetWidthDp(280)));
+        assertEquals(2, BrowserUiLayout.columnsForAvailableWidthDp(
             BrowserUiLayout.availableSheetWidthDp(320)));
         assertEquals(2, BrowserUiLayout.columnsForAvailableWidthDp(
             BrowserUiLayout.availableSheetWidthDp(393)));
