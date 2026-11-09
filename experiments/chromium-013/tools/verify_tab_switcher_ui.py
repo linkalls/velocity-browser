@@ -20,12 +20,18 @@ def verify(path: Path, mode: str) -> None:
     # The full-screen overlay has proper navigation, a close affordance,
     # and an intentionally implemented (not fake) recently-closed section.
     for label in ("タブ一覧を閉じる", "通常タブ画面", "非公開タブ画面",
-                  "グループタブ画面", "最近閉じたタブ画面"):
+                  "グループタブ画面", "最近閉じたタブ画面", "タブを検索") :
         assert label in descriptions, f"Missing {label!r} from switcher UI"
     if mode == "tabs-private":
         assert "非公開タブ (1)" in texts, "Private page title/counter missing"
         assert "開発グループ" not in all_labels, "Regular tab group leaked into private mode"
         assert "新しい非公開タブ" in descriptions, "Private new-tab action missing"
+    elif mode == "tabs-search":
+        assert "検索結果 1件" in texts, "Search did not filter to exactly one tab"
+        assert any("研究記事のサンプル" in x for x in texts), "Matching tab is missing"
+        assert "開発グループ" not in all_labels, "Nonmatching group leaked into search"
+        assert "タブを検索する文字列" in descriptions, "Inline search text field missing"
+        assert "新しいタブ" in descriptions, "New-tab FAB vanished during search"
     elif mode in ("tabs", "tabs-groups"):
         assert "開発グループ" in all_labels, "Group card or label missing"
         assert "新しいタブ" in descriptions, "Floating add-tab action missing"
@@ -50,6 +56,6 @@ def verify(path: Path, mode: str) -> None:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("hierarchy", type=Path)
-    ap.add_argument("mode", choices=("tabs", "tabs-private", "tabs-groups"))
+    ap.add_argument("mode", choices=("tabs", "tabs-private", "tabs-groups", "tabs-search"))
     args = ap.parse_args()
     verify(args.hierarchy, args.mode)

@@ -130,6 +130,11 @@ class CefriumReleaseTest(unittest.TestCase):
         self.assertIn('if (!victim.privateMode && !victim.startupHome', activity)
         self.assertIn('tabs-private', smoke)
         self.assertIn('tabs-groups', smoke)
+        self.assertIn('tabs-search', smoke)
+        self.assertIn('TabSearch.filter(', activity)
+        self.assertIn('searchForMode(privateMode, query)', activity)
+        self.assertIn('searchInput.addTextChangedListener(', activity)
+        self.assertIn('"検索結果 " + entries.size()', activity)
         self.assertIn('verify_tab_switcher_ui.py', smoke)
 
     def test_chrome_vivaldi_shell_replaces_old_ui_with_working_controls(self):

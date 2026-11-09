@@ -27,7 +27,7 @@ start_audit_activity() {
   return 1
 }
 
-for mode in settings settings-tabs settings-media home menu top-bar tabs tabs-private tabs-groups; do
+for mode in settings settings-tabs settings-media home menu top-bar tabs tabs-private tabs-groups tabs-search; do
   adb shell am force-stop "$APP" || true
   # Closing Chromium may briefly leave native child-process teardown active.
   # Give Android's ActivityManager time before a cold restart.
