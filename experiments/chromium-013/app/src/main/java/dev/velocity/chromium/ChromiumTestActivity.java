@@ -1313,10 +1313,6 @@ public final class ChromiumTestActivity extends Activity {
                         if (tabRegistry.current() == tab && !tab.privateMode) {
                             mainHandler.postDelayed(() -> captureVisibleTabPreview(tab, null), 650L);
                             mainHandler.postDelayed(() -> captureVisibleTabPreview(tab, null), 1800L);
-                            if (tab.url != null && !tab.url.isEmpty() && !"about:blank".equals(tab.url)) {
-                                historyStore.record(tab.url, tab.displayTitle(), false);
-                                saveHistory();
-                            }
                         }
                         browser.setDarkMode(getSharedPreferences(TAB_PREFS, MODE_PRIVATE)
                             .getBoolean("force_dark", false));
@@ -1348,7 +1344,13 @@ public final class ChromiumTestActivity extends Activity {
                     if (!address.hasFocus()) address.setText(displayAddress(url));
                     updateHomeState();
                 }
-                if (!tab.privateMode) scheduleRegularTabsSave();
+                if (!tab.privateMode) {
+                    scheduleRegularTabsSave();
+                    if (!"about:blank".equals(url)) {
+                        historyStore.record(url, tab.displayTitle(), false);
+                        saveHistory();
+                    }
+                }
             }));
             browser.setOnTitleChangedListener(name -> runOnUiThread(() -> {
                 if (destroyed || tabRegistry.find(tab.id) != tab) return;
@@ -1363,6 +1365,10 @@ public final class ChromiumTestActivity extends Activity {
                     }
                 }
                 tab.title = name == null ? "" : name;
+                if (!tab.privateMode && tab.url != null && !tab.url.isEmpty() && !"about:blank".equals(tab.url)) {
+                    historyStore.record(tab.url, tab.displayTitle(), false);
+                    saveHistory();
+                }
                 // Some real sites keep loading advertisements indefinitely.
                 // Their document title is available long before loading=false;
                 // schedule one best-effort capture even during those loads.

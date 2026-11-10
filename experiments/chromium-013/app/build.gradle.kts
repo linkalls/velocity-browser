@@ -133,4 +133,5 @@ dependencies {
     // Full Chromium via an Android CEF port, not the Android OS WebView.
     implementation("com.cefrium:cefrium-sdk:0.18.0")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }
