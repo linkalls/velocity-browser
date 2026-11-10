@@ -1,17 +1,17 @@
-# Velocity Browser — Chromium / Cefrium 0.17
+# Velocity Browser — Chromium / Cefrium 0.18
 
-Velocityは **Chromium（Cefrium 0.17.0）を主エンジン** とするAndroidブラウザ。`main` のルート `:app` は `experiments/chromium-013/app` を参照し、GeckoViewコードは現行のビルド対象から除外している。
+Velocityは **Chromium（Cefrium 0.18.0）を主エンジン** とするAndroidブラウザ。`main` のルート `:app` は `experiments/chromium-013/app` を参照し、GeckoViewコードは現行のビルド対象から除外している。
 
 ## 現在の実装
 
-- 独立した通常／プライベートタブ、12件までの保存タブ、オフラインホーム、下部アドレスバー、タブ／メニューシート。
+- 独立した通常／プライベートタブ、保存タブ、オフラインホーム、下部アドレスバー、タブ／メニューシート。
 - Velocity Block Lite：ネットワークドメイン遮断と限定的な静的CSSルール。AdGuardやuBlockの完全互換ではない。
-- Android 16の最適化された起動経路、アプリ起動時に保存済みサイトを自動ロードしない設計、無音ホームでの音声フォーカス問題修正。
+- Android 16の最適化された起動経路、アプリ起動時に保存済みサイトの選択復元に対応、無音ホームでの音声フォーカス問題修正。
 - Android 16/17エミュレーターでのJava隔離renderer／DOM+JavaScriptスモーク試験。Native-only rendererは未達成。
 
 ## Chromiumアプリのビルド
 
-**JDK 25、Android SDK Platform 37.1、Build Tools 36.0.0** が必要。Gradle 9.7.1、Android Gradle Plugin 9.4.1、Cefrium SDK/Plugin 0.17.0を固定している。
+**JDK 25、Android SDK Platform 37.1、Build Tools 36.0.0** が必要。Gradle 9.7.1、Android Gradle Plugin 9.4.1、Cefrium SDK/Plugin 0.18.0を固定している。
 
 ~~~bash
 # リポジトリのルートで実行。:app は Chromium/Cefrium アプリ。

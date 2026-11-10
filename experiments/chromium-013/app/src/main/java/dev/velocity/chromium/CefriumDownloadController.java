@@ -39,7 +39,7 @@ import java.util.function.Consumer;
  */
 final class CefriumDownloadController {
     private static final String TAG = "VelocityDownloads";
-    private static final int MAX_ACTIVE = 2;
+    private static final int MAX_ACTIVE = 5;
     private final Activity activity;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService fileIo = Executors.newSingleThreadExecutor();
@@ -121,10 +121,18 @@ final class CefriumDownloadController {
     private void offer(CefriumBrowser browser, boolean privateMode,
             CefriumBrowser.DownloadItem item, CefriumBrowser.BeforeDownloadCallback callback) {
         AtomicBoolean decided = new AtomicBoolean();
-        if (disposed || !DownloadNamePolicy.supportedSource(item.getUrl())
-                || activeCount() >= MAX_ACTIVE) {
+        if (disposed) {
             callback.cancel();
-            if (!disposed) toast("ダウンロードできないファイル、または同時保存数の上限だよ");
+            return;
+        }
+        if (activeCount() >= MAX_ACTIVE) {
+            callback.cancel();
+            if (!disposed) toast("同時ダウンロード数の上限（5件）に達しています");
+            return;
+        }
+        if (!DownloadNamePolicy.supportedSource(item.getUrl())) {
+            callback.cancel();
+            if (!disposed) toast("サポートされていないURL形式です");
             return;
         }
         String safe = DownloadNamePolicy.filename(item.getSuggestedName());
@@ -309,41 +317,153 @@ final class CefriumDownloadController {
     }
     private final Runnable repaintRunnable = this::renderList;
 
+    private String formatBytes(long bytes) {
+        if (bytes < 0) return "0 B";
+        return android.text.format.Formatter.formatFileSize(activity, bytes);
+    }
+
     private void renderList() {
         if (listContent == null) return;
         lastRepaintMs = SystemClock.elapsedRealtime();
         listContent.removeAllViews();
         int count = 0;
+        float density = activity.getResources().getDisplayMetrics().density;
+        int dp8 = (int) (8 * density + .5f);
+        int dp12 = (int) (12 * density + .5f);
+
         for (Job job : jobs) {
             if (job.privateMode != shownPrivate) continue;
             count++;
+
+            LinearLayout card = new LinearLayout(activity);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setPadding(dp12, dp12, dp12, dp12);
+            android.graphics.drawable.GradientDrawable cardBg = new android.graphics.drawable.GradientDrawable();
+            cardBg.setColor(Color.rgb(43, 46, 54));
+            cardBg.setCornerRadius(12 * density);
+            card.setBackground(cardBg);
+
+            LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(-1, -2);
+            cardLp.bottomMargin = dp12;
+            listContent.addView(card, cardLp);
+
             TextView title = new TextView(activity);
             title.setText(job.name);
-            title.setTextSize(16);
-            listContent.addView(title);
-            TextView detail = new TextView(activity);
-            String amount = job.total > 0
-                ? job.received + " / " + job.total + " bytes"
-                : job.received + " bytes";
-            detail.setText(job.state + " · " + amount);
-            listContent.addView(detail);
+            title.setTextSize(15);
+            title.setTypeface(null, android.graphics.Typeface.BOLD);
+            title.setTextColor(Color.WHITE);
+            title.setSingleLine(true);
+            title.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+            card.addView(title);
+
+            String statusText;
             if (job.state == State.DOWNLOADING) {
+                statusText = "ダウンロード中";
+            } else if (job.state == State.PUBLISHING) {
+                statusText = "保存中…";
+            } else if (job.state == State.COMPLETE) {
+                statusText = "完了";
+            } else if (job.state == State.CANCELED) {
+                statusText = "キャンセル済み";
+            } else {
+                statusText = "失敗";
+            }
+
+            String sizeText = job.total > 0
+                ? formatBytes(job.received) + " / " + formatBytes(job.total)
+                : formatBytes(job.received);
+            int percent = (job.total > 0 && job.received >= 0)
+                ? (int) Math.min(100, (job.received * 100L / job.total)) : -1;
+
+            TextView detail = new TextView(activity);
+            detail.setText(statusText + " · " + sizeText + (percent >= 0 ? " (" + percent + "%)" : ""));
+            detail.setTextSize(12);
+            detail.setTextColor(Color.rgb(170, 178, 195));
+            detail.setPadding(0, dp8 / 2, 0, dp8 / 2);
+            card.addView(detail);
+
+            if (job.state == State.DOWNLOADING) {
+                android.widget.ProgressBar progress = new android.widget.ProgressBar(
+                    activity, null, android.R.attr.progressBarStyleHorizontal);
+                progress.setIndeterminate(job.total <= 0);
+                if (job.total > 0) progress.setProgress(percent);
+                card.addView(progress, new LinearLayout.LayoutParams(-1, dp8 * 2));
+
                 Button cancel = new Button(activity);
-                cancel.setText("保存をキャンセル");
+                cancel.setText("キャンセル");
                 cancel.setOnClickListener(v -> job.browser.cancelDownload(job.id));
-                listContent.addView(cancel);
+                LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(-2, -2);
+                btnLp.topMargin = dp8 / 2;
+                card.addView(cancel, btnLp);
             } else if (job.saved != null && job.state == State.COMPLETE) {
+                LinearLayout actions = new LinearLayout(activity);
+                actions.setOrientation(LinearLayout.HORIZONTAL);
+
                 Button open = new Button(activity);
                 open.setText("開く");
                 open.setOnClickListener(v -> openSaved(job));
-                listContent.addView(open);
+                actions.addView(open, new LinearLayout.LayoutParams(0, -2, 1));
+
+                Button share = new Button(activity);
+                share.setText("共有");
+                share.setOnClickListener(v -> shareSaved(job));
+                LinearLayout.LayoutParams shareLp = new LinearLayout.LayoutParams(0, -2, 1);
+                shareLp.leftMargin = dp8;
+                actions.addView(share, shareLp);
+
+                Button delete = new Button(activity);
+                delete.setText("削除");
+                delete.setOnClickListener(v -> deleteSaved(job));
+                LinearLayout.LayoutParams delLp = new LinearLayout.LayoutParams(0, -2, 1);
+                delLp.leftMargin = dp8;
+                actions.addView(delete, delLp);
+
+                LinearLayout.LayoutParams actLp = new LinearLayout.LayoutParams(-1, -2);
+                actLp.topMargin = dp8 / 2;
+                card.addView(actions, actLp);
             }
         }
         if (count == 0) {
             TextView empty = new TextView(activity);
             empty.setText("保存したファイルはまだないよ");
+            empty.setTextColor(Color.LTGRAY);
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(0, dp12 * 4, 0, dp12 * 4);
             listContent.addView(empty);
         }
+    }
+
+    private void shareSaved(Job job) {
+        if (job.saved == null) return;
+        try {
+            Intent share = new Intent(Intent.ACTION_SEND);
+            share.setType(job.mime);
+            share.putExtra(Intent.EXTRA_STREAM, job.saved);
+            share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            activity.startActivity(Intent.createChooser(share, "ファイルを共有"));
+        } catch (Exception err) {
+            toast("共有できるアプリが見つからなかった");
+        }
+    }
+
+    private void deleteSaved(Job job) {
+        if (job.saved == null) return;
+        new AlertDialog.Builder(activity)
+            .setTitle("ファイルを削除")
+            .setMessage(job.name + " を端末から削除する？")
+            .setPositiveButton("削除", (d, w) -> {
+                try {
+                    activity.getContentResolver().delete(job.saved, null, null);
+                    job.saved = null;
+                    jobs.remove(job);
+                    toast("削除したよ");
+                    renderList();
+                } catch (Exception err) {
+                    toast("削除に失敗した");
+                }
+            })
+            .setNegativeButton("キャンセル", null)
+            .show();
     }
 
     private void showPdf(Job job) {
