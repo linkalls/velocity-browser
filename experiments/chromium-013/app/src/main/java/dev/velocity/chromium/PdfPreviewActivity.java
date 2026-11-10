@@ -6,9 +6,11 @@ import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.pdf.PdfRenderer;
 import android.net.Uri;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.view.Gravity;
+import android.widget.Toast;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.WindowManager;
@@ -69,10 +71,16 @@ public final class PdfPreviewActivity extends Activity {
         bar.addView(back, new LinearLayout.LayoutParams(dp(72), dp(48)));
         pageLabel = new TextView(this);
         pageLabel.setText("PDF");
-        pageLabel.setTextSize(16);
+        pageLabel.setTextSize(15);
         pageLabel.setTextColor(Color.WHITE);
         pageLabel.setGravity(Gravity.CENTER);
+        pageLabel.setSingleLine(true);
+        pageLabel.setEllipsize(android.text.TextUtils.TruncateAt.END);
         bar.addView(pageLabel, new LinearLayout.LayoutParams(0, -1, 1));
+
+        Button share = control("共有", "PDFファイルを共有", () -> shareDocument(source));
+        bar.addView(share, new LinearLayout.LayoutParams(dp(64), dp(48)));
+
         previous = control("〈", "前のPDFページへ", () -> showPage(selectedPage - 1));
         next = control("〉", "次のPDFページへ", () -> showPage(selectedPage + 1));
         bar.addView(previous, new LinearLayout.LayoutParams(dp(48), dp(48)));
@@ -107,6 +115,18 @@ public final class PdfPreviewActivity extends Activity {
         button.setContentDescription(description);
         button.setOnClickListener(view -> action.run());
         return button;
+    }
+
+    private void shareDocument(Uri source) {
+        try {
+            Intent share = new Intent(Intent.ACTION_SEND);
+            share.setType("application/pdf");
+            share.putExtra(Intent.EXTRA_STREAM, source);
+            share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(share, "PDFを共有"));
+        } catch (Exception err) {
+            Toast.makeText(this, "共有できるアプリが見つからなかった", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void openDocument(Uri source) {
