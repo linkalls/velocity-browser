@@ -952,7 +952,7 @@ public final class ChromiumTestActivity extends Activity {
             try {
                 restoreRegularTabs();
                 boolean restoreLastTab = getSharedPreferences(TAB_PREFS, MODE_PRIVATE)
-                    .getBoolean("restore_last_tab", true);
+                    .getBoolean("restore_last_tab", false);
                 if (restoreLastTab && tabRegistry.current() != null && !tabRegistry.isStartupHomeCurrent()) {
                     // Restore and display the active tab from the previous session.
                 } else {
@@ -1637,8 +1637,11 @@ public final class ChromiumTestActivity extends Activity {
 
     private void toggleBookmarkCurrent() {
         TabRegistry.Tab current = tabRegistry.current();
-        if (current == null || current.url == null || "about:blank".equals(current.url)) {
-            Toast.makeText(this, "このページはブックマークできません", Toast.LENGTH_SHORT).show();
+        if (current == null || current.url == null || "about:blank".equals(current.url)
+                || current.privateMode) {
+            Toast.makeText(this, current != null && current.privateMode
+                ? "非公開タブのページはブックマークできません"
+                : "このページはブックマークできません", Toast.LENGTH_SHORT).show();
             return;
         }
         if (bookmarkStore.isBookmarked(current.url)) {
@@ -1653,6 +1656,10 @@ public final class ChromiumTestActivity extends Activity {
     }
 
     private void showBookmarks() {
+        showBookmarks("");
+    }
+
+    private void showBookmarks(String initialQuery) {
         LinearLayout panel = sheetPanel();
         final Dialog[] dialog = new Dialog[1];
 
@@ -1665,58 +1672,86 @@ public final class ChromiumTestActivity extends Activity {
         heading.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
 
         Button close = iconButton(R.drawable.ic_browser_close, "閉じる", () -> dialog[0].dismiss());
-        heading.addView(close, new LinearLayout.LayoutParams(dp(44), dp(46)));
+        heading.addView(close, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
+        EditText search = new EditText(this);
+        search.setSingleLine(true);
+        search.setTextSize(14);
+        search.setTextColor(PRIMARY);
+        search.setHintTextColor(SECONDARY);
+        search.setHint("ブックマークを検索");
+        search.setPadding(dp(12), dp(8), dp(12), dp(8));
+        search.setBackground(rounded(ELEVATED, 10, Color.TRANSPARENT));
+        LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(-1, dp(44));
+        searchLp.setMargins(dp(12), 0, dp(12), dp(8));
+        panel.addView(search, searchLp);
 
         BoundedScrollView scroll = new BoundedScrollView();
         panel.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout items = sheetPanel();
         scroll.addView(items);
 
-        List<BookmarkStore.Bookmark> list = bookmarkStore.all();
-        if (list.isEmpty()) {
-            TextView empty = text("ブックマークはまだありません", 14, SECONDARY, false);
-            empty.setGravity(Gravity.CENTER);
-            empty.setPadding(dp(12), dp(40), dp(12), dp(40));
-            items.addView(empty, new LinearLayout.LayoutParams(-1, -2));
-        } else {
-            for (BookmarkStore.Bookmark b : list) {
-                LinearLayout row = new LinearLayout(this);
-                row.setGravity(Gravity.CENTER_VERTICAL);
-                row.setPadding(dp(8), dp(8), dp(8), dp(8));
+        Runnable render = () -> {
+            items.removeAllViews();
+            String q = search.getText().toString();
+            List<BookmarkStore.Bookmark> list = bookmarkStore.search(q);
+            if (list.isEmpty()) {
+                TextView empty = text(q.trim().isEmpty() ? "ブックマークはまだありません" : "一致するブックマークがありません", 14, SECONDARY, false);
+                empty.setGravity(Gravity.CENTER);
+                empty.setPadding(dp(12), dp(40), dp(12), dp(40));
+                items.addView(empty, new LinearLayout.LayoutParams(-1, -2));
+            } else {
+                for (BookmarkStore.Bookmark b : list) {
+                    LinearLayout row = new LinearLayout(this);
+                    row.setGravity(Gravity.CENTER_VERTICAL);
+                    row.setPadding(dp(8), dp(8), dp(8), dp(8));
 
-                ImageView icon = iconView(R.drawable.ic_browser_globe, SECONDARY);
-                row.addView(icon, new LinearLayout.LayoutParams(dp(36), dp(36)));
+                    ImageView icon = iconView(R.drawable.ic_browser_globe, SECONDARY);
+                    row.addView(icon, new LinearLayout.LayoutParams(dp(36), dp(36)));
 
-                LinearLayout labels = new LinearLayout(this);
-                labels.setOrientation(LinearLayout.VERTICAL);
-                labels.setPadding(dp(8), 0, dp(8), 0);
+                    LinearLayout labels = new LinearLayout(this);
+                    labels.setOrientation(LinearLayout.VERTICAL);
+                    labels.setPadding(dp(8), 0, dp(8), 0);
 
-                TextView name = text(b.title, 14, PRIMARY, false);
-                name.setSingleLine(true);
-                name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                labels.addView(name);
+                    TextView name = text(b.title, 14, PRIMARY, false);
+                    name.setSingleLine(true);
+                    name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    labels.addView(name);
 
-                TextView urlText = text(b.url, 11, SECONDARY, false);
-                urlText.setSingleLine(true);
-                urlText.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                labels.addView(urlText);
+                    TextView urlText = text(b.url, 11, SECONDARY, false);
+                    urlText.setSingleLine(true);
+                    urlText.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    labels.addView(urlText);
 
-                row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
-                row.setOnClickListener(v -> {
-                    dialog[0].dismiss();
-                    navigateCurrentTab(b.url);
-                });
+                    row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+                    row.setOnClickListener(v -> {
+                        dialog[0].dismiss();
+                        navigateCurrentTab(b.url);
+                    });
 
-                Button del = iconButton(R.drawable.ic_browser_close, "削除", () -> {
-                    bookmarkStore.removeById(b.id);
-                    saveBookmarks();
-                    dialog[0].dismiss();
-                    showBookmarks();
-                });
-                row.addView(del, new LinearLayout.LayoutParams(dp(40), dp(40)));
+                    Button del = iconButton(R.drawable.ic_browser_close, "削除", () -> {
+                        bookmarkStore.removeById(b.id);
+                        saveBookmarks();
+                        dialog[0].dismiss();
+                        showBookmarks(search.getText().toString());
+                    });
+                    row.addView(del, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
-                items.addView(row, new LinearLayout.LayoutParams(-1, -2));
+                    items.addView(row, new LinearLayout.LayoutParams(-1, -2));
+                }
             }
+        };
+
+        search.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            public void onTextChanged(CharSequence s, int start, int before, int count) { render.run(); }
+            public void afterTextChanged(android.text.Editable s) {}
+        });
+
+        if (initialQuery != null && !initialQuery.isEmpty()) {
+            search.setText(initialQuery);
+        } else {
+            render.run();
         }
 
         dialog[0] = bottomSheet(panel);
@@ -1733,6 +1768,10 @@ public final class ChromiumTestActivity extends Activity {
     }
 
     private void showHistory() {
+        showHistory("");
+    }
+
+    private void showHistory(String initialQuery) {
         LinearLayout panel = sheetPanel();
         final Dialog[] dialog = new Dialog[1];
 
@@ -1757,62 +1796,90 @@ public final class ChromiumTestActivity extends Activity {
                 .setNegativeButton("キャンセル", null)
                 .show();
         });
-        heading.addView(clear, new LinearLayout.LayoutParams(dp(44), dp(46)));
+        heading.addView(clear, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
         Button close = iconButton(R.drawable.ic_browser_close, "閉じる", () -> dialog[0].dismiss());
-        heading.addView(close, new LinearLayout.LayoutParams(dp(44), dp(46)));
+        heading.addView(close, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
+        EditText search = new EditText(this);
+        search.setSingleLine(true);
+        search.setTextSize(14);
+        search.setTextColor(PRIMARY);
+        search.setHintTextColor(SECONDARY);
+        search.setHint("閲覧履歴を検索");
+        search.setPadding(dp(12), dp(8), dp(12), dp(8));
+        search.setBackground(rounded(ELEVATED, 10, Color.TRANSPARENT));
+        LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(-1, dp(44));
+        searchLp.setMargins(dp(12), 0, dp(12), dp(8));
+        panel.addView(search, searchLp);
 
         BoundedScrollView scroll = new BoundedScrollView();
         panel.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout items = sheetPanel();
         scroll.addView(items);
 
-        List<HistoryStore.HistoryEntry> list = historyStore.all();
-        if (list.isEmpty()) {
-            TextView empty = text("履歴はまだありません", 14, SECONDARY, false);
-            empty.setGravity(Gravity.CENTER);
-            empty.setPadding(dp(12), dp(40), dp(12), dp(40));
-            items.addView(empty, new LinearLayout.LayoutParams(-1, -2));
-        } else {
-            java.text.SimpleDateFormat format = new java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.getDefault());
-            for (HistoryStore.HistoryEntry e : list) {
-                LinearLayout row = new LinearLayout(this);
-                row.setGravity(Gravity.CENTER_VERTICAL);
-                row.setPadding(dp(8), dp(8), dp(8), dp(8));
+        Runnable render = () -> {
+            items.removeAllViews();
+            String q = search.getText().toString();
+            List<HistoryStore.HistoryEntry> list = historyStore.search(q);
+            if (list.isEmpty()) {
+                TextView empty = text(q.trim().isEmpty() ? "履歴はまだありません" : "一致する履歴がありません", 14, SECONDARY, false);
+                empty.setGravity(Gravity.CENTER);
+                empty.setPadding(dp(12), dp(40), dp(12), dp(40));
+                items.addView(empty, new LinearLayout.LayoutParams(-1, -2));
+            } else {
+                java.text.SimpleDateFormat format = new java.text.SimpleDateFormat("MM/dd HH:mm", java.util.Locale.getDefault());
+                for (HistoryStore.HistoryEntry e : list) {
+                    LinearLayout row = new LinearLayout(this);
+                    row.setGravity(Gravity.CENTER_VERTICAL);
+                    row.setPadding(dp(8), dp(8), dp(8), dp(8));
 
-                ImageView icon = iconView(R.drawable.ic_browser_history, SECONDARY);
-                row.addView(icon, new LinearLayout.LayoutParams(dp(36), dp(36)));
+                    ImageView icon = iconView(R.drawable.ic_browser_history, SECONDARY);
+                    row.addView(icon, new LinearLayout.LayoutParams(dp(36), dp(36)));
 
-                LinearLayout labels = new LinearLayout(this);
-                labels.setOrientation(LinearLayout.VERTICAL);
-                labels.setPadding(dp(8), 0, dp(8), 0);
+                    LinearLayout labels = new LinearLayout(this);
+                    labels.setOrientation(LinearLayout.VERTICAL);
+                    labels.setPadding(dp(8), 0, dp(8), 0);
 
-                TextView name = text(e.title, 14, PRIMARY, false);
-                name.setSingleLine(true);
-                name.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                labels.addView(name);
+                    TextView name = text(e.title, 14, PRIMARY, false);
+                    name.setSingleLine(true);
+                    name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    labels.addView(name);
 
-                TextView urlText = text(e.url + " · " + format.format(new java.util.Date(e.visitedAt)), 11, SECONDARY, false);
-                urlText.setSingleLine(true);
-                urlText.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                labels.addView(urlText);
+                    TextView urlText = text(e.url + " · " + format.format(new java.util.Date(e.visitedAt)), 11, SECONDARY, false);
+                    urlText.setSingleLine(true);
+                    urlText.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    labels.addView(urlText);
 
-                row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
-                row.setOnClickListener(v -> {
-                    dialog[0].dismiss();
-                    navigateCurrentTab(e.url);
-                });
+                    row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+                    row.setOnClickListener(v -> {
+                        dialog[0].dismiss();
+                        navigateCurrentTab(e.url);
+                    });
 
-                Button del = iconButton(R.drawable.ic_browser_close, "削除", () -> {
-                    historyStore.removeById(e.id);
-                    saveHistory();
-                    dialog[0].dismiss();
-                    showHistory();
-                });
-                row.addView(del, new LinearLayout.LayoutParams(dp(40), dp(40)));
+                    Button del = iconButton(R.drawable.ic_browser_close, "削除", () -> {
+                        historyStore.removeById(e.id);
+                        saveHistory();
+                        dialog[0].dismiss();
+                        showHistory(search.getText().toString());
+                    });
+                    row.addView(del, new LinearLayout.LayoutParams(dp(48), dp(48)));
 
-                items.addView(row, new LinearLayout.LayoutParams(-1, -2));
+                    items.addView(row, new LinearLayout.LayoutParams(-1, -2));
+                }
             }
+        };
+
+        search.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            public void onTextChanged(CharSequence s, int start, int before, int count) { render.run(); }
+            public void afterTextChanged(android.text.Editable s) {}
+        });
+
+        if (initialQuery != null && !initialQuery.isEmpty()) {
+            search.setText(initialQuery);
+        } else {
+            render.run();
         }
 
         dialog[0] = bottomSheet(panel);
@@ -3564,7 +3631,7 @@ public final class ChromiumTestActivity extends Activity {
                 break;
             case "タブ":
                 addSettingsToggle(content, "前回のタブを復元",
-                    "起動時に最後に開いていたタブを表示", "restore_last_tab", true);
+                    "起動時に最後に開いていたタブを表示", "restore_last_tab", false);
                 addSettingsToggle(content, "タブのプレビューを保存",
                     "通常タブだけ、アプリ専用領域に画像を保存", "save_previews", true);
                 addSettingsToggle(content, "新しいタブで検索欄を選択",

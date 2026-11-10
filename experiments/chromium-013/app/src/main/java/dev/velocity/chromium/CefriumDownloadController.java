@@ -7,8 +7,10 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Environment;
 import android.os.Handler;
+import android.graphics.Color;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.view.Gravity;
 import android.view.WindowManager;
 import android.provider.MediaStore;
 import android.util.Log;
@@ -453,11 +455,15 @@ final class CefriumDownloadController {
             .setMessage(job.name + " を端末から削除する？")
             .setPositiveButton("削除", (d, w) -> {
                 try {
-                    activity.getContentResolver().delete(job.saved, null, null);
-                    job.saved = null;
-                    jobs.remove(job);
-                    toast("削除したよ");
-                    renderList();
+                    int deleted = activity.getContentResolver().delete(job.saved, null, null);
+                    if (deleted > 0) {
+                        job.saved = null;
+                        jobs.remove(job);
+                        toast("削除したよ");
+                        renderList();
+                    } else {
+                        toast("ファイルが見つからないか削除できなかった");
+                    }
                 } catch (Exception err) {
                     toast("削除に失敗した");
                 }
