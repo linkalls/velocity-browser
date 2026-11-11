@@ -6,6 +6,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.*
 import dev.velocity.browser.block.BlockController
 import dev.velocity.browser.diagnostics.ScrollDiagnostics
+import dev.velocity.browser.diagnostics.SiteScrollBenchmark
 import dev.velocity.browser.ui.*
 import org.junit.Assert.*
 import org.junit.Test
@@ -20,7 +21,7 @@ class ScrollJumpIntegrationTest {
     private fun chrome():BrowserChromeView {val f=MainActivity::class.java.getDeclaredField("chrome").apply {isAccessible=true};return f.get(app.coordinator.host!!.activity) as BrowserChromeView}
     private fun await(label:String,test:()->Boolean){val end=SystemClock.uptimeMillis()+20000;while(SystemClock.uptimeMillis()<end){var ok=false;main {ok=test()};if(ok)return;SystemClock.sleep(80)};fail(label)}
     private fun launch(){inst.targetContext.startActivity(Intent(inst.targetContext,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));await("init"){app.coordinator.host!=null&&!app.blocker.busy};main {app.appearance.dismissFor(app.coordinator.host!!.activity);app.coordinator.scheduler.tabs.forEach {app.coordinator.close(it.id,true)}}}
-    private fun cleanup(){main {ScrollDiagnostics.enable(false);app.appearance.dismissFor(app.coordinator.host!!.activity);app.coordinator.scheduler.tabs.forEach {app.coordinator.close(it.id,true)}}}
+    private fun cleanup(){main {SiteScrollBenchmark.discard();ScrollDiagnostics.enable(false);app.appearance.dismissFor(app.coordinator.host!!.activity);app.coordinator.scheduler.tabs.forEach {app.coordinator.close(it.id,true)}}}
     private class Fixture(private val html:ByteArray):AutoCloseable {
         private val server=java.net.ServerSocket(0,16,java.net.InetAddress.getByName("127.0.0.1"))
         private val io=java.util.concurrent.Executors.newSingleThreadExecutor()
@@ -55,13 +56,51 @@ class ScrollJumpIntegrationTest {
                 assertEquals(0,ScrollDiagnostics.size);assertFalse(ScrollDiagnostics.snapshot().contains("987654"));assertFalse(ScrollDiagnostics.snapshot().contains("private-tab-secret"))
                 ScrollDiagnostics.enable(false);assertEquals("",ScrollDiagnostics.snapshot())
             }
+            // Keep the smoke count at 31 while checking real Gecko callback
+            // collection, ZIP schema, export redaction and explicit stop.
+            fixture().use { f ->
+                val normalId = page(f)
+                main {
+                    val t = app.coordinator.scheduler.tab(normalId)!!
+                    assertTrue(SiteScrollBenchmark.start(app.coordinator.host!!.activity,
+                        t.id, t.identity!!, t.epoch, f.url, app.blocker.mode.name,
+                        app.blocker.collapseEnabled))
+                }
+                device.swipe(device.displayWidth/2,device.displayHeight*3/4,
+                    device.displayWidth/2,device.displayHeight/3,40)
+                device.waitForIdle()
+                var zip = byteArrayOf()
+                main {
+                    SiteScrollBenchmark.stop("test")
+                    assertFalse(SiteScrollBenchmark.active)
+                    assertTrue(SiteScrollBenchmark.canExport)
+                    zip = SiteScrollBenchmark.exportZip()!!
+                }
+                val entries = mutableMapOf<String,String>()
+                java.util.zip.ZipInputStream(java.io.ByteArrayInputStream(zip)).use { archive ->
+                    while (true) {
+                        val next = archive.nextEntry ?: break
+                        entries[next.name] = archive.readBytes().toString(Charsets.UTF_8)
+                        archive.closeEntry()
+                    }
+                }
+                val json = org.json.JSONObject(entries["summary.json"]!!)
+                val csv = entries["events.csv"]!!
+                assertEquals(false,json.getBoolean("content_fps_measured"))
+                assertEquals(false,json.getBoolean("site_url_exported"))
+                assertTrue(csv.startsWith("elapsed_ms,kind,"))
+                assertTrue(csv.contains("gecko_scroll"))
+                assertFalse(csv.contains(f.url))
+                assertFalse(json.toString().contains(f.url))
+                assertTrue(entries["README.txt"]!!.contains("NOT displayed content FPS"))
+            }
             fixture().use {f->
                 var id=""
                 main {ScrollDiagnostics.enable(true);app.coordinator.createTab(f.url,privateMode=true);id=app.coordinator.scheduler.selectedId!!;app.coordinator.render()}
                 await("private fixture ready"){app.coordinator.scheduler.tab(id)?.title=="JUMP_READY"}
                 device.swipe(device.displayWidth/2,device.displayHeight*3/4,device.displayWidth/2,device.displayHeight/3,40)
                 device.waitForIdle()
-                main {assertEquals("actual private callbacks remain excluded",0,ScrollDiagnostics.size);assertFalse(ScrollDiagnostics.snapshot().contains(f.url));ScrollDiagnostics.enable(false)}
+                main {assertEquals("actual private callbacks remain excluded",0,ScrollDiagnostics.size);assertFalse(ScrollDiagnostics.snapshot().contains(f.url));assertFalse("private transition clears site benchmark",SiteScrollBenchmark.canExport);ScrollDiagnostics.enable(false)}
             }
         }finally {cleanup()}
     }
