@@ -15,7 +15,13 @@ This is not cosmetic blocking or Gecko XPI compatibility. The separate
 Cefrium built-in EasyList behavior is not controlled by this switch.
 
 The Preview browser now has a compact bottom address bar and native tab
-management. See the [UX plan](../../docs/velocity-cefrium-preview-ux.md)
+management. Downloads are accepted from Cefrium's actual engine-owned
+`onBeforeDownload` event, not by revalidating the item's URL as HTTP(S).
+This preserves the authenticated stream and allows valid browser-generated
+downloads (such as `blob:` URLs) without introducing a second network request.
+User confirmation, private temporary storage and MediaStore publication remain
+in place. Verify real downloads on a device before shipping.
+See the [UX plan](../../docs/velocity-cefrium-preview-ux.md)
 and [signed APK update guide](../../docs/velocity-cefrium-signing.md).
 The fixed-key APK is not upgrade-compatible with older debug-signed builds.
 
