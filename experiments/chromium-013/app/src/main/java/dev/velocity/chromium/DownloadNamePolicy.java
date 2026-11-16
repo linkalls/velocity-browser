@@ -2,6 +2,7 @@ package dev.velocity.chromium;
 
 import java.text.Normalizer;
 import java.util.Locale;
+import java.net.URI;
 
 /** Small, Android-independent checks for user-visible download metadata. */
 final class DownloadNamePolicy {
@@ -34,4 +35,15 @@ final class DownloadNamePolicy {
             ? raw : "application/octet-stream";
     }
 
+    static boolean supportedSource(String url) {
+        if (url == null) return false;
+        try {
+            URI uri = URI.create(url);
+            String scheme = uri.getScheme();
+            return scheme != null && (scheme.equalsIgnoreCase("https")
+                || scheme.equalsIgnoreCase("http")) && uri.getHost() != null;
+        } catch (IllegalArgumentException invalid) {
+            return false;
+        }
+    }
 }
