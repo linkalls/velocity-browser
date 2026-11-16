@@ -124,10 +124,10 @@ public final class PdfPreviewActivity extends Activity {
 
         previous = control("‹", "前のPDFページへ", () -> showPage(selectedPage - 1));
         next = control("›", "次のPDFページへ", () -> showPage(selectedPage + 1));
-        LinearLayout.LayoutParams previousSize = new LinearLayout.LayoutParams(dp(44), dp(48));
+        LinearLayout.LayoutParams previousSize = new LinearLayout.LayoutParams(dp(48), dp(48));
         previousSize.leftMargin = dp(6);
         bar.addView(previous, previousSize);
-        LinearLayout.LayoutParams nextSize = new LinearLayout.LayoutParams(dp(44), dp(48));
+        LinearLayout.LayoutParams nextSize = new LinearLayout.LayoutParams(dp(48), dp(48));
         nextSize.leftMargin = dp(4);
         bar.addView(next, nextSize);
         previous.setEnabled(false);
@@ -159,7 +159,7 @@ public final class PdfPreviewActivity extends Activity {
         button.setTextSize(text.equals("‹") || text.equals("›") ? 27 : 14);
         button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         button.setGravity(Gravity.CENTER);
-        button.setMinWidth(dp(44));
+        button.setMinWidth(dp(48));
         button.setMinHeight(dp(48));
         button.setContentDescription(description);
         button.setFocusable(true);
