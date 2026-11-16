@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Two overlapping rounded documents, matching Velocity's outlined icons. -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#E4EDEF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M8,8 H19 V20 H8 Z M5,16 H4 C3.45,16 3,15.55 3,15 V5 C3,4.45 3.45,4 4,4 H15 C15.55,4 16,4.45 16,5 V6" />
+</vector>
