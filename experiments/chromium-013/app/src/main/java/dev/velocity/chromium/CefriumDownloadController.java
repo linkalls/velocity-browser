@@ -21,6 +21,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.cefrium.CefriumBrowser;
+import com.cefrium.CefriumDownloadClient;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -67,6 +68,8 @@ final class CefriumDownloadController {
         long total = -1;
         Uri saved;
         boolean previewWhenReady;
+        // No raw request URLs or authentication tokens are stored in error UI.
+        String failureCategory;
         Job(CefriumBrowser browser, CefriumBrowser.DownloadItem item,
                 String name, boolean privateMode, File temporary) {
             this.browser = browser;
@@ -97,14 +100,17 @@ final class CefriumDownloadController {
     }
 
     void bind(CefriumBrowser browser, boolean privateMode) {
-        browser.setDownloadHandler(new CefriumBrowser.CefriumDownloadHandler() {
-            @Override public void onBeforeDownload(CefriumBrowser.DownloadItem item,
+        // Cefrium 0.21 SDK client; the engine supplies the originating browser
+        // rather than asking us to capture it in a legacy handler closure.
+        browser.setDownloadClient(new CefriumDownloadClient() {
+            @Override public void onBeforeDownload(CefriumBrowser source,
+                    CefriumBrowser.DownloadItem item,
                     CefriumBrowser.BeforeDownloadCallback callback) {
-                // All mutable state and Android dialogs live on the Android main thread.
-                main.post(() -> offer(browser, privateMode, item, callback));
+                main.post(() -> offer(source, privateMode, item, callback));
             }
-            @Override public void onDownloadUpdated(CefriumBrowser.DownloadItem item) {
-                main.post(() -> updated(browser, item));
+            @Override public void onDownloadUpdated(CefriumBrowser source,
+                    CefriumBrowser.DownloadItem item) {
+                main.post(() -> updated(source, item));
             }
         });
     }
@@ -222,6 +228,12 @@ final class CefriumDownloadController {
             fileIo.execute(() -> publish(completed));
         } else if (item.isCanceled() || item.isInterrupted()) {
             job.state = item.isCanceled() ? State.CANCELED : State.FAILED;
+            if (item.isInterrupted()) {
+                // Typed 0.21 failure category: FILE, NETWORK, SERVER, USER, OTHER.
+                // Avoid leaking a signed URL into logs or the downloads dialog.
+                job.failureCategory = String.valueOf(item.getInterruption());
+                Log.w(TAG, "CEF download interrupted: " + job.failureCategory);
+            }
             final File failedFile = job.temporary;
             fileIo.execute(() -> { if (failedFile.exists()) failedFile.delete(); });
             idle(browser);
@@ -368,7 +380,8 @@ final class CefriumDownloadController {
             } else if (job.state == State.CANCELED) {
                 statusText = "キャンセル済み";
             } else {
-                statusText = "失敗";
+                statusText = job.failureCategory == null
+                    ? "失敗" : "失敗 (" + job.failureCategory + ")";
             }
 
             String sizeText = job.total > 0

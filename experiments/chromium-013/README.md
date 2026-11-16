@@ -1,9 +1,9 @@
-# Velocity Chromium · Cefrium 0.18.0
+# Velocity Chromium · Cefrium 0.21.0
 
 Independent Java-renderer experiment; applicationId `dev.velocity.browser.chromium013`.
 
 See [migration, build instructions and verification](../../docs/chromium-cefrium-013.md).
-The 0.9.4 baseline is in `../chromium/`; this root uses the 0.18.0 SDK and Gradle plugin.
+The 0.9.4 baseline is in `../chromium/`; this root uses the 0.21.0 SDK and Gradle plugin.
 
 The tabbed/private Cefrium migration is tracked in
 [the migration tracker](../../docs/chromium-cefrium-013-migration.md).
@@ -18,6 +18,34 @@ The Preview browser now has a compact bottom address bar and native tab
 management. See the [UX plan](../../docs/velocity-cefrium-preview-ux.md)
 and [signed APK update guide](../../docs/velocity-cefrium-signing.md).
 The fixed-key APK is not upgrade-compatible with older debug-signed builds.
+
+## Cefrium 0.21.0 upgrade (2026-11-16)
+
+The SDK, Gradle plugin, app version, signed APK metadata and crash diagnostics are
+updated together to version 0.21.0 (Chromium 156.0.8078.96) using the official
+maven.cefrium.com repository. This adds a typed resource interceptor and the
+CefriumNavigationClient / CefriumChromeClient / CefriumDownloadClient
+interfaces in place of the old handlers.
+
+onCreateWindow now adopts Cefrium's popup browser as a distinct tab while
+keeping the opener alive for OAuth/payment window.opener handoff. onContextMenu
+shows native item commands together with link, image URL and selection actions;
+private windows request FLAG_SECURE. The existing authenticated download to
+MediaStore remains in place with new typed interruption categories. Both the
+system file picker and runtime camera permission results are forwarded when
+using the plain Android Activity. No app-side WebView, third-party network
+re-fetch, or bypass of TLS checks is added.
+
+This is an integration candidate, not a stability certification. Validate
+Android 16/17 renderer startup, DOM/JS, popup-to-opener communication,
+regular/private isolation, context menu, download/PDF/file upload, audio focus,
+R8-signed APK and physical device touch/Back before release. saveState()
+is improved upstream, but Velocity intentionally retains its existing
+serializeNavigationState() format to avoid a storage-format migration in
+this upgrade. Cookie/site-permission management UI remains a separate feature.
+
+See the upstream 0.21 release notes (https://cefrium.com/releases/#v0.21.0)
+and the API reference (https://cefrium.com/docs/).
 
 ## Cefrium 0.18.0 upgrade (2026-11-09)
 

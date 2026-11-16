@@ -78,6 +78,10 @@ import java.nio.charset.StandardCharsets;
 
 import com.cefrium.Cefrium;
 import com.cefrium.CefriumBrowser;
+import com.cefrium.CefriumChromeClient;
+import com.cefrium.CefriumContextMenu;
+import com.cefrium.CefriumNavigationClient;
+import com.cefrium.CefriumResourceInterceptor;
 import org.chromium.base.CommandLine;
 import org.chromium.content.browser.ChildProcessCreationParamsImpl;
 
@@ -113,6 +117,9 @@ public final class ChromiumTestActivity extends Activity {
     private final HistoryStore historyStore = new HistoryStore();
     private OnBackInvokedCallback gestureBackCallback;
     private final Map<String, CefriumBrowser> liveBrowsers = new LinkedHashMap<>(16, .75f, true);
+    // A popup's opener must remain alive until window.close() / tab close so
+    // OAuth and payment popups can safely report their results to window.opener.
+    private final Map<CefriumBrowser, CefriumBrowser> popupOpeners = new java.util.IdentityHashMap<>();
     private static final String TAB_PREFS = "cefrium_tabs_v1";
     // Unlimited tab metadata, bounded live native renderers on memory-limited phones.
     private static final int MAX_RESIDENT_BROWSERS = 6;
@@ -1283,24 +1290,51 @@ public final class ChromiumTestActivity extends Activity {
     private CefriumBrowser createEngineFor(TabRegistry.Tab tab) {
         CefriumBrowser browser = CefriumBrowser.createWithSurface(this, tab.privateMode);
         try {
-            attachSurface(browser);
-            applyBrowserSettings(browser);
-            downloads.bind(browser, tab.privateMode);
-            applyTabDisplayPreferences(browser, tab);
-            // Per-browser origin snapshot avoids carrying a site's exemption
-            // across the earliest subrequests of a top-level navigation.
-            // Parse the top-level host once per navigation, not for every
-            // resource request on the network thread (which can be hundreds
-            // per modern page). A redirect updates the snapshot immediately.
-            final AtomicReference<String> currentOriginHost = new AtomicReference<>(
-                SiteBlockPolicy.hostOf(tab.url));
-            browser.setRequestInterceptor((url, method, isMainFrame) -> {
-                if (isMainFrame) currentOriginHost.set(SiteBlockPolicy.hostOf(url));
+            configureBrowser(browser, tab);
+            // A restored tab is instantiated only when the user explicitly
+            // selects it. Chromium PageState also restores back/forward history;
+            // a dead renderer cannot preserve live JS/DOM state.
+            byte[] savedNavigation = tab.privateMode || tab.startupHome ? null
+                : previewStore.loadNavigationState(tab.id);
+            if (savedNavigation != null && savedNavigation.length > 0) {
+                browser.restoreNavigationState(savedNavigation);
+            } else {
+                browser.loadUrl(tab.url);
+            }
+            return browser;
+        } catch (RuntimeException | LinkageError error) {
+            browser.close();
+            throw error;
+        }
+    }
+
+    /** Configure both ordinary tabs and popup browsers created by Cefrium. */
+    private void configureBrowser(CefriumBrowser browser, TabRegistry.Tab tab) {
+        attachSurface(browser);
+        applyBrowserSettings(browser);
+        downloads.bind(browser, tab.privateMode);
+        applyTabDisplayPreferences(browser, tab);
+        // New 0.21.0 typed request API. Runs on the network thread:
+        // never touch UI, and keep matching O(1) / in-memory.
+        final AtomicReference<String> currentOriginHost = new AtomicReference<>(
+            SiteBlockPolicy.hostOf(tab.url));
+        browser.setResourceInterceptor(new CefriumResourceInterceptor() {
+            @Override public boolean shouldBlockRequest(CefriumBrowser.ResourceRequest request) {
+                if (request.isMainFrame) {
+                    currentOriginHost.set(SiteBlockPolicy.hostOf(request.url));
+                }
+                String topHost = SiteBlockPolicy.hostOf(request.topLevelUrl);
+                if (topHost == null) topHost = currentOriginHost.get();
                 return blockDomainsEnabled && SiteBlockPolicy.shouldBlockForTopHost(
-                    networkRules, url, isMainFrame, currentOriginHost.get(),
+                    networkRules, request.url, request.isMainFrame, topHost,
                     tab.privateMode ? privateSiteExemptions : normalSiteExemptions);
-            });
-            browser.setOnLoadingStateChangedListener((loading, canBack, canForward) ->
+            }
+        });
+        // The old URL/loading listeners are deprecated in 0.21.0.
+        browser.setNavigationClient(new CefriumNavigationClient() {
+            @Override public void onLoadingStateChanged(
+                    CefriumBrowser source, boolean loading,
+                    boolean canBack, boolean canForward) {
                 runOnUiThread(() -> {
                     if (destroyed || tabRegistry.find(tab.id) != tab) return;
                     tab.loading = loading;
@@ -1326,96 +1360,243 @@ public final class ChromiumTestActivity extends Activity {
                             loading ? View.VISIBLE : View.INVISIBLE);
                         updateNavigation();
                     }
-                }));
-            browser.setOnUrlChangedListener(url -> runOnUiThread(() -> {
-                if (destroyed || tabRegistry.find(tab.id) != tab || url == null) return;
-                // Reusing a UUID across navigations must not show a previous
-                // site's screenshot while a new page is still loading.
-                if (!url.equals(tab.url) && !tab.privateMode) {
-                    previewStore.invalidatePreview(tab.id);
-                    // Old CDP responses must not block a new navigation's
-                    // snapshot or overwrite new live card ImageViews.
-                    thumbnailRequestsInFlight.remove(tab.id);
-                    pendingThumbnailViews.remove(tab.id);
-                }
-                tab.url = url;
-                currentOriginHost.set(SiteBlockPolicy.hostOf(url));
-                if (tabRegistry.current() == tab) {
-                    if (!address.hasFocus()) address.setText(displayAddress(url));
-                    updateHomeState();
-                }
-                if (!tab.privateMode) {
-                    scheduleRegularTabsSave();
-                    if (!"about:blank".equals(url)) {
-                        historyStore.record(url, tab.displayTitle(), false);
+                });
+            }
+
+            @Override public void onUrlChanged(CefriumBrowser source, String url) {
+                runOnUiThread(() -> {
+                    if (destroyed || tabRegistry.find(tab.id) != tab || url == null) return;
+                    // Reusing a UUID across navigations must not show a previous
+                    // site's screenshot while a new page is still loading.
+                    if (!url.equals(tab.url) && !tab.privateMode) {
+                        previewStore.invalidatePreview(tab.id);
+                        // Old CDP responses must not block a new navigation's
+                        // snapshot or overwrite new live card ImageViews.
+                        thumbnailRequestsInFlight.remove(tab.id);
+                        pendingThumbnailViews.remove(tab.id);
+                    }
+                    tab.url = url;
+                    currentOriginHost.set(SiteBlockPolicy.hostOf(url));
+                    if (tabRegistry.current() == tab) {
+                        if (!address.hasFocus()) address.setText(displayAddress(url));
+                        updateHomeState();
+                    }
+                    if (!tab.privateMode) {
+                        scheduleRegularTabsSave();
+                        if (!"about:blank".equals(url)) {
+                            historyStore.record(url, tab.displayTitle(), false);
+                            saveHistory();
+                        }
+                    }
+                });
+            }
+        });
+        browser.setChromeClient(new CefriumChromeClient() {
+            @Override public void onTitleChanged(CefriumBrowser source, String name) {
+                runOnUiThread(() -> {
+                    if (destroyed || tabRegistry.find(tab.id) != tab) return;
+                    if (externalBenchmarkRequested) {
+                        int[] timings = PageTimingProbe.parse(name);
+                        if (timings != null) {
+                            externalBenchmarkRequested = false;
+                            Log.i(TAG, "CEFExternalTiming fcp_ms=" + timings[0]
+                                + " dom_ms=" + timings[1] + " ready_ms=" + timings[2]
+                                + " process_ready_ms=" + (SystemClock.elapsedRealtime()
+                                    - ChromiumDiagnosticApplication.mainProcessAttachedAtMs));
+                        }
+                    }
+                    tab.title = name == null ? "" : name;
+                    if (!tab.privateMode && tab.url != null && !tab.url.isEmpty() && !"about:blank".equals(tab.url)) {
+                        historyStore.record(tab.url, tab.displayTitle(), false);
                         saveHistory();
                     }
-                }
-            }));
-            browser.setOnTitleChangedListener(name -> runOnUiThread(() -> {
-                if (destroyed || tabRegistry.find(tab.id) != tab) return;
-                if (externalBenchmarkRequested) {
-                    int[] timings = PageTimingProbe.parse(name);
-                    if (timings != null) {
-                        externalBenchmarkRequested = false;
-                        Log.i(TAG, "CEFExternalTiming fcp_ms=" + timings[0]
-                            + " dom_ms=" + timings[1] + " ready_ms=" + timings[2]
-                            + " process_ready_ms=" + (SystemClock.elapsedRealtime()
-                                - ChromiumDiagnosticApplication.mainProcessAttachedAtMs));
+                    // Some real sites keep loading advertisements indefinitely.
+                    // Their document title is available long before loading=false;
+                    // schedule one best-effort capture even during those loads.
+                    if (!tab.privateMode && tabRegistry.current() == tab
+                            && name != null && !name.trim().isEmpty()) {
+                        mainHandler.postDelayed(() -> captureVisibleTabPreview(tab, null), 1100L);
                     }
-                }
-                tab.title = name == null ? "" : name;
-                if (!tab.privateMode && tab.url != null && !tab.url.isEmpty() && !"about:blank".equals(tab.url)) {
-                    historyStore.record(tab.url, tab.displayTitle(), false);
-                    saveHistory();
-                }
-                // Some real sites keep loading advertisements indefinitely.
-                // Their document title is available long before loading=false;
-                // schedule one best-effort capture even during those loads.
-                if (!tab.privateMode && tabRegistry.current() == tab
-                        && name != null && !name.trim().isEmpty()) {
-                    mainHandler.postDelayed(() -> captureVisibleTabPreview(tab, null), 1100L);
-                }
-                if (syntheticSmokeRequested && syntheticLoadStartedAtMs > 0
-                        && SyntheticRenderFixture.READY_TITLE.equals(name)) {
-                    long domReadyMs = SystemClock.elapsedRealtime()
-                        - syntheticLoadStartedAtMs;
-                    Log.i(TAG, "CEF synthetic document title observed");
-                    Log.i(TAG, "CEFPageTiming synthetic_dom_ready_ms=" + domReadyMs);
-                    syntheticLoadStartedAtMs = -1L;
-                }
-                if (syntheticSmokeRequested && syntheticPaintStartedAtMs > 0
-                        && name != null && name.startsWith(
-                            SyntheticRenderFixture.FCP_TITLE_PREFIX)) {
-                    String timing = name.substring(
-                        SyntheticRenderFixture.FCP_TITLE_PREFIX.length());
-                    // Ignore untrusted / malformed page-title metrics.
-                    if (timing.matches("[0-9]{1,6}")) {
-                        int fcpMs = Integer.parseInt(timing);
-                        Log.i(TAG, "CEFPageTiming synthetic_fcp_browser_ms=" + fcpMs
-                            + " synthetic_fcp_observed_ms="
-                            + (SystemClock.elapsedRealtime() - syntheticPaintStartedAtMs));
-                        syntheticPaintStartedAtMs = -1L;
+                    if (syntheticSmokeRequested && syntheticLoadStartedAtMs > 0
+                            && SyntheticRenderFixture.READY_TITLE.equals(name)) {
+                        long domReadyMs = SystemClock.elapsedRealtime()
+                            - syntheticLoadStartedAtMs;
+                        Log.i(TAG, "CEF synthetic document title observed");
+                        Log.i(TAG, "CEFPageTiming synthetic_dom_ready_ms=" + domReadyMs);
+                        syntheticLoadStartedAtMs = -1L;
                     }
-                }
-                if (tabRegistry.current() == tab) updateNavigation();
-                if (!tab.privateMode) scheduleRegularTabsSave();
-            }));
-            // A restored tab is instantiated only when the user explicitly
-            // selects it. Chromium PageState also restores back/forward history;
-            // a dead renderer cannot preserve live JS/DOM state.
-            byte[] savedNavigation = tab.privateMode || tab.startupHome ? null
-                : previewStore.loadNavigationState(tab.id);
-            if (savedNavigation != null && savedNavigation.length > 0) {
-                browser.restoreNavigationState(savedNavigation);
-            } else {
-                browser.loadUrl(tab.url);
+                    if (syntheticSmokeRequested && syntheticPaintStartedAtMs > 0
+                            && name != null && name.startsWith(
+                                SyntheticRenderFixture.FCP_TITLE_PREFIX)) {
+                        String timing = name.substring(
+                            SyntheticRenderFixture.FCP_TITLE_PREFIX.length());
+                        // Ignore untrusted / malformed page-title metrics.
+                        if (timing.matches("[0-9]{1,6}")) {
+                            int fcpMs = Integer.parseInt(timing);
+                            Log.i(TAG, "CEFPageTiming synthetic_fcp_browser_ms=" + fcpMs
+                                + " synthetic_fcp_observed_ms="
+                                + (SystemClock.elapsedRealtime() - syntheticPaintStartedAtMs));
+                            syntheticPaintStartedAtMs = -1L;
+                        }
+                    }
+                    if (tabRegistry.current() == tab) updateNavigation();
+                    if (!tab.privateMode) scheduleRegularTabsSave();
+                });
             }
-            return browser;
-        } catch (RuntimeException | LinkageError error) {
-            browser.close();
-            throw error;
+
+            @Override public boolean onCreateWindow(CefriumBrowser source,
+                    CefriumBrowser popup, String url, boolean userGesture) {
+                return adoptPopupWindow(source, popup, url);
+            }
+
+            @Override public void onCloseWindow(CefriumBrowser source,
+                    CefriumBrowser popup) {
+                popupOpeners.remove(popup);
+                String popupId = findTabIdForBrowser(popup);
+                if (popupId != null && !destroyed) closeTabDirect(popupId);
+            }
+
+            @Override public boolean onContextMenu(CefriumBrowser source,
+                    CefriumContextMenu menu) {
+                return showNativeContextMenu(source, menu);
+            }
+        });
+    }
+
+    /** Find a currently owned tab without relying on URL equality. */
+    private String findTabIdForBrowser(CefriumBrowser browser) {
+        for (Map.Entry<String, CefriumBrowser> entry : liveBrowsers.entrySet()) {
+            if (entry.getValue() == browser) return entry.getKey();
         }
+        return null;
+    }
+
+    /**
+     * Adopt the engine-provided window, preserving window.opener, the profile
+     * and privacy mode. Never loadUrl() here: that would sever popup identity.
+     */
+    private boolean adoptPopupWindow(CefriumBrowser opener, CefriumBrowser popup,
+            String popupUrl) {
+        if (destroyed || popup == null || popup.isClosed()) return false;
+        String parentId = findTabIdForBrowser(opener);
+        TabRegistry.Tab parent = tabRegistry.find(parentId);
+        if (parent == null) return false;
+
+        // CEF can initially report a blank URL while the window is opening.
+        // Do not persist a site-created non-HTTP URL or turn it into a search.
+        String initialUrl = popupUrl == null || popupUrl.isEmpty()
+            ? "about:blank" : popupUrl;
+        if (!"about:blank".equals(initialUrl)) {
+            // OAuth state parameters can produce URLs >2048 characters. Permit
+            // a valid HTTP(S) popup in memory even though persistence will
+            // intentionally reject an overlong URL.
+            try {
+                java.net.URI parsed = new java.net.URI(initialUrl);
+                if (parsed.getHost() == null || parsed.getUserInfo() != null
+                        || (!"https".equalsIgnoreCase(parsed.getScheme())
+                            && !"http".equalsIgnoreCase(parsed.getScheme()))) return false;
+            } catch (java.net.URISyntaxException invalid) {
+                return false;
+            }
+        }
+        TabRegistry.Tab tab = tabRegistry.add(initialUrl, parent.privateMode);
+        try {
+            configureBrowser(popup, tab);
+            liveBrowsers.put(tab.id, popup);
+            popupOpeners.put(popup, opener);
+            activateCurrentTab();
+            saveRegularTabs();
+            return true;
+        } catch (RuntimeException | LinkageError error) {
+            Log.e(TAG, "Cannot attach site-created popup", error);
+            liveBrowsers.remove(tab.id);
+            popupOpeners.remove(popup);
+            tabRegistry.close(tab.id);
+            activateCurrentTab();
+            return false; // Cefrium owns closing a rejected popup.
+        }
+    }
+
+    /** Native long-press actions plus Cefrium's own editable/text operations. */
+    private boolean showNativeContextMenu(CefriumBrowser source, CefriumContextMenu menu) {
+        if (destroyed || isFinishing()) {
+            menu.cancel();
+            return true;
+        }
+        String id = findTabIdForBrowser(source);
+        TabRegistry.Tab tab = tabRegistry.find(id);
+        if (tab == null) {
+            menu.cancel();
+            return true;
+        }
+
+        ArrayList<String> labels = new ArrayList<>();
+        ArrayList<Runnable> actions = new ArrayList<>();
+        String link = menu.getLinkUrl();
+        String imageUrl = menu.getSourceUrl();
+        String selection = menu.getSelectionText();
+
+        if (isPersistable(link)) {
+            labels.add("リンクを新しいタブで開く");
+            actions.add(() -> createTab(link, tab.privateMode));
+        }
+        if (link != null && !link.isEmpty()) {
+            labels.add("リンクのURLをコピー");
+            actions.add(() -> copyContextValue("URL", link));
+        }
+        if (imageUrl != null && !imageUrl.isEmpty()) {
+            labels.add("画像・メディアのURLをコピー");
+            actions.add(() -> copyContextValue("URL", imageUrl));
+        }
+        if (selection != null && !selection.isEmpty()) {
+            labels.add("選択テキストをコピー");
+            actions.add(() -> copyContextValue("テキスト", selection));
+        }
+        final int customActionCount = actions.size();
+        // Keep CEF's real selection/edit controls (and image actions) functional.
+        // Do not recreate them with JS or expose internal command IDs.
+        for (CefriumContextMenu.Item item : menu.getItems()) {
+            if (!item.isEnabled()) continue;
+            labels.add(item.getLabel());
+            actions.add(item::execute);
+        }
+        if (labels.isEmpty()) {
+            menu.cancel();
+            return true;
+        }
+
+        AtomicBoolean settled = new AtomicBoolean();
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle("ページの操作")
+            .setItems(labels.toArray(new String[0]), (d, which) -> {
+                if (!settled.compareAndSet(false, true)) return;
+                // An SDK action completes the menu itself; a Velocity action
+                // cancels the native menu before executing its own UI task.
+                if (which < actions.size() && which >= 0) {
+                    boolean sdkAction = which >= customActionCount;
+                    if (!sdkAction) menu.cancel();
+                    actions.get(which).run();
+                } else {
+                    menu.cancel();
+                }
+            })
+            .setNegativeButton("閉じる", (d, which) -> {}).create();
+        dialog.setOnDismissListener(d -> {
+            if (settled.compareAndSet(false, true)) menu.cancel();
+        });
+        if (tab.privateMode && dialog.getWindow() != null) {
+            dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+        }
+        dialog.show();
+        return true;
+    }
+
+    private void copyContextValue(String label, String value) {
+        android.content.ClipboardManager clipboard =
+            (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        if (clipboard == null) return;
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText(label, value));
+        Toast.makeText(this, label + "をコピーしたよ", Toast.LENGTH_SHORT).show();
     }
 
     private void activateCurrentTab() {
@@ -1461,7 +1642,9 @@ public final class ChromiumTestActivity extends Activity {
         while (liveBrowsers.size() > MAX_RESIDENT_BROWSERS) {
             String oldestId = null;
             for (String id : liveBrowsers.keySet()) {
-                if (!id.equals(currentId) && !downloads.isBusy(liveBrowsers.get(id))) {
+                if (!id.equals(currentId)
+                        && !downloads.isBusy(liveBrowsers.get(id))
+                        && !popupOpeners.containsValue(liveBrowsers.get(id))) {
                     oldestId = id; break;
                 }
             }
@@ -3091,6 +3274,8 @@ public final class ChromiumTestActivity extends Activity {
         boolean wasCurrent = victim == tabRegistry.current();
         CefriumBrowser closing = liveBrowsers.remove(id);
         if (closing != null) {
+            popupOpeners.entrySet().removeIf(entry ->
+                entry.getKey() == closing || entry.getValue() == closing);
             if (engine == closing) engine = null;
             if (downloads.isBusy(closing)) {
                 closing.getSurfaceContainer().setVisibility(View.GONE);
@@ -3427,6 +3612,7 @@ public final class ChromiumTestActivity extends Activity {
     private void applyBrowserSettings(CefriumBrowser browser) {
         SharedPreferences settings = getSharedPreferences(TAB_PREFS, MODE_PRIVATE);
         browser.setPullToRefreshEnabled(settings.getBoolean("pull_to_refresh", true));
+        browser.setBackgroundColor(CANVAS);
         // Default forbids autoplay without user activation.
         browser.setMediaPlaybackRequiresUserGesture(!settings.getBoolean("auto_play", false));
         // Chromium's media session can hold/request Android audio focus,
@@ -3766,7 +3952,7 @@ public final class ChromiumTestActivity extends Activity {
 
     private void showInfo() {
         new AlertDialog.Builder(this).setTitle("Velocity Browser")
-            .setMessage("エンジン：Chromium（Cefrium 0.18.0）\n\n" +
+            .setMessage("エンジン：Chromium（Cefrium 0.21.0）\n\n" +
                 "これはAndroid標準WebViewではありません。\n\n" +
                 "Gecko/WPE版とは別アプリとしてインストールできます。\n\n" +
                 "通常・非公開タブ、URL復元、戻る・進む、検索と共有を追加しました。\n\n" +
@@ -3830,6 +4016,16 @@ public final class ChromiumTestActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
     }
 
+    @Override public void onRequestPermissionsResult(int requestCode,
+            String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        for (CefriumBrowser browser : liveBrowsers.values()) {
+            if (browser.onRequestPermissionsResult(requestCode, permissions, grantResults)) {
+                return;
+            }
+        }
+    }
+
     /** System Back is navigation, not Activity destruction during page loads. */
     private void handleBrowserBack() {
         if (address != null && address.hasFocus()) {
@@ -3877,6 +4073,7 @@ public final class ChromiumTestActivity extends Activity {
         closingAfterDownload.clear();
         for (CefriumBrowser browser : liveBrowsers.values()) browser.close();
         liveBrowsers.clear();
+        popupOpeners.clear();
         engine = null;
         if (chromiumReady) CefriumBrowser.reapUnusedRenderers();
         super.onDestroy();

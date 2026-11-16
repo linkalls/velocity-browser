@@ -15,7 +15,7 @@ class NativeDownloadWiringTest(unittest.TestCase):
         activity = ACTIVITY.read_text()
         controller = CONTROLLER.read_text()
         self.assertIn("downloads.bind(browser, tab.privateMode)", activity)
-        self.assertIn("browser.setDownloadHandler(", controller)
+        self.assertIn("browser.setDownloadClient(", controller)
         self.assertIn("onBeforeDownload(", controller)
         self.assertIn("onDownloadUpdated(", controller)
 
