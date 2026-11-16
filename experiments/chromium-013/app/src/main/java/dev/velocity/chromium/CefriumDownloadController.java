@@ -138,11 +138,12 @@ final class CefriumDownloadController {
             if (!disposed) toast("同時ダウンロード数の上限（5件）に達しています");
             return;
         }
-        if (!DownloadNamePolicy.supportedSource(item.getUrl())) {
-            callback.cancel();
-            if (!disposed) toast("サポートされていないURL形式です");
-            return;
-        }
+        // This callback means Cefrium has already created a real engine-owned
+        // download. Its reported URL is metadata, not an app-side fetch target:
+        // blob:, data:, redirected and even empty download URLs may be valid.
+        // Re-parsing that URL as HTTP(S) was canceling legitimate downloads.
+        // Keep the user confirmation, bounded concurrency and app-private
+        // temporary destination below; never retry with a separate HTTP client.
         String safe = DownloadNamePolicy.filename(item.getSuggestedName());
         File directory = activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
         if (directory == null) directory = activity.getFilesDir();
