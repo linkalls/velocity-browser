@@ -27,6 +27,14 @@ class NativeDownloadWiringTest(unittest.TestCase):
         self.assertNotIn("HttpURLConnection", controller)
         self.assertNotIn("DownloadManager.Request", controller)
 
+    def test_engine_downloads_are_not_rejected_by_url_scheme(self):
+        controller = CONTROLLER.read_text()
+        # Cefrium has already accepted a real download at this callback.
+        # A URL may be blob:, data:, redirected, or absent; no second fetch occurs.
+        self.assertNotIn("supportedSource(", controller)
+        self.assertNotIn("item.getUrl()", controller)
+        self.assertIn("callback.allow(job.temporary.getAbsolutePath())", controller)
+
     def test_retains_inflight_browser_and_shows_real_download_menu(self):
         activity = ACTIVITY.read_text()
         self.assertIn("downloads.isBusy(closing)", activity)
