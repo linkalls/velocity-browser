@@ -1,20 +1,28 @@
 package dev.velocity.chromium;
 
 import android.app.Activity;
+import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Insets;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.graphics.Matrix;
 import android.graphics.pdf.PdfRenderer;
 import android.net.Uri;
 import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.ParcelFileDescriptor;
 import android.view.Gravity;
+import android.view.View;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.widget.Toast;
 import android.view.MotionEvent;
 import android.view.ScaleGestureDetector;
 import android.view.WindowManager;
-import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -37,8 +45,8 @@ public final class PdfPreviewActivity extends Activity {
     private ZoomablePage pageView;
     private TextView pageLabel;
     private TextView status;
-    private Button previous;
-    private Button next;
+    private TextView previous;
+    private TextView next;
     private int pageCount;
     private int selectedPage;
     private volatile int requestedGeneration;
@@ -57,45 +65,85 @@ public final class PdfPreviewActivity extends Activity {
             return;
         }
 
+        // Android 15+ forces edge-to-edge for targetSdk 35. Opt in explicitly
+        // on API 30+ so system-bar insets have one predictable owner: this root.
+        // API 29 retains the platform's standard fitted content window.
+        if (Build.VERSION.SDK_INT >= 30) {
+            getWindow().setDecorFitsSystemWindows(false);
+            getWindow().setStatusBarColor(Color.TRANSPARENT);
+            getWindow().setNavigationBarColor(Color.TRANSPARENT);
+            WindowInsetsController bars = getWindow().getInsetsController();
+            if (bars != null) {
+                // Keep white status/navigation glyphs readable on the dark viewer.
+                bars.setSystemBarsAppearance(0,
+                    WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                    | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS);
+            }
+        } else {
+            getWindow().setStatusBarColor(Color.rgb(22, 23, 28));
+            getWindow().setNavigationBarColor(Color.rgb(22, 23, 28));
+        }
+        if (Build.VERSION.SDK_INT >= 29) {
+            getWindow().setNavigationBarContrastEnforced(false);
+        }
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(Color.rgb(22, 23, 28));
+        if (Build.VERSION.SDK_INT >= 30) {
+            // Apply only absolute insets, never add them to existing padding.
+            // This prevents double-padding on re-dispatch, rotation and cutouts.
+            root.setOnApplyWindowInsetsListener((view, insets) -> {
+                Insets safe = insets.getInsets(
+                    WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                root.setPadding(safe.left, safe.top, safe.right, safe.bottom);
+                return insets;
+            });
+        }
         setContentView(root);
 
         LinearLayout bar = new LinearLayout(this);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(dp(8), dp(5), dp(8), dp(5));
-        root.addView(bar, new LinearLayout.LayoutParams(-1, dp(58)));
+        bar.setPadding(dp(12), dp(8), dp(12), dp(8));
+        root.addView(bar, new LinearLayout.LayoutParams(-1, dp(64)));
 
-        Button back = control("閉じる", "PDFプレビューを閉じる", this::finish);
+        TextView back = control("閉じる", "PDFプレビューを閉じる", this::finish);
         bar.addView(back, new LinearLayout.LayoutParams(dp(72), dp(48)));
         pageLabel = new TextView(this);
         pageLabel.setText("PDF");
         pageLabel.setTextSize(15);
+        pageLabel.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         pageLabel.setTextColor(Color.WHITE);
         pageLabel.setGravity(Gravity.CENTER);
         pageLabel.setSingleLine(true);
         pageLabel.setEllipsize(android.text.TextUtils.TruncateAt.END);
         bar.addView(pageLabel, new LinearLayout.LayoutParams(0, -1, 1));
 
-        Button share = control("共有", "PDFファイルを共有", () -> shareDocument(source));
-        bar.addView(share, new LinearLayout.LayoutParams(dp(64), dp(48)));
+        TextView share = control("共有", "PDFファイルを共有", () -> shareDocument(source));
+        bar.addView(share, new LinearLayout.LayoutParams(dp(58), dp(48)));
 
-        previous = control("〈", "前のPDFページへ", () -> showPage(selectedPage - 1));
-        next = control("〉", "次のPDFページへ", () -> showPage(selectedPage + 1));
-        bar.addView(previous, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        bar.addView(next, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        previous = control("‹", "前のPDFページへ", () -> showPage(selectedPage - 1));
+        next = control("›", "次のPDFページへ", () -> showPage(selectedPage + 1));
+        LinearLayout.LayoutParams previousSize = new LinearLayout.LayoutParams(dp(44), dp(48));
+        previousSize.leftMargin = dp(6);
+        bar.addView(previous, previousSize);
+        LinearLayout.LayoutParams nextSize = new LinearLayout.LayoutParams(dp(44), dp(48));
+        nextSize.leftMargin = dp(4);
+        bar.addView(next, nextSize);
         previous.setEnabled(false);
         next.setEnabled(false);
+        previous.setAlpha(0.4f);
+        next.setAlpha(0.4f);
 
         pageView = new ZoomablePage(this);
         root.addView(pageView, new LinearLayout.LayoutParams(-1, 0, 1));
         status = new TextView(this);
         status.setGravity(Gravity.CENTER);
-        status.setTextColor(Color.LTGRAY);
+        status.setTextColor(Color.rgb(187, 194, 207));
         status.setText("PDFを読み込み中…");
-        status.setTextSize(14);
-        root.addView(status, new LinearLayout.LayoutParams(-1, dp(42)));
+        status.setTextSize(13);
+        status.setBackgroundColor(Color.rgb(22, 23, 28));
+        root.addView(status, new LinearLayout.LayoutParams(-1, dp(48)));
         openDocument(source);
     }
 
@@ -103,16 +151,26 @@ public final class PdfPreviewActivity extends Activity {
         return (int) (value * getResources().getDisplayMetrics().density + .5f);
     }
 
-    private Button control(String text, String description, Runnable action) {
-        Button button = new Button(this);
+    /** Native rounded, accessible controls; no legacy themed Button chrome. */
+    private TextView control(String text, String description, Runnable action) {
+        TextView button = new TextView(this);
         button.setText(text);
-        button.setAllCaps(false);
         button.setTextColor(Color.WHITE);
-        button.setTextSize(14);
-        button.setMinWidth(0);
-        button.setMinimumWidth(0);
+        button.setTextSize(text.equals("‹") || text.equals("›") ? 27 : 14);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setGravity(Gravity.CENTER);
+        button.setMinWidth(dp(44));
         button.setMinHeight(dp(48));
         button.setContentDescription(description);
+        button.setFocusable(true);
+        GradientDrawable surface = new GradientDrawable();
+        surface.setShape(GradientDrawable.RECTANGLE);
+        surface.setColor(Color.rgb(46, 49, 59));
+        surface.setCornerRadius(dp(18));
+        // Ripple feedback works with keyboard, TalkBack, and touch without
+        // pulling a different Material theme into the embedded CEF process.
+        button.setBackground(new RippleDrawable(
+            ColorStateList.valueOf(Color.argb(64, 255, 255, 255)), surface, null));
         button.setOnClickListener(view -> action.run());
         return button;
     }
@@ -164,6 +222,8 @@ public final class PdfPreviewActivity extends Activity {
         pageLabel.setText((index + 1) + " / " + pageCount);
         previous.setEnabled(index > 0);
         next.setEnabled(index < pageCount - 1);
+        previous.setAlpha(index > 0 ? 1f : 0.4f);
+        next.setAlpha(index < pageCount - 1 ? 1f : 0.4f);
         status.setText("ページを描画中…");
         int generation = ++requestedGeneration;
         int desiredWidth = Math.min(2048,
