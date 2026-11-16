@@ -2,8 +2,10 @@ pluginManagement {
     repositories {
         google()
         mavenCentral()
-        // 0.18.0 is initially available on the official Codeberg registry.
-        maven("https://codeberg.org/api/packages/cefrium/maven")
+        // Use the official Maven repository for pinned Cefrium releases.
+        maven("https://maven.cefrium.com") {
+            content { includeGroup("com.cefrium") }
+        }
         gradlePluginPortal()
     }
 }
@@ -12,7 +14,9 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven("https://codeberg.org/api/packages/cefrium/maven")
+        maven("https://maven.cefrium.com") {
+            content { includeGroup("com.cefrium") }
+        }
     }
 }
 rootProject.name = "VelocityChromium013Experiment"

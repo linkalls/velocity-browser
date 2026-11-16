@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 ENGINE = ROOT / "experiments" / "chromium-013"
 APP = ENGINE / "app" / "src" / "main" / "java" / "dev" / "velocity" / "chromium"
-VERSION = "0.18.0"
+VERSION = "0.21.0"
 
 
 class CefriumReleaseTest(unittest.TestCase):
@@ -28,16 +28,37 @@ class CefriumReleaseTest(unittest.TestCase):
         signed = (ROOT / ".github" / "workflows" /
                   "velocity-signed-apk.yml").read_text()
         activity = (APP / "ChromiumTestActivity.java").read_text()
-        self.assertIn("-PvelocityVersionName=0.18.0.$VERSION_CODE", signed)
-        self.assertIn("Cefrium 0.18.0", activity)
+        self.assertIn(f"-PvelocityVersionName={VERSION}.$VERSION_CODE", signed)
+        self.assertIn(f"Cefrium {VERSION}", activity)
         self.assertNotIn("Cefrium 0.16.0", activity)
         app_build = (ENGINE / "app" / "build.gradle.kts").read_text()
-        self.assertIn('.orElse("0.18.0")', app_build)
+        self.assertIn(f'.orElse("{VERSION}")', app_build)
         self.assertIn('Velocity-Browser-$code-arm64.apk', signed)
         self.assertIn('GITHUB_RUN_ID / 50', signed)
         self.assertNotIn('Preview', signed)
         manifest = (ENGINE / "app" / "src" / "main" / "AndroidManifest.xml").read_text()
         self.assertIn('android:label="Velocity Browser"', manifest)
+
+    def test_021_clients_replace_all_used_deprecated_handlers(self):
+        activity = (APP / 'ChromiumTestActivity.java').read_text()
+        controller = (APP / 'CefriumDownloadController.java').read_text()
+        settings = (ENGINE / 'settings.gradle.kts').read_text()
+        self.assertIn('maven("https://maven.cefrium.com")', settings)
+        self.assertIn('browser.setNavigationClient(new CefriumNavigationClient()', activity)
+        self.assertIn('browser.setChromeClient(new CefriumChromeClient()', activity)
+        self.assertIn('browser.setResourceInterceptor(new CefriumResourceInterceptor()', activity)
+        self.assertIn('request.topLevelUrl', activity)
+        self.assertIn('onCreateWindow(', activity)
+        self.assertIn('onCloseWindow(', activity)
+        self.assertIn('onContextMenu(', activity)
+        self.assertIn('popupOpeners.containsValue(', activity)
+        self.assertIn('browser.onRequestPermissionsResult(', activity)
+        self.assertIn('browser.setDownloadClient(new CefriumDownloadClient()', controller)
+        self.assertIn('item.getInterruption()', controller)
+        for removed in ('setRequestInterceptor(', 'setOnUrlChangedListener(',
+                        'setOnTitleChangedListener(', 'setOnLoadingStateChangedListener('):
+            self.assertNotIn(removed, activity)
+        self.assertNotIn('setDownloadHandler(', controller)
 
     def test_sdk_prefetch_enabled_by_default_and_protects_signed_preview(self):
         gradle = (ENGINE / "app" / "build.gradle.kts").read_text()
