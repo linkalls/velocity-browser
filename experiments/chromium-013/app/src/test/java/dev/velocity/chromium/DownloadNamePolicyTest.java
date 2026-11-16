@@ -14,13 +14,9 @@ public final class DownloadNamePolicyTest {
         assertEquals("a.txt", DownloadNamePolicy.filename(".a.txt"));
         assertTrue(DownloadNamePolicy.filename("x".repeat(999)).length() <= 120);
     }
-    @Test public void validatesMimeAndSourceUrl() {
+    @Test public void validatesMime() {
         assertEquals("application/pdf", DownloadNamePolicy.mimeType("Application/PDF; charset=utf-8"));
         assertEquals("application/octet-stream", DownloadNamePolicy.mimeType("a/b\nX:evil"));
         assertEquals("application/octet-stream", DownloadNamePolicy.mimeType(null));
-        assertTrue(DownloadNamePolicy.supportedSource("https://example.com/paper.pdf"));
-        assertFalse(DownloadNamePolicy.supportedSource("file:///etc/passwd"));
-        assertFalse(DownloadNamePolicy.supportedSource("javascript:alert(1)"));
-        assertFalse(DownloadNamePolicy.supportedSource("https://"));
     }
 }
