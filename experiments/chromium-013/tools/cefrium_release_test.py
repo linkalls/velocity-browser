@@ -60,6 +60,32 @@ class CefriumReleaseTest(unittest.TestCase):
             self.assertNotIn(removed, activity)
         self.assertNotIn('setDownloadHandler(', controller)
 
+    def test_long_press_uses_secure_context_sheet_with_native_cefrium_actions(self):
+        # Actual Cefrium context menus must use the same modern bottom sheet
+        # as Velocity's main menu, without swallowing SDK edit/media actions.
+        activity = (APP / "ChromiumTestActivity.java").read_text()
+        start = activity.index("private boolean showNativeContextMenu(")
+        end = activity.index("private void copyContextValue(", start)
+        context_menu = activity[start:end]
+        self.assertIn("bottomSheet(panel, tab.privateMode, dismissed ->", context_menu)
+        self.assertIn("BoundedScrollView", context_menu)
+        self.assertIn('menuSection(items, "その他の操作")', context_menu)
+        self.assertIn("addMenuItem(items, icons.get(index)", context_menu)
+        self.assertIn("actions.add(item::execute)", context_menu)
+        self.assertIn("settled.compareAndSet(false, true)", context_menu)
+        self.assertIn("if (actionIndex < customActionCount) menu.cancel();", context_menu)
+        self.assertNotIn("new AlertDialog.Builder", context_menu)
+
+        # The privacy flag must be assigned before Dialog.show(): setting it
+        # afterward exposes a private context menu for one UI frame.
+        sheet_start = activity.index("private Dialog bottomSheet(LinearLayout panel, boolean privateMode,")
+        sheet_end = activity.index("private LinearLayout sheetPanel()", sheet_start)
+        sheet = activity[sheet_start:sheet_end]
+        self.assertLess(sheet.index("window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)"),
+                        sheet.index("sheet.show();"))
+        self.assertIn("sheet.setOnDismissListener(onDismiss)", sheet)
+        self.assertTrue((ENGINE / "app/src/main/res/drawable/ic_browser_copy.xml").is_file())
+
     def test_sdk_prefetch_enabled_by_default_and_protects_signed_preview(self):
         gradle = (ENGINE / "app" / "build.gradle.kts").read_text()
         application = (APP / "ChromiumDiagnosticApplication.java").read_text()

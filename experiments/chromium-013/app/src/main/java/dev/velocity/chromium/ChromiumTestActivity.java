@@ -1517,7 +1517,11 @@ public final class ChromiumTestActivity extends Activity {
         }
     }
 
-    /** Native long-press actions plus Cefrium's own editable/text operations. */
+    /**
+     * A contextual bottom sheet for links, images, selections and Cefrium
+     * commands. Keep the original engine-owned actions: this is a UI swap,
+     * not a JavaScript reimplementation of native edit/media commands.
+     */
     private boolean showNativeContextMenu(CefriumBrowser source, CefriumContextMenu menu) {
         if (destroyed || isFinishing()) {
             menu.cancel();
@@ -1532,6 +1536,7 @@ public final class ChromiumTestActivity extends Activity {
 
         ArrayList<String> labels = new ArrayList<>();
         ArrayList<Runnable> actions = new ArrayList<>();
+        ArrayList<Integer> icons = new ArrayList<>();
         String link = menu.getLinkUrl();
         String imageUrl = menu.getSourceUrl();
         String selection = menu.getSelectionText();
@@ -1539,55 +1544,94 @@ public final class ChromiumTestActivity extends Activity {
         if (isPersistable(link)) {
             labels.add("リンクを新しいタブで開く");
             actions.add(() -> createTab(link, tab.privateMode));
+            icons.add(R.drawable.ic_browser_tabs);
         }
         if (link != null && !link.isEmpty()) {
             labels.add("リンクのURLをコピー");
             actions.add(() -> copyContextValue("URL", link));
+            icons.add(R.drawable.ic_browser_copy);
         }
         if (imageUrl != null && !imageUrl.isEmpty()) {
             labels.add("画像・メディアのURLをコピー");
             actions.add(() -> copyContextValue("URL", imageUrl));
+            icons.add(R.drawable.ic_browser_image);
         }
         if (selection != null && !selection.isEmpty()) {
             labels.add("選択テキストをコピー");
             actions.add(() -> copyContextValue("テキスト", selection));
+            icons.add(R.drawable.ic_browser_copy);
         }
         final int customActionCount = actions.size();
-        // Keep CEF's real selection/edit controls (and image actions) functional.
-        // Do not recreate them with JS or expose internal command IDs.
+
+        // Retain every enabled command supplied by Cefrium, including
+        // selection/edit operations, saving an image and native copy actions.
+        // Avoid exposing engine command IDs or re-fetching any resource URL.
         for (CefriumContextMenu.Item item : menu.getItems()) {
             if (!item.isEnabled()) continue;
-            labels.add(item.getLabel());
+            String label = item.getLabel();
+            labels.add(label == null || label.isBlank() ? "その他の操作" : label);
             actions.add(item::execute);
+            icons.add(R.drawable.ic_browser_menu);
         }
         if (labels.isEmpty()) {
             menu.cancel();
             return true;
         }
 
-        AtomicBoolean settled = new AtomicBoolean();
-        AlertDialog dialog = new AlertDialog.Builder(this)
-            .setTitle("ページの操作")
-            .setItems(labels.toArray(new String[0]), (d, which) -> {
+        AtomicBoolean settled = new AtomicBoolean(false);
+        final Dialog[] dialog = new Dialog[1];
+        LinearLayout panel = sheetPanel();
+        LinearLayout heading = new LinearLayout(this);
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        heading.setPadding(dp(5), 0, dp(4), dp(5));
+        panel.addView(heading, new LinearLayout.LayoutParams(-1, dp(58)));
+
+        String headingText = link != null && !link.isEmpty() ? "リンクの操作"
+            : imageUrl != null && !imageUrl.isEmpty() ? "画像の操作"
+            : selection != null && !selection.isEmpty() ? "テキストの操作"
+            : "ページの操作";
+        TextView title = text(headingText, 20, PRIMARY, true);
+        title.setGravity(Gravity.CENTER_VERTICAL);
+        heading.addView(title, new LinearLayout.LayoutParams(0, -1, 1));
+
+        TextView close = text("閉じる", 13, SECONDARY, false);
+        close.setGravity(Gravity.CENTER);
+        close.setContentDescription("長押しメニューを閉じる");
+        close.setMinWidth(dp(48));
+        close.setMinHeight(dp(48));
+        close.setBackground(new RippleDrawable(
+            ColorStateList.valueOf(0x25FFFFFF),
+            rounded(ELEVATED, 14, Color.TRANSPARENT), null));
+        close.setOnClickListener(v -> dialog[0].dismiss());
+        heading.addView(close, new LinearLayout.LayoutParams(dp(62), dp(48)));
+
+        BoundedScrollView scroll = new BoundedScrollView();
+        panel.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout items = sheetPanel();
+        scroll.addView(items);
+
+        if (customActionCount > 0) menuSection(items, "リンク・コンテンツ");
+        for (int index = 0; index < labels.size(); index++) {
+            if (index == customActionCount && index < labels.size()) {
+                menuSection(items, "その他の操作");
+            }
+            final int actionIndex = index;
+            addMenuItem(items, icons.get(index), labels.get(index), null, () -> {
+                // Dismissing the sheet triggers the cancel callback. Mark
+                // the choice settled first so SDK actions are not canceled.
                 if (!settled.compareAndSet(false, true)) return;
-                // An SDK action completes the menu itself; a Velocity action
-                // cancels the native menu before executing its own UI task.
-                if (which < actions.size() && which >= 0) {
-                    boolean sdkAction = which >= customActionCount;
-                    if (!sdkAction) menu.cancel();
-                    actions.get(which).run();
-                } else {
-                    menu.cancel();
-                }
-            })
-            .setNegativeButton("閉じる", (d, which) -> {}).create();
-        dialog.setOnDismissListener(d -> {
+                dialog[0].dismiss();
+                if (actionIndex < customActionCount) menu.cancel();
+                actions.get(actionIndex).run();
+            });
+        }
+
+        // FLAG_SECURE is installed before the window becomes visible. On
+        // outside tap, swipe/back or window teardown, cancel the engine menu
+        // exactly once; don't cancel an already-executed Cefrium action.
+        dialog[0] = bottomSheet(panel, tab.privateMode, dismissed -> {
             if (settled.compareAndSet(false, true)) menu.cancel();
         });
-        if (tab.privateMode && dialog.getWindow() != null) {
-            dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
-        }
-        dialog.show();
         return true;
     }
 
@@ -2206,7 +2250,17 @@ public final class ChromiumTestActivity extends Activity {
 
     /** Native compact bottom sheet instead of a full-screen, unlabeled list. */
     private Dialog bottomSheet(LinearLayout panel) {
+        return bottomSheet(panel, false, null);
+    }
+
+    /**
+     * Optional privacy and dismissal hooks for engine-owned context menus.
+     * Set FLAG_SECURE before show() so a private sheet never flashes in screenshots.
+     */
+    private Dialog bottomSheet(LinearLayout panel, boolean privateMode,
+            android.content.DialogInterface.OnDismissListener onDismiss) {
         Dialog sheet = new Dialog(this);
+        if (onDismiss != null) sheet.setOnDismissListener(onDismiss);
         panel.setPadding(dp(BrowserUiLayout.SHEET_SIDE_PADDING_DP), dp(7),
             dp(BrowserUiLayout.SHEET_SIDE_PADDING_DP), dp(15));
         View dragHandle = new View(this);
@@ -2221,6 +2275,9 @@ public final class ChromiumTestActivity extends Activity {
         if (window != null) {
             window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
             window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            if (privateMode) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_SECURE);
+            }
             window.setDimAmount(0.33f);
         }
         sheet.show();

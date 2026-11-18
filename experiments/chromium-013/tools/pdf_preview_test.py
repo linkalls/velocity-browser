@@ -21,6 +21,23 @@ class PdfWiringTest(unittest.TestCase):
         self.assertIn("pdfWorker.execute(", PREVIEW)
         self.assertIn("page.render(", PREVIEW)
 
+    def test_viewer_respects_system_bar_and_cutout_insets(self):
+        # The PDF viewer is a separate Activity and must handle Android 15+
+        # edge-to-edge independently of ChromiumTestActivity.
+        self.assertIn("setDecorFitsSystemWindows(false)", PREVIEW)
+        self.assertIn("WindowInsets.Type.systemBars()", PREVIEW)
+        self.assertIn("WindowInsets.Type.displayCutout()", PREVIEW)
+        self.assertIn("root.setPadding(safe.left, safe.top, safe.right, safe.bottom)", PREVIEW)
+        # Never increment existing padding when insets are dispatched again.
+        self.assertNotIn("getPaddingTop() + safe.top", PREVIEW)
+
+    def test_pdf_controls_do_not_use_platform_default_buttons(self):
+        self.assertIn("new RippleDrawable(", PREVIEW)
+        self.assertIn("surface.setCornerRadius(dp(18))", PREVIEW)
+        self.assertIn("button.setMinWidth(dp(48))", PREVIEW)
+        self.assertIn("button.setMinHeight(dp(48))", PREVIEW)
+        self.assertNotIn("new Button(", PREVIEW)
+
     def test_authenticated_download_reused_not_refetched(self):
         self.assertIn("PdfLinkPolicy.canPreview(pdfTab.url)", ACTIVITY)
         self.assertIn("engine.startDownload(pdfTab.url)", ACTIVITY)
