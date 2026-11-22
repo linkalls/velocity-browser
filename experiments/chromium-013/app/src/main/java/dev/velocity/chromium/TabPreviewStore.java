@@ -7,7 +7,6 @@ import android.util.Log;
 import android.util.LruCache;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.nio.file.Files;
 import java.io.IOException;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -22,6 +21,7 @@ final class TabPreviewStore {
     private static final String TAG = "VelocityTabPreview";
     private final File directory;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+    private final NavigationCheckpointStore navigation;
     // Keep recent real thumbnails in memory so opening the tab sheet does not
     // race the asynchronous JPEG write. Cache only normal-tab images.
     private final LruCache<String, Bitmap> memory = new LruCache<String, Bitmap>(12 * 1024) {
@@ -32,6 +32,7 @@ final class TabPreviewStore {
 
     TabPreviewStore(Context context) {
         directory = new File(context.getFilesDir(), "tab_previews");
+        navigation = new NavigationCheckpointStore(directory, io);
     }
 
     private File path(String id) {
@@ -88,39 +89,16 @@ final class TabPreviewStore {
 
     /** Persist Chromium back/forward PageState separately from tab metadata. */
     void saveNavigationState(String id, byte[] state) {
-        File preview = path(id);
-        if (preview == null || state == null || state.length > 256 * 1024) return;
-        File file = new File(directory, preview.getName() + ".history");
-        byte[] snapshot = state.clone();
-        io.execute(() -> {
-            if (!directory.exists() && !directory.mkdirs()) return;
-            File temporary = new File(directory, file.getName() + ".tmp");
-            try (FileOutputStream out = new FileOutputStream(temporary)) {
-                out.write(snapshot);
-                if (!temporary.renameTo(file)) throw new IOException("History rename failed");
-            } catch (IOException error) {
-                Log.w(TAG, "Could not save tab history", error);
-                temporary.delete();
-            }
-        });
+        navigation.save(id, state);
     }
 
     byte[] loadNavigationState(String id) {
-        File preview = path(id);
-        if (preview == null) return null;
-        File file = new File(directory, preview.getName() + ".history");
-        if (!file.isFile() || file.length() > 256 * 1024) return null;
-        try { return Files.readAllBytes(file.toPath()); }
-        catch (IOException error) { return null; }
+        return navigation.load(id);
     }
 
     void remove(String id) {
-        memory.remove(id);
-        File file = path(id);
-        if (file != null) io.execute(() -> {
-            file.delete();
-            new File(directory, file.getName() + ".history").delete();
-        });
+        invalidatePreview(id);
+        navigation.save(id, null);
     }
 
     void close() {

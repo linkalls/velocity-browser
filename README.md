@@ -1,6 +1,6 @@
-# Velocity Browser — Chromium / Cefrium 0.18
+# Velocity Browser — Chromium / Cefrium 0.21
 
-Velocityは **Chromium（Cefrium 0.18.0）を主エンジン** とするAndroidブラウザ。`main` のルート `:app` は `experiments/chromium-013/app` を参照し、GeckoViewコードは現行のビルド対象から除外している。
+Velocityは **Chromium（Cefrium 0.21.0）を主エンジン** とするAndroidブラウザ。`main` のルート `:app` は `experiments/chromium-013/app` を参照し、GeckoViewコードは現行のビルド対象から除外している。
 
 ## 現在の実装
 
@@ -11,7 +11,7 @@ Velocityは **Chromium（Cefrium 0.18.0）を主エンジン** とするAndroid�
 
 ## Chromiumアプリのビルド
 
-**JDK 25、Android SDK Platform 37.1、Build Tools 36.0.0** が必要。Gradle 9.7.1、Android Gradle Plugin 9.4.1、Cefrium SDK/Plugin 0.18.0を固定している。
+**JDK 25、Android SDK Platform 37.1、Build Tools 36.0.0** が必要。Gradle 9.7.1、Android Gradle Plugin 9.4.1、Cefrium SDK/Plugin 0.21.0を固定している。
 
 ~~~bash
 # リポジトリのルートで実行。:app は Chromium/Cefrium アプリ。

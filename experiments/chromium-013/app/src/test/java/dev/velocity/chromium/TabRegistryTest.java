@@ -151,4 +151,108 @@ public final class TabRegistryTest {
         assertSame(home, model.selectStartupHome());
         assertTrue(model.isStartupHomeCurrent());
     }
+    @Test public void reopenPreservesPositionAndPreferencesButNotOldCallbackIdentity() {
+        TabRegistry registry = new TabRegistry();
+        TabRegistry.Tab home = registry.selectStartupHome();
+        TabRegistry.Tab saved = registry.add("https://example.test/notes", false);
+        TabRegistry.Tab other = registry.add("https://example.test/other", false);
+        saved.group = "notes";
+        saved.desktopMode = true;
+        saved.zoomLevel = 2;
+        saved.loading = true;
+        registry.close(saved.id);
+        assertTrue(registry.reopenClosed(saved, 1));
+        assertFalse(registry.reopenClosed(saved, 1));
+        TabRegistry.Tab reopened = registry.current();
+        assertNotSame(saved, reopened);
+        assertEquals(saved.id, reopened.id);
+        assertEquals("notes", reopened.group);
+        assertTrue(reopened.desktopMode);
+        assertEquals(2.0, reopened.zoomLevel, 0.01);
+        assertFalse(reopened.loading);
+        assertEquals(java.util.List.of(home, reopened, other), registry.all());
+    }
+
+    @Test public void batchCloseAndUndoRestoresInterleavedTabsWithoutTouchingOtherMode() {
+        TabRegistry registry = new TabRegistry();
+        TabRegistry.Tab home = registry.selectStartupHome();
+        TabRegistry.Tab one = registry.add("https://example.test/one", false);
+        TabRegistry.Tab secret = registry.add("https://private.example/", true);
+        TabRegistry.Tab two = registry.add("https://example.test/two", false);
+        assertTrue(registry.select(one.id));
+        int later = registry.all().indexOf(two);
+        registry.close(two.id);
+        int earlier = registry.all().indexOf(one);
+        registry.close(one.id);
+        assertEquals(java.util.List.of(home, secret), registry.all());
+        assertTrue(registry.reopenClosed(one, earlier));
+        assertTrue(registry.reopenClosed(two, later));
+        assertTrue(registry.select(one.id));
+        assertEquals(java.util.List.of(home.id, one.id, secret.id, two.id),
+            registry.all().stream().map(tab -> tab.id).collect(java.util.stream.Collectors.toList()));
+        assertSame(secret, registry.all().get(2));
+        assertFalse(registry.regularTabs().contains(secret));
+        assertEquals(one.id, registry.current().id);
+    }
+
+    @Test public void queuedLinksRespectOpenerPrivacyGroupAndSelection() {
+        TabRegistry registry = new TabRegistry();
+        TabRegistry.Tab opener = registry.add("https://private.example/", true);
+        opener.group = "research";
+        TabRegistry.Tab publicTab = registry.add("https://public.example/", false);
+        TabRegistry.Tab grouped = registry.addBackground("https://private.example/b", opener, true);
+        TabRegistry.Tab ungrouped = registry.addBackground("https://private.example/c", opener, false);
+        assertSame(publicTab, registry.current());
+        assertTrue(grouped.privateMode);
+        assertEquals("research", grouped.group);
+        assertTrue(ungrouped.privateMode);
+        assertNull(ungrouped.group);
+        assertEquals(java.util.List.of(opener, ungrouped, grouped, publicTab), registry.all());
+        assertEquals(java.util.List.of(publicTab), registry.regularTabs());
+        registry.close(opener.id);
+        assertNull(registry.addBackground("https://private.example/d", opener, true));
+    }
+
+    @Test public void legacyGroupMigrationAndSeparateSameNameGroups() {
+        TabRegistry registry = new TabRegistry();
+        TabRegistry.Tab a = registry.restoreRegularTab("https://one.test/", false, null, "Notes");
+        TabRegistry.Tab b = registry.restoreRegularTab("https://two.test/", false, null, "Notes");
+        assertEquals(a.groupKey(), b.groupKey());
+        String original = a.groupKey();
+        TabRegistry.Tab c = registry.add("https://three.test/", false);
+        assertTrue(registry.createGroup(c, "Notes"));
+        assertNotEquals(original, c.groupKey());
+        TabRegistry.Tab secret = registry.add("https://private.test/", true);
+        assertFalse(registry.assignGroup(secret, original));
+        registry.close(b.id);
+        assertTrue(registry.renameGroup(original, false, "Changed"));
+        assertTrue(registry.reopenClosed(b, 1));
+        assertEquals("Changed", registry.current().group);
+        assertEquals(original, registry.current().groupKey());
+        assertEquals("Notes", c.group);
+        TabRegistry restored = new TabRegistry();
+        TabRegistry.Tab restoredC = restored.restoreRegularTab(c.url, false, c.id, c.group, c.groupKey());
+        assertEquals(c.groupKey(), restoredC.groupKey());
+    }
+
+    @Test public void pinsSortAheadAndReorderOnlyWithinTheVisibleBand() {
+        TabRegistry registry = new TabRegistry();
+        TabRegistry.Tab home = registry.selectStartupHome();
+        TabRegistry.Tab a = registry.add("https://first.test/", false);
+        TabRegistry.Tab p = registry.add("https://private.test/", true);
+        TabRegistry.Tab b = registry.add("https://second.test/", false);
+        TabRegistry.Tab c = registry.add("https://third.test/", false);
+        assertFalse(registry.togglePin(home));
+        assertTrue(registry.togglePin(b));
+        assertTrue(registry.togglePin(c));
+        assertEquals(java.util.List.of(home, b, c, a), registry.orderedOverview(false));
+        assertTrue(registry.moveWithinBand(c, -1, false));
+        assertEquals(java.util.List.of(home, c, b, a), registry.orderedOverview(false));
+        assertSame(p, registry.all().get(2));
+        assertSame(c, registry.current());
+        assertFalse(registry.moveWithinBand(c, -1, false));
+        registry.close(c.id);
+        assertTrue(registry.reopenClosed(c, 3));
+        assertTrue(registry.current().pinned);
+    }
 }

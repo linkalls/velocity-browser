@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Environment;
 import android.os.Handler;
@@ -22,10 +24,12 @@ import android.widget.Toast;
 
 import com.cefrium.CefriumBrowser;
 import com.cefrium.CefriumDownloadClient;
+import com.cefrium.CefriumProfile;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStream;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,10 +47,18 @@ import java.util.function.Consumer;
 final class CefriumDownloadController {
     private static final String TAG = "VelocityDownloads";
     private static final int MAX_ACTIVE = 5;
+    private static final AtomicBoolean STALE_PRIVATE_CLEANUP = new AtomicBoolean();
+    // Serialize publication even if a new Activity replaces the old one.
+    private static final ExecutorService FILE_IO = Executors.newSingleThreadExecutor();
     private final Activity activity;
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final ExecutorService fileIo = Executors.newSingleThreadExecutor();
+    private final ExecutorService fileIo = FILE_IO;
     private final Consumer<CefriumBrowser> onIdle;
+    private final DownloadHistoryStore history;
+    private final File stagingDirectory;
+    private final File privateStagingDirectory;
+    private final SharedPreferences receipts;
+    private CefriumProfile observedProfile;
     private final List<Job> jobs = new ArrayList<>();
     private AlertDialog listDialog;
     private LinearLayout listContent;
@@ -54,7 +66,7 @@ final class CefriumDownloadController {
     private long lastRepaintMs;
     private boolean disposed;
 
-    enum State { OFFERED, DOWNLOADING, PUBLISHING, COMPLETE, CANCELED, FAILED }
+    enum State { OFFERED, DOWNLOADING, PUBLISHING, COMPLETE, CANCELED, FAILED, RECOVERABLE, READY_TO_SAVE }
 
     private static final class Job {
         CefriumBrowser browser;
@@ -66,10 +78,13 @@ final class CefriumDownloadController {
         State state = State.OFFERED;
         long received;
         long total = -1;
+        // The browser callback, not a click, confirms the current pause state.
+        boolean paused;
         Uri saved;
         boolean previewWhenReady;
         // No raw request URLs or authentication tokens are stored in error UI.
         String failureCategory;
+        CefriumProfile.Download recovered;
         Job(CefriumBrowser browser, CefriumBrowser.DownloadItem item,
                 String name, boolean privateMode, File temporary) {
             this.browser = browser;
@@ -78,6 +93,25 @@ final class CefriumDownloadController {
             this.mime = DownloadNamePolicy.mimeType(item.getMimeType());
             this.privateMode = privateMode;
             this.temporary = temporary;
+        }
+        Job(DownloadHistory.Entry entry) {
+            id = -1;
+            name = entry.name();
+            mime = entry.mime();
+            privateMode = false;
+            temporary = null;
+            state = State.COMPLETE;
+            received = entry.bytes();
+            total = entry.bytes();
+            saved = Uri.parse(entry.contentUri());
+        }
+        Job(CefriumProfile.Download item, String name, File temporary) {
+            id = -1;
+            this.name = name;
+            mime = DownloadNamePolicy.mimeType(item.getMimeType());
+            privateMode = false;
+            this.temporary = temporary;
+            recovered = item;
         }
         boolean busy() {
             return state == State.OFFERED || state == State.DOWNLOADING
@@ -88,18 +122,34 @@ final class CefriumDownloadController {
     CefriumDownloadController(Activity activity, Consumer<CefriumBrowser> onIdle) {
         this.activity = activity;
         this.onIdle = onIdle;
-        // Clean interrupted prior-session temporary bytes, including private downloads.
-        fileIo.execute(() -> {
-            File directory = activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
-            if (directory == null) directory = activity.getFilesDir();
-            File[] orphans = directory.listFiles((dir, name) -> name.startsWith("velocity-"));
-            if (orphans != null) for (File orphan : orphans) {
-                if (orphan.isFile() && !orphan.delete()) Log.w(TAG, "Orphan cleanup failed");
-            }
-        });
+        this.history = new DownloadHistoryStore(activity);
+        this.receipts = activity.getSharedPreferences("download-publish-receipts", Context.MODE_PRIVATE);
+        File stagingRoot = new File(activity.getNoBackupFilesDir(), "download-staging");
+        try { stagingRoot = stagingRoot.getCanonicalFile(); }
+        catch (IOException unavailable) { Log.w(TAG, "Could not normalize download staging directory"); }
+        this.stagingDirectory = new File(stagingRoot, "regular");
+        this.privateStagingDirectory = new File(stagingRoot, "private");
+        // Never sweep normal partial files: CEF's normal profile can still own them.
+        // Sweep private destinations left by a previous process before a new offer can start.
+        if (STALE_PRIVATE_CLEANUP.compareAndSet(false, true)) {
+            sweep(privateStagingDirectory.listFiles(DownloadStaging::isPrivateStagingFile));
+            // Earlier versions used a shared staging directory without separate privacy labels.
+            // Their private residue is not eligible for recovery, so preserve the old cleanup.
+            File legacy = activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+            if (legacy == null) legacy = activity.getFilesDir();
+            sweep(legacy.listFiles(DownloadStaging::isLegacyStagingFile));
+        }
+    }
+
+    private static void sweep(File[] orphans) {
+        if (orphans == null) return;
+        for (File orphan : orphans) {
+            if (orphan.isFile() && !orphan.delete()) Log.w(TAG, "Orphan cleanup failed");
+        }
     }
 
     void bind(CefriumBrowser browser, boolean privateMode) {
+        if (!privateMode) attachNormalProfile(browser.getProfile());
         // Cefrium 0.21 SDK client; the engine supplies the originating browser
         // rather than asking us to capture it in a legacy handler closure.
         browser.setDownloadClient(new CefriumDownloadClient() {
@@ -113,6 +163,67 @@ final class CefriumDownloadController {
                 main.post(() -> updated(source, item));
             }
         });
+    }
+
+    private void attachNormalProfile(CefriumProfile profile) {
+        if (profile == null || disposed || observedProfile != null || profile.isIncognito()) return;
+        if (!profile.setDownloadObserver(this::updateRecovered)) return;
+        observedProfile = profile;
+        profile.getDownloads(items -> {
+            if (disposed || observedProfile != profile) return;
+            for (CefriumProfile.Download item : items) updateRecovered(item);
+        });
+    }
+
+    private void updateRecovered(CefriumProfile.Download item) {
+        if (disposed || item == null || item.getProfile().isIncognito()
+                || !item.getProfile().equals(observedProfile)) return;
+        String name = DownloadStaging.normalFilename(stagingDirectory, item.getPath());
+        if (name == null || item.getGuid() == null || item.getGuid().isEmpty()) return;
+        File file = new File(item.getPath());
+        Job job = null;
+        for (Job candidate : jobs) {
+            if (!file.equals(candidate.temporary)) continue;
+            if (candidate.browser != null || candidate.state == State.PUBLISHING
+                    || candidate.state == State.COMPLETE) return;
+            if (candidate.recovered != null
+                    && !item.getGuid().equals(candidate.recovered.getGuid())) return;
+            job = candidate;
+            break;
+        }
+        int state = item.getState();
+        boolean saveable = state == CefriumProfile.DOWNLOAD_COMPLETE && file.isFile();
+        boolean canContinue = state == CefriumProfile.DOWNLOAD_INTERRUPTED && item.canResume();
+        boolean running = state == CefriumProfile.DOWNLOAD_IN_PROGRESS;
+        if (job == null) {
+            if (!(saveable || canContinue || running)) return;
+            job = new Job(item, name, file);
+            jobs.add(job);
+        }
+        boolean resumedHere = job.state == State.DOWNLOADING;
+        job.recovered = item;
+        job.received = item.getReceivedBytes();
+        job.total = item.getTotalBytes();
+        job.paused = item.isPaused();
+        if (saveable) {
+            job.state = State.READY_TO_SAVE;
+            if (resumedHere) publishAsync(job);
+        } else if (canContinue) {
+            job.state = State.RECOVERABLE;
+        } else if (running) {
+            job.state = State.DOWNLOADING;
+        } else if (state == CefriumProfile.DOWNLOAD_CANCELED) {
+            job.state = State.CANCELED;
+        } else {
+            job.state = State.FAILED;
+        }
+        repaint();
+    }
+
+    private void publishAsync(Job job) {
+        if (job.state == State.PUBLISHING) return;
+        job.state = State.PUBLISHING;
+        fileIo.execute(() -> publish(job));
     }
 
     boolean isBusy(CefriumBrowser browser) {
@@ -145,15 +256,14 @@ final class CefriumDownloadController {
         // Keep the user confirmation, bounded concurrency and app-private
         // temporary destination below; never retry with a separate HTTP client.
         String safe = DownloadNamePolicy.filename(item.getSuggestedName());
-        File directory = activity.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
-        if (directory == null) directory = activity.getFilesDir();
+        File directory = privateMode ? privateStagingDirectory : stagingDirectory;
         if (!directory.isDirectory() && !directory.mkdirs()) {
             callback.cancel();
             toast("ファイルの保存領域を準備できなかった");
             return;
         }
         // CEF sees only an app-private, unique path. User-facing name is assigned by MediaStore.
-        File temporary = new File(directory, "velocity-" + UUID.randomUUID() + "-" + safe);
+        File temporary = DownloadStaging.target(directory, privateMode, UUID.randomUUID(), safe);
         Job job = new Job(browser, item, safe, privateMode, temporary);
         jobs.add(job);
         // Keep memory and any private history bounded. Never discard an active job.
@@ -223,10 +333,10 @@ final class CefriumDownloadController {
         if (job == null || job.state != State.DOWNLOADING) return;
         job.received = item.getReceivedBytes();
         job.total = item.getTotalBytes();
+        boolean pauseChanged = job.paused != item.isPaused();
+        job.paused = item.isPaused();
         if (item.isComplete()) {
-            job.state = State.PUBLISHING;
-            final Job completed = job;
-            fileIo.execute(() -> publish(completed));
+            publishAsync(job);
         } else if (item.isCanceled() || item.isInterrupted()) {
             job.state = item.isCanceled() ? State.CANCELED : State.FAILED;
             if (item.isInterrupted()) {
@@ -235,56 +345,106 @@ final class CefriumDownloadController {
                 job.failureCategory = String.valueOf(item.getInterruption());
                 Log.w(TAG, "CEF download interrupted: " + job.failureCategory);
             }
-            final File failedFile = job.temporary;
-            fileIo.execute(() -> { if (failedFile.exists()) failedFile.delete(); });
+            if (job.privateMode || item.isCanceled()) {
+                final File failedFile = job.temporary;
+                fileIo.execute(() -> { if (failedFile.exists()) failedFile.delete(); });
+            }
             idle(browser);
             job.browser = null;
+            if (!job.privateMode && item.isInterrupted() && observedProfile != null) {
+                observedProfile.getDownloads(items -> {
+                    for (CefriumProfile.Download download : items) updateRecovered(download);
+                });
+            }
         }
+        if (pauseChanged) lastRepaintMs = 0;
         repaint();
     }
 
     private void publish(Job job) {
         Uri saved = null;
         boolean success = false;
+        boolean pending = true;
+        boolean receiptCommitted = false;
+        boolean newlyInserted = false;
+        String receiptKey = job.temporary.getName();
         try {
+            if (!job.privateMode && DownloadStaging.normalFilename(
+                    stagingDirectory, job.temporary.getAbsolutePath()) == null)
+                throw new IllegalStateException("Unsafe download staging path");
             if (!job.temporary.isFile()) throw new IllegalStateException("Missing downloaded file");
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.Downloads.DISPLAY_NAME, job.name);
-            values.put(MediaStore.Downloads.MIME_TYPE, job.mime);
-            values.put(MediaStore.Downloads.RELATIVE_PATH,
-                Environment.DIRECTORY_DOWNLOADS + "/Velocity Browser");
-            values.put(MediaStore.Downloads.IS_PENDING, 1);
-            saved = activity.getContentResolver().insert(
-                MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-            if (saved == null) throw new IllegalStateException("MediaStore insert failed");
-            try (InputStream input = new FileInputStream(job.temporary);
-                    OutputStream output = activity.getContentResolver().openOutputStream(saved, "w")) {
-                if (output == null) throw new IllegalStateException("MediaStore output missing");
-                byte[] buffer = new byte[65536];
-                int n;
-                while ((n = input.read(buffer)) != -1) output.write(buffer, 0, n);
-                output.flush();
+            String prior = job.privateMode ? null : receipts.getString(receiptKey, null);
+            if (prior != null) {
+                receiptCommitted = true;
+                saved = Uri.parse(prior);
+                if (!isOwnedReceiptUri(saved))
+                    throw new IllegalStateException("Invalid publication receipt");
+                try (var row = activity.getContentResolver().query(saved,
+                        new String[]{MediaStore.Downloads.IS_PENDING}, null, null, null)) {
+                    if (row == null || !row.moveToFirst())
+                        throw new IllegalStateException("Download destination is unavailable");
+                    pending = row.getInt(0) != 0;
+                }
+            } else {
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.Downloads.DISPLAY_NAME, job.name);
+                values.put(MediaStore.Downloads.MIME_TYPE, job.mime);
+                values.put(MediaStore.Downloads.RELATIVE_PATH,
+                    Environment.DIRECTORY_DOWNLOADS + "/Velocity Browser");
+                values.put(MediaStore.Downloads.IS_PENDING, 1);
+                saved = activity.getContentResolver().insert(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+                newlyInserted = saved != null;
             }
-            ContentValues ready = new ContentValues();
-            ready.put(MediaStore.Downloads.IS_PENDING, 0);
-            if (activity.getContentResolver().update(saved, ready, null, null) != 1)
-                throw new IllegalStateException("MediaStore publish failed");
+            if (saved == null) throw new IllegalStateException("MediaStore insert failed");
+            if (!job.privateMode && !receiptCommitted) {
+                if (!isOwnedReceiptUri(saved)) throw new IllegalStateException("Invalid download destination");
+                if (!receipts.edit().putString(receiptKey, saved.toString()).commit())
+                    throw new IllegalStateException("Could not record download destination");
+                receiptCommitted = true;
+            }
+            if (pending) {
+                try (InputStream input = new FileInputStream(job.temporary);
+                        OutputStream output = activity.getContentResolver().openOutputStream(saved, "rwt")) {
+                    if (output == null) throw new IllegalStateException("MediaStore output missing");
+                    byte[] buffer = new byte[65536];
+                    int n;
+                    while ((n = input.read(buffer)) != -1) output.write(buffer, 0, n);
+                    output.flush();
+                }
+                ContentValues ready = new ContentValues();
+                ready.put(MediaStore.Downloads.IS_PENDING, 0);
+                if (activity.getContentResolver().update(saved, ready, null, null) != 1)
+                    throw new IllegalStateException("MediaStore publish failed");
+            }
             success = true;
         } catch (Exception error) {
-            Log.e(TAG, "Download publication failed", error);
-            if (saved != null) {
+            Log.w(TAG, "Download publication failed");
+            if (saved != null && newlyInserted && (job.privateMode || !receiptCommitted)
+                    && isOwnedReceiptUri(saved)) {
                 try { activity.getContentResolver().delete(saved, null, null); }
                 catch (RuntimeException cleanupError) { Log.w(TAG, "Partial MediaStore cleanup failed"); }
             }
         } finally {
-            if (job.temporary.exists() && !job.temporary.delete())
+            if ((success || job.privateMode) && job.temporary.exists() && !job.temporary.delete())
                 Log.w(TAG, "Temporary download cleanup failed");
+            if (success && !job.privateMode && !job.temporary.exists())
+                receipts.edit().remove(receiptKey).apply();
         }
         final Uri result = success ? saved : null;
+        if (result != null && !job.privateMode) {
+            try {
+                history.record(new DownloadHistory.Entry(result.toString(), job.name,
+                    job.mime, Math.max(0, job.received)));
+            } catch (IllegalArgumentException invalid) {
+                Log.w(TAG, "Could not record download location");
+            }
+        }
         main.post(() -> {
             if (disposed) return;
             job.saved = result;
-            job.state = result == null ? State.FAILED : State.COMPLETE;
+            job.state = result != null ? State.COMPLETE
+                    : job.privateMode ? State.FAILED : State.READY_TO_SAVE;
             toast(result == null ? "ダウンロードの保存に失敗した" : job.name + " を保存したよ");
             CefriumBrowser completedBrowser = job.browser;
             idle(completedBrowser);
@@ -294,8 +454,20 @@ final class CefriumDownloadController {
         });
     }
 
+    private static boolean isOwnedReceiptUri(Uri uri) {
+        String value = uri.toString();
+        return isRowUnder(value, MediaStore.Downloads.EXTERNAL_CONTENT_URI.toString())
+                || isRowUnder(value, MediaStore.Downloads.getContentUri(
+                    MediaStore.VOLUME_EXTERNAL_PRIMARY).toString());
+    }
+
+    private static boolean isRowUnder(String value, String collection) {
+        String base = collection + "/";
+        return value.startsWith(base) && value.substring(base.length()).matches("[0-9]+");
+    }
+
     private void idle(CefriumBrowser browser) {
-        if (!isBusy(browser)) onIdle.accept(browser);
+        if (browser != null && !isBusy(browser)) onIdle.accept(browser);
         repaint();
     }
 
@@ -346,8 +518,21 @@ final class CefriumDownloadController {
         int dp8 = (int) (8 * density + .5f);
         int dp12 = (int) (12 * density + .5f);
 
-        for (Job job : jobs) {
-            if (job.privateMode != shownPrivate) continue;
+        List<Job> visibleJobs = new ArrayList<>();
+        List<DownloadHistory.Entry> persisted = shownPrivate ? java.util.Collections.emptyList() : history.read();
+        // Live jobs take precedence; otherwise show completed regular downloads newest first.
+        for (int index = jobs.size() - 1; index >= 0; index--) {
+            Job job = jobs.get(index);
+            if (job.privateMode == shownPrivate && (job.privateMode || job.state != State.COMPLETE
+                    || persisted.stream().noneMatch(entry -> job.saved != null
+                        && entry.contentUri().equals(job.saved.toString())))) {
+                visibleJobs.add(job);
+            }
+        }
+        for (DownloadHistory.Entry entry : persisted) {
+            visibleJobs.add(new Job(entry));
+        }
+        for (Job job : visibleJobs) {
             count++;
 
             LinearLayout card = new LinearLayout(activity);
@@ -372,10 +557,16 @@ final class CefriumDownloadController {
             card.addView(title);
 
             String statusText;
-            if (job.state == State.DOWNLOADING) {
-                statusText = "ダウンロード中";
+            if (job.state == State.OFFERED) {
+                statusText = "確認待ち";
+            } else if (job.state == State.DOWNLOADING) {
+                statusText = job.paused ? "一時停止中" : "ダウンロード中";
             } else if (job.state == State.PUBLISHING) {
                 statusText = "保存中…";
+            } else if (job.state == State.RECOVERABLE) {
+                statusText = "中断・再開可能";
+            } else if (job.state == State.READY_TO_SAVE) {
+                statusText = "ダウンロード済み・保存待ち";
             } else if (job.state == State.COMPLETE) {
                 statusText = "完了";
             } else if (job.state == State.CANCELED) {
@@ -401,28 +592,70 @@ final class CefriumDownloadController {
             if (job.state == State.DOWNLOADING) {
                 android.widget.ProgressBar progress = new android.widget.ProgressBar(
                     activity, null, android.R.attr.progressBarStyleHorizontal);
-                progress.setIndeterminate(job.total <= 0);
+                progress.setIndeterminate(job.total <= 0 && !job.paused);
                 if (job.total > 0) progress.setProgress(percent);
                 card.addView(progress, new LinearLayout.LayoutParams(-1, dp8 * 2));
 
+                LinearLayout actions = new LinearLayout(activity);
+                actions.setOrientation(LinearLayout.HORIZONTAL);
+                boolean wasPaused = job.paused;
+                Button togglePause = new Button(activity);
+                togglePause.setText(wasPaused ? "再開" : "一時停止");
+                togglePause.setOnClickListener(v -> {
+                    if (disposed || job.state != State.DOWNLOADING
+                            || job.paused != wasPaused) return;
+                    if (job.recovered != null) {
+                        boolean accepted = wasPaused ? job.recovered.resume() : job.recovered.pause();
+                        if (!accepted) toast("ダウンロードを操作できません");
+                    } else if (job.browser != null) {
+                        if (wasPaused) job.browser.resumeDownload(job.id);
+                        else job.browser.pauseDownload(job.id);
+                    }
+                });
+                actions.addView(togglePause, new LinearLayout.LayoutParams(0, -2, 1));
                 Button cancel = new Button(activity);
                 cancel.setText("キャンセル");
-                cancel.setOnClickListener(v -> job.browser.cancelDownload(job.id));
-                LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(-2, -2);
+                cancel.setOnClickListener(v -> {
+                    if (!disposed && job.state == State.DOWNLOADING) {
+                        if (job.recovered != null) job.recovered.cancel();
+                        else if (job.browser != null) job.browser.cancelDownload(job.id);
+                    }
+                });
+                actions.addView(cancel, new LinearLayout.LayoutParams(0, -2, 1));
+                LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(-1, -2);
                 btnLp.topMargin = dp8 / 2;
-                card.addView(cancel, btnLp);
+                card.addView(actions, btnLp);
+            } else if (job.state == State.RECOVERABLE || job.state == State.READY_TO_SAVE) {
+                boolean resume = job.state == State.RECOVERABLE;
+                Button continueButton = new Button(activity);
+                continueButton.setText(resume ? "再開" : "端末に保存");
+                continueButton.setOnClickListener(v -> {
+                    if (disposed) return;
+                    if (resume && job.state == State.RECOVERABLE && job.recovered != null) {
+                        if (activeCount() >= MAX_ACTIVE) {
+                            toast("同時ダウンロード数の上限（5件）に達しています");
+                        } else if (job.recovered.canResume() && job.recovered.resume()) {
+                            if (job.state == State.RECOVERABLE) job.state = State.DOWNLOADING;
+                            repaint();
+                        } else toast("このダウンロードは再開できません");
+                    } else if (!resume && job.state == State.READY_TO_SAVE) {
+                        publishAsync(job);
+                        repaint();
+                    }
+                });
+                card.addView(continueButton, new LinearLayout.LayoutParams(-1, -2));
             } else if (job.saved != null && job.state == State.COMPLETE) {
                 LinearLayout actions = new LinearLayout(activity);
                 actions.setOrientation(LinearLayout.HORIZONTAL);
 
                 Button open = new Button(activity);
                 open.setText("開く");
-                open.setOnClickListener(v -> openSaved(job));
+                open.setOnClickListener(v -> withReadableFile(job, () -> openSaved(job)));
                 actions.addView(open, new LinearLayout.LayoutParams(0, -2, 1));
 
                 Button share = new Button(activity);
                 share.setText("共有");
-                share.setOnClickListener(v -> shareSaved(job));
+                share.setOnClickListener(v -> withReadableFile(job, () -> shareSaved(job)));
                 LinearLayout.LayoutParams shareLp = new LinearLayout.LayoutParams(0, -2, 1);
                 shareLp.leftMargin = dp8;
                 actions.addView(share, shareLp);
@@ -449,6 +682,45 @@ final class CefriumDownloadController {
         }
     }
 
+    private void withReadableFile(Job job, Runnable action) {
+        Uri uri = job.saved;
+        if (uri == null || disposed) return;
+        fileIo.execute(() -> {
+            boolean readable = false;
+            boolean missing = false;
+            try (var descriptor = activity.getContentResolver().openFileDescriptor(uri, "r")) {
+                readable = descriptor != null;
+            } catch (java.io.FileNotFoundException missingFile) {
+                // Missing and inaccessible files are distinguished below; do not delete bytes.
+                missing = true;
+            } catch (java.io.IOException | SecurityException unavailable) {
+                Log.w(TAG, "Could not read saved download");
+            }
+            boolean canOpen = readable;
+            boolean notFound = missing;
+            main.post(() -> {
+                if (disposed || !uri.equals(job.saved)) return;
+                if (canOpen) {
+                    action.run();
+                } else {
+                    toast("保存ファイルを開けなかった");
+                    if (notFound && !job.privateMode) offerForgetMissing(uri);
+                }
+            });
+        });
+    }
+
+    private void offerForgetMissing(Uri uri) {
+        new AlertDialog.Builder(activity).setTitle("ファイルにアクセスできません")
+            .setMessage("ダウンロード履歴の項目だけを取り除きますか？")
+            .setPositiveButton("履歴から消す", (d, w) -> {
+                history.forget(uri.toString());
+                jobs.removeIf(job -> !job.privateMode && uri.equals(job.saved));
+                renderList();
+            })
+            .setNegativeButton("閉じる", null).show();
+    }
+
     private void shareSaved(Job job) {
         if (job.saved == null) return;
         try {
@@ -471,8 +743,10 @@ final class CefriumDownloadController {
                 try {
                     int deleted = activity.getContentResolver().delete(job.saved, null, null);
                     if (deleted > 0) {
+                        if (!job.privateMode) history.forget(job.saved.toString());
+                        Uri removed = job.saved;
+                        jobs.removeIf(candidate -> removed.equals(candidate.saved));
                         job.saved = null;
-                        jobs.remove(job);
                         toast("削除したよ");
                         renderList();
                     } else {
@@ -520,9 +794,11 @@ final class CefriumDownloadController {
         if (listDialog != null) listDialog.dismiss();
         listContent = null;
         for (Job job : jobs) {
-            if (job.state == State.DOWNLOADING) job.browser.cancelDownload(job.id);
+            if (job.privateMode && job.state == State.DOWNLOADING && job.browser != null)
+                job.browser.cancelDownload(job.id);
         }
-        fileIo.shutdown();
+        if (observedProfile != null) observedProfile.setDownloadObserver(null);
+        observedProfile = null;
         jobs.clear();
     }
 }
