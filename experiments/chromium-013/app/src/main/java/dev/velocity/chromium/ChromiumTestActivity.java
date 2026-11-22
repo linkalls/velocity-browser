@@ -43,9 +43,12 @@ import android.view.MotionEvent;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
+import android.widget.AbsListView;
+import android.widget.BaseAdapter;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
+import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.widget.ScrollView;
@@ -60,7 +63,6 @@ import android.content.SharedPreferences;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.HashMap;
@@ -113,7 +115,23 @@ public final class ChromiumTestActivity extends Activity {
     private final Set<CefriumBrowser> closingAfterDownload = new HashSet<>();
     // RAM-only history. Private tabs never appear in the recently closed list.
     private final List<TabRegistry.Tab> recentlyClosedRegularTabs = new ArrayList<>();
+    private final Map<String, ClosedTab> closedRegularState = new java.util.HashMap<>();
+    private ClosedTab reopeningTab;
+    private static final class ClosedTab {
+        final TabRegistry.Tab tab;
+        final int position;
+        final byte[] navigation;
+        ClosedTab(TabRegistry.Tab tab, int position, byte[] navigation) {
+            this.tab = tab;
+            this.position = position;
+            this.navigation = navigation;
+        }
+    }
+    private static final int IMPORT_BOOKMARKS_REQUEST = 51301;
+    private static final int EXPORT_BOOKMARKS_REQUEST = 51302;
     private final BookmarkStore bookmarkStore = new BookmarkStore();
+    private final ExecutorService bookmarkFileExecutor = Executors.newSingleThreadExecutor();
+    private final ReadingList readingList = new ReadingList();
     private final HistoryStore historyStore = new HistoryStore();
     private OnBackInvokedCallback gestureBackCallback;
     private final Map<String, CefriumBrowser> liveBrowsers = new LinkedHashMap<>(16, .75f, true);
@@ -121,16 +139,26 @@ public final class ChromiumTestActivity extends Activity {
     // OAuth and payment popups can safely report their results to window.opener.
     private final Map<CefriumBrowser, CefriumBrowser> popupOpeners = new java.util.IdentityHashMap<>();
     private static final String TAB_PREFS = "cefrium_tabs_v1";
-    // Unlimited tab metadata, bounded live native renderers on memory-limited phones.
-    private static final int MAX_RESIDENT_BROWSERS = 6;
+    private static final long MEMORY_SAMPLE_INTERVAL_MS = 3000L;
+    private long lastMemorySampleAt = -MEMORY_SAMPLE_INTERVAL_MS;
+    private int residentBrowserTarget = 6;
+    private static final boolean DEFAULT_RESTORE_LAST_TAB = true;
+    private static final boolean DEFAULT_PULL_TO_REFRESH = false;
     private String lastSavedTabSnapshot;
     private CefriumBrowser engine;
     private LinearLayout browserRoot;
     private FrameLayout browserContent;
     private FrameLayout homeOverlay;
     private View browserHeader;
+    private EditText findQuery;
+    private TextView findCount;
+    private CefriumBrowser findBrowser;
+    private String issuedFindQuery = "";
+    private final Runnable runPageFind = () -> runPageFind(true, false);
     private View browserFooter;
     private LinearLayout toolbarActions;
+    private LinearLayout addressSuggestions;
+    private final Runnable refreshAddressSuggestions = this::updateAddressSuggestions;
     private View progressLine;
     private PopupWindow undoPopup;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -306,7 +334,11 @@ public final class ChromiumTestActivity extends Activity {
         LinearLayout header = new LinearLayout(this);
         header.setVisibility(View.GONE);
         title = text("Velocity · Cefrium", 13, SECONDARY, false);
+        title.setVisibility(View.GONE);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(8), 0, dp(4), 0);
         header.addView(title);
+        buildPageFindBar(header);
         root.addView(header, new LinearLayout.LayoutParams(-1, -2));
 
         FrameLayout content = new FrameLayout(this);
@@ -321,6 +353,10 @@ public final class ChromiumTestActivity extends Activity {
         // at the bottom, within thumb reach on tall phones.
         LinearLayout footer = new LinearLayout(this);
         browserFooter = footer;
+        // One Activity-owned listener. Recreating or closing a tab must not
+        // leave a callback that retains (and still lays out) its old Surface.
+        browserRoot.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, orr, ob) ->
+            positionActiveExternalSurface());
         footer.setOrientation(LinearLayout.VERTICAL);
         footer.setPadding(dp(10), dp(5), dp(10), dp(5));
         footer.setBackgroundColor(CANVAS);
@@ -332,6 +368,12 @@ public final class ChromiumTestActivity extends Activity {
         LinearLayout.LayoutParams progressLp = new LinearLayout.LayoutParams(-1, dp(2));
         progressLp.setMargins(dp(9), 0, dp(9), dp(5));
         footer.addView(progressLine, progressLp);
+
+        addressSuggestions = new LinearLayout(this);
+        addressSuggestions.setOrientation(LinearLayout.VERTICAL);
+        addressSuggestions.setBackground(rounded(SURFACE, 14, BORDER));
+        addressSuggestions.setVisibility(View.GONE);
+        footer.addView(addressSuggestions, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout addressRow = new LinearLayout(this);
         addressBar = addressRow;
@@ -408,6 +450,17 @@ public final class ChromiumTestActivity extends Activity {
         toolbarActions.addView(tabsButton, new LinearLayout.LayoutParams(0, dp(48), 1.25f));
         toolbarActions.addView(menu, new LinearLayout.LayoutParams(0, dp(48), 1));
 
+        address.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count,
+                    int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before,
+                    int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                mainHandler.removeCallbacks(refreshAddressSuggestions);
+                if (address.hasFocus()) mainHandler.postDelayed(refreshAddressSuggestions, 100);
+            }
+        });
+
         // Focus is the only source of truth for editing mode. When the IME
         // appears, drop the duplicate toolbar instead of hiding the URL input.
         address.setOnFocusChangeListener((v, hasFocus) -> {
@@ -421,6 +474,7 @@ public final class ChromiumTestActivity extends Activity {
                 address.selectAll();
                 locationIdentity.setImageResource(R.drawable.ic_browser_search);
             } else {
+                clearAddressSuggestions();
                 updateNavigation();
             }
         });
@@ -471,6 +525,7 @@ public final class ChromiumTestActivity extends Activity {
         // and it preserves the active Cefrium Surface and keyboard focus.
         applyBrowserBarPosition();
         loadBookmarks();
+        loadReadingList();
         loadHistory();
         if (debugAudit && ("settings".equals(audit) || "tabs".equals(audit)
                 || "tabs-private".equals(audit) || "tabs-groups".equals(audit)
@@ -833,6 +888,14 @@ public final class ChromiumTestActivity extends Activity {
         if (showHome) homeOverlay.bringToFront();
     }
 
+    private void positionActiveExternalSurface() {
+        if (destroyed || engine == null || browserHeader == null || browserFooter == null) return;
+        FrameLayout surface = engine.getSurfaceContainer();
+        if (surface.getParent() != browserContent) {
+            positionChromiumSurface(surface, browserHeader, browserFooter);
+        }
+    }
+
     private void positionChromiumSurface(FrameLayout surface, View header, View footer) {
         if (destroyed || !(surface.getParent() instanceof FrameLayout)) return;
         boolean footerAbovePage = browserRoot != null && browserContent != null
@@ -959,7 +1022,7 @@ public final class ChromiumTestActivity extends Activity {
             try {
                 restoreRegularTabs();
                 boolean restoreLastTab = getSharedPreferences(TAB_PREFS, MODE_PRIVATE)
-                    .getBoolean("restore_last_tab", false);
+                    .getBoolean("restore_last_tab", DEFAULT_RESTORE_LAST_TAB);
                 if (restoreLastTab && tabRegistry.current() != null && !tabRegistry.isStartupHomeCurrent()) {
                     // Restore and display the active tab from the previous session.
                 } else {
@@ -1175,10 +1238,11 @@ public final class ChromiumTestActivity extends Activity {
                 if (!isPersistable(url)) continue;
                 TabRegistry.Tab tab = tabRegistry.restoreRegularTab(
                     url, item.optBoolean("home", false), item.optString("id", null),
-                    item.optString("group", null));
+                    item.optString("group", null), item.optString("groupId", null));
                 if (tab == null) break;
                 tab.title = item.optString("title", "");
                 tab.desktopMode = item.optBoolean("desktop", false);
+                tab.pinned = !tab.startupHome && item.optBoolean("pinned", false);
                 tab.zoomLevel = Math.max(-3, Math.min(4, item.optDouble("zoom", 0)));
                 if (i == selected) selectedId = tab.id;
             }
@@ -1219,7 +1283,9 @@ public final class ChromiumTestActivity extends Activity {
                     .put("url", tab.url)
                     .put("id", tab.id)
                     .put("group", tab.group == null ? "" : tab.group)
+                    .put("groupId", tab.groupKey() == null ? "" : tab.groupKey())
                     .put("desktop", tab.desktopMode)
+                    .put("pinned", tab.pinned)
                     .put("zoom", tab.zoomLevel)
                     .put("home", tab.startupHome)
                     .put("title", tab.title == null ? "" : tab.title.substring(
@@ -1281,9 +1347,7 @@ public final class ChromiumTestActivity extends Activity {
             browserContent.addView(surface, new FrameLayout.LayoutParams(-1, -1));
         } else if (surface.getParent() != browserContent) {
             browserRoot.bringToFront();
-            browserRoot.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, orr, ob) ->
-                positionChromiumSurface(surface, browserHeader, browserFooter));
-            surface.post(() -> positionChromiumSurface(surface, browserHeader, browserFooter));
+            browserRoot.post(this::positionActiveExternalSurface);
         }
     }
 
@@ -1294,10 +1358,18 @@ public final class ChromiumTestActivity extends Activity {
             // A restored tab is instantiated only when the user explicitly
             // selects it. Chromium PageState also restores back/forward history;
             // a dead renderer cannot preserve live JS/DOM state.
-            byte[] savedNavigation = tab.privateMode || tab.startupHome ? null
-                : previewStore.loadNavigationState(tab.id);
+            byte[] savedNavigation = reopeningTab != null && reopeningTab.tab.id.equals(tab.id)
+                ? reopeningTab.navigation
+                : tab.privateMode || tab.startupHome ? null
+                    : previewStore.loadNavigationState(tab.id);
             if (savedNavigation != null && savedNavigation.length > 0) {
-                browser.restoreNavigationState(savedNavigation);
+                try {
+                    browser.restoreNavigationState(savedNavigation);
+                } catch (RuntimeException error) {
+                    Log.w(TAG, "Navigation checkpoint could not be restored", error);
+                    if (!tab.privateMode) previewStore.saveNavigationState(tab.id, null);
+                    browser.loadUrl(tab.url);
+                }
             } else {
                 browser.loadUrl(tab.url);
             }
@@ -1366,6 +1438,7 @@ public final class ChromiumTestActivity extends Activity {
             @Override public void onUrlChanged(CefriumBrowser source, String url) {
                 runOnUiThread(() -> {
                     if (destroyed || tabRegistry.find(tab.id) != tab || url == null) return;
+                    if (source == findBrowser && !url.equals(tab.url)) closePageFind();
                     // Reusing a UUID across navigations must not show a previous
                     // site's screenshot while a new page is still loading.
                     if (!url.equals(tab.url) && !tab.privateMode) {
@@ -1392,6 +1465,17 @@ public final class ChromiumTestActivity extends Activity {
             }
         });
         browser.setChromeClient(new CefriumChromeClient() {
+            @Override public void onFindResult(CefriumBrowser source, int activeMatch, int matches) {
+                runOnUiThread(() -> {
+                    if (destroyed || source != findBrowser || source != engine
+                            || issuedFindQuery.isEmpty()
+                            || !issuedFindQuery.contentEquals(findQuery.getText())) return;
+                    if (matches < 0) return;
+                    String position = activeMatch > 0 && activeMatch <= matches
+                        ? activeMatch + " / " + matches : matches + "件";
+                    findCount.setText(position);
+                });
+            }
             @Override public void onTitleChanged(CefriumBrowser source, String name) {
                 runOnUiThread(() -> {
                     if (destroyed || tabRegistry.find(tab.id) != tab) return;
@@ -1545,6 +1629,14 @@ public final class ChromiumTestActivity extends Activity {
             labels.add("リンクを新しいタブで開く");
             actions.add(() -> createTab(link, tab.privateMode));
             icons.add(R.drawable.ic_browser_tabs);
+            labels.add("リンクをバックグラウンドで開く");
+            actions.add(() -> queueContextLink(link, tab, false));
+            icons.add(R.drawable.ic_browser_tabs);
+            if (tab.group != null && !tab.group.isBlank()) {
+                labels.add("リンクを同じグループで開く");
+                actions.add(() -> queueContextLink(link, tab, true));
+                icons.add(R.drawable.ic_browser_tabs);
+            }
         }
         if (link != null && !link.isEmpty()) {
             labels.add("リンクのURLをコピー");
@@ -1635,6 +1727,18 @@ public final class ChromiumTestActivity extends Activity {
         return true;
     }
 
+    private void queueContextLink(String link, TabRegistry.Tab opener, boolean sameGroup) {
+        if (destroyed || !chromiumReady || !isPersistable(link)
+                || (sameGroup && (opener.group == null || opener.group.isBlank()))) return;
+        TabRegistry.Tab queued = tabRegistry.addBackground(link, opener, sameGroup);
+        if (queued == null) return;
+        // No renderer is created and no request is sent until the tab is selected.
+        if (!queued.privateMode) saveRegularTabs();
+        updateNavigation();
+        Toast.makeText(this, sameGroup ? "同じグループに追加しました"
+            : "バックグラウンドに追加しました", Toast.LENGTH_SHORT).show();
+    }
+
     private void copyContextValue(String label, String value) {
         android.content.ClipboardManager clipboard =
             (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
@@ -1645,10 +1749,12 @@ public final class ChromiumTestActivity extends Activity {
 
     private void activateCurrentTab() {
         if (!chromiumReady || destroyed) return;
+        clearAddressSuggestions();
         TabRegistry.Tab current = tabRegistry.current();
         if (current == null) return;
         CefriumBrowser oldEngine = engine;
         CefriumBrowser active = liveBrowsers.get(current.id);
+        if (findBrowser != null && (findBrowser != active || current.startupHome)) closePageFind();
         if (oldEngine != null && oldEngine != active) {
             // Cefrium.onPause() also suspends media, unlike page visibility
             // alone. Inactive tabs must never resume animation/audio on
@@ -1670,6 +1776,7 @@ public final class ChromiumTestActivity extends Activity {
             }
             engine.getSurfaceContainer().bringToFront();
             browserRoot.bringToFront();
+            positionActiveExternalSurface();
             updateHomeState();
             updateNavigation();
             trimInactiveBrowsers(current.id);
@@ -1681,16 +1788,35 @@ public final class ChromiumTestActivity extends Activity {
         }
     }
 
-    /** Hibernate oldest inactive WebContents while preserving visible tab cards. */
+    private int residentBrowserTarget() {
+        long now = SystemClock.elapsedRealtime();
+        if (now - lastMemorySampleAt < MEMORY_SAMPLE_INTERVAL_MS) return residentBrowserTarget;
+        lastMemorySampleAt = now;
+        android.app.ActivityManager manager = getSystemService(android.app.ActivityManager.class);
+        if (manager != null) {
+            android.app.ActivityManager.MemoryInfo info = new android.app.ActivityManager.MemoryInfo();
+            manager.getMemoryInfo(info);
+            residentBrowserTarget = ResidentTabBudget.target(
+                info.totalMem, manager.isLowRamDevice(), info.lowMemory);
+        }
+        return residentBrowserTarget;
+    }
+
+    /** Hibernate inactive WebContents, preferring the offline home over a live page. */
     private void trimInactiveBrowsers(String currentId) {
-        while (liveBrowsers.size() > MAX_RESIDENT_BROWSERS) {
+        int target = residentBrowserTarget();
+        while (liveBrowsers.size() > target) {
             String oldestId = null;
-            for (String id : liveBrowsers.keySet()) {
-                if (!id.equals(currentId)
-                        && !downloads.isBusy(liveBrowsers.get(id))
-                        && !popupOpeners.containsValue(liveBrowsers.get(id))) {
-                    oldestId = id; break;
+            for (Map.Entry<String, CefriumBrowser> candidate : liveBrowsers.entrySet()) {
+                String id = candidate.getKey();
+                CefriumBrowser browser = candidate.getValue();
+                if (id.equals(currentId) || downloads.isBusy(browser)
+                        || popupOpeners.containsValue(browser) || popupOpeners.containsKey(browser)) {
+                    continue;
                 }
+                if (oldestId == null) oldestId = id;
+                TabRegistry.Tab tab = tabRegistry.find(id);
+                if (tab != null && tab.startupHome) { oldestId = id; break; }
             }
             if (oldestId == null) break;
             CefriumBrowser idle = liveBrowsers.remove(oldestId);
@@ -1868,6 +1994,134 @@ public final class ChromiumTestActivity extends Activity {
             .putString("bookmarks_v1", bookmarkStore.serialize()).apply();
     }
 
+    private long readerRequestId;
+
+    private void showReaderText() {
+        TabRegistry.Tab tab = tabRegistry.current();
+        if (tab == null || tab.privateMode || !ReadingList.supports(tab.url)) return;
+        CefriumBrowser browser = engine;
+        if (browser == null) return;
+        String url = tab.url;
+        String title = tab.displayTitle();
+        long request = ++readerRequestId;
+        browser.evaluateJavaScript(ReaderText.SCRIPT, result -> runOnUiThread(() -> {
+            if (isFinishing() || isDestroyed() || readerRequestId != request
+                    || tabRegistry.current() != tab || browser != engine || !url.equals(tab.url)) {
+                return;
+            }
+            if (result == null || "null".equals(result)) {
+                Toast.makeText(this, "読み取れる本文が見つかりませんでした", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            try {
+                org.json.JSONObject value = new org.json.JSONObject(result);
+                if (!url.equals(value.optString("url"))) return;
+                String prose = value.optString("text");
+                if (prose.length() < ReaderText.MIN_TEXT || prose.length() > ReaderText.MAX_TEXT) {
+                    return;
+                }
+                // Render only plain text in a native view. No second web request or page HTML.
+                android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+                TextView article = new TextView(this);
+                article.setText(prose);
+                article.setTextSize(18);
+                article.setLineSpacing(dp(5), 1f);
+                article.setPadding(dp(20), dp(12), dp(20), dp(24));
+                article.setTextIsSelectable(true);
+                scroll.addView(article);
+                new AlertDialog.Builder(this).setTitle(title).setView(scroll)
+                    .setPositiveButton("元のページに戻る", null).show();
+            } catch (org.json.JSONException invalid) {
+                Toast.makeText(this, "本文を表示できませんでした", Toast.LENGTH_SHORT).show();
+            }
+        }));
+    }
+
+    private void loadReadingList() {
+        try {
+            org.json.JSONArray data = new org.json.JSONArray(
+                getSharedPreferences(TAB_PREFS, MODE_PRIVATE).getString("reading_list_v1", "[]"));
+            for (int i = Math.min(data.length(), ReadingList.LIMIT) - 1; i >= 0; i--) {
+                org.json.JSONObject row = data.optJSONObject(i);
+                if (row == null) continue;
+                String url = row.optString("url", "");
+                if (readingList.add(url, row.optString("title", "")) == ReadingList.AddResult.ADDED) {
+                    readingList.setRead(url, row.optBoolean("read", false));
+                }
+            }
+        } catch (org.json.JSONException | ClassCastException invalid) {
+            Log.w(TAG, "Invalid reading list");
+        }
+    }
+
+    private void saveReadingList() {
+        org.json.JSONArray data = new org.json.JSONArray();
+        try {
+            for (ReadingList.Item row : readingList.all()) {
+                data.put(new org.json.JSONObject().put("url", row.url())
+                    .put("title", row.title()).put("read", row.read()));
+            }
+            getSharedPreferences(TAB_PREFS, MODE_PRIVATE).edit()
+                .putString("reading_list_v1", data.toString()).apply();
+        } catch (org.json.JSONException invalid) {
+            Log.w(TAG, "Could not save reading list");
+        }
+    }
+
+    private void addPageToReadingList() {
+        TabRegistry.Tab current = tabRegistry.current();
+        if (current == null || current.privateMode) return;
+        ReadingList.AddResult result = readingList.add(current.url, current.displayTitle());
+        if (result == ReadingList.AddResult.ADDED) saveReadingList();
+        Toast.makeText(this, switch (result) {
+            case ADDED -> "読書リストに追加しました";
+            case ALREADY_SAVED -> "読書リストに追加済みです";
+            case FULL -> "読書リストは100件まで保存できます";
+            case UNSUPPORTED -> "このページは保存できません";
+        }, Toast.LENGTH_SHORT).show();
+    }
+
+    private void showReadingList() {
+        TabRegistry.Tab current = tabRegistry.current();
+        if (current != null && current.privateMode) return;
+        List<ReadingList.Item> entries = new ArrayList<>(readingList.all());
+        entries.sort(java.util.Comparator.comparing(ReadingList.Item::read));
+        if (entries.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle("読書リスト")
+                .setMessage("保存したページはまだありません")
+                .setPositiveButton("閉じる", null).show();
+            return;
+        }
+        String[] titles = entries.stream().map(row -> (row.read() ? "既読： " : "") + row.title()
+            + "\n" + safeDisplayHost(row.url())).toArray(String[]::new);
+        new AlertDialog.Builder(this).setTitle("読書リスト（この端末）")
+            .setItems(titles, (dialog, index) -> showReadingListItem(entries.get(index)))
+            .setNegativeButton("閉じる", null).show();
+    }
+
+    private String safeDisplayHost(String url) {
+        String host = android.net.Uri.parse(url).getHost();
+        return host == null ? "" : host;
+    }
+
+    private void showReadingListItem(ReadingList.Item row) {
+        new AlertDialog.Builder(this).setTitle(row.title())
+            .setItems(new String[]{"開く", row.read() ? "未読に戻す" : "既読にする", "リストから外す"},
+                (dialog, choice) -> {
+                    TabRegistry.Tab current = tabRegistry.current();
+                    if (current != null && current.privateMode) return;
+                    if (choice == 0) {
+                        navigateCurrentTab(row.url());
+                    } else {
+                        if (choice == 1) readingList.setRead(row.url(), !row.read());
+                        else readingList.remove(row.url());
+                        saveReadingList();
+                        showReadingList();
+                    }
+                })
+            .setNegativeButton("戻る", (d, w) -> showReadingList()).show();
+    }
+
     private void toggleBookmarkCurrent() {
         TabRegistry.Tab current = tabRegistry.current();
         if (current == null || current.url == null || "about:blank".equals(current.url)
@@ -1886,6 +2140,93 @@ public final class ChromiumTestActivity extends Activity {
             saveBookmarks();
             Toast.makeText(this, "ブックマークに追加しました", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    @SuppressWarnings("deprecation")
+    private void pickBookmarkFile(boolean exporting) {
+        Intent picker = new Intent(exporting ? Intent.ACTION_CREATE_DOCUMENT : Intent.ACTION_OPEN_DOCUMENT);
+        picker.addCategory(Intent.CATEGORY_OPENABLE);
+        if (exporting) {
+            picker.setType("application/json");
+            picker.putExtra(Intent.EXTRA_TITLE, "velocity-bookmarks.json");
+        } else {
+            // Some providers store exported JSON as text/plain or application/octet-stream.
+            // Decode checks the file's own format, independently of its MIME type.
+            picker.setType("*/*");
+        }
+        try {
+            startActivityForResult(picker, exporting ? EXPORT_BOOKMARKS_REQUEST : IMPORT_BOOKMARKS_REQUEST);
+        } catch (android.content.ActivityNotFoundException unavailable) {
+            Toast.makeText(this, "ファイル選択を開けませんでした", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void openBookmarkTransferMenu() {
+        new AlertDialog.Builder(this)
+            .setTitle("ブックマークのバックアップ")
+            .setItems(new String[]{"ファイルから追加", "ファイルに保存"}, (dialog, choice) -> {
+                if (choice == 0) {
+                    new AlertDialog.Builder(this)
+                        .setTitle("ブックマークをファイルから追加")
+                        .setMessage("VelocityのJSON、またはブラウザが書き出した対応形式のHTMLを選べます。既存の登録は上書きしません。HTMLからはURLと名前だけを追加し、フォルダ構造は引き継ぎません。")
+                        .setPositiveButton("ファイルを選ぶ", (d, w) -> pickBookmarkFile(false))
+                        .setNegativeButton("キャンセル", null).show();
+                } else {
+                    new AlertDialog.Builder(this)
+                        .setTitle("ブックマークをファイルに保存")
+                        .setMessage("Velocity用のバックアップにURLとタイトルを保存します。ログイン情報や閲覧履歴は含みません。URLに個人情報が入っている場合があるため、共有先に注意してください。")
+                        .setPositiveButton("保存先を選ぶ", (d, w) -> pickBookmarkFile(true))
+                        .setNegativeButton("キャンセル", null).show();
+                }
+            }).setNegativeButton("キャンセル", null).show();
+    }
+
+    private void transferBookmarkFile(boolean exporting, android.net.Uri uri) {
+        if (uri == null || !"content".equals(uri.getScheme())) {
+            Toast.makeText(this, "選択したファイルを開けませんでした", Toast.LENGTH_LONG).show();
+            return;
+        }
+        final List<BookmarkStore.Bookmark> snapshot = exporting ? bookmarkStore.all() : null;
+        bookmarkFileExecutor.execute(() -> {
+            try {
+                if (exporting) {
+                    BookmarkTransferFile.Encoded file = BookmarkTransferFile.encode(snapshot);
+                    try (java.io.OutputStream stream = getContentResolver().openOutputStream(uri, "w")) {
+                        if (stream == null) throw new java.io.IOException("No output stream");
+                        stream.write(file.bytes);
+                    }
+                    runOnUiThread(() -> {
+                        if (isDestroyed() || isFinishing()) return;
+                        Toast.makeText(this, file.count + "件を保存、" + file.skipped + "件は対象外",
+                            Toast.LENGTH_LONG).show();
+                    });
+                } else {
+                    BookmarkTransferFile.Parsed parsed;
+                    try (java.io.InputStream stream = getContentResolver().openInputStream(uri)) {
+                        String contents = BookmarkTransferLimits.readUtf8(stream);
+                        parsed = NetscapeBookmarkImport.looksLikeExport(contents)
+                            ? NetscapeBookmarkImport.decode(contents) : BookmarkTransferFile.decode(contents);
+                    }
+                    runOnUiThread(() -> {
+                        if (isDestroyed() || isFinishing()) return;
+                        int added = bookmarkStore.mergeTransferred(parsed.items);
+                        if (added > 0) saveBookmarks();
+                        int duplicates = parsed.items.size() - added;
+                        Toast.makeText(this, added + "件を追加、重複" + duplicates + "件、対象外"
+                            + parsed.skipped + "件", Toast.LENGTH_LONG).show();
+                        showBookmarks();
+                    });
+                }
+            } catch (java.io.IOException | RuntimeException failure) {
+                // The selected URI and bookmark data can be private: do not log the error text.
+                runOnUiThread(() -> {
+                    if (isDestroyed() || isFinishing()) return;
+                    Toast.makeText(this, exporting ? "保存できませんでした。最大1,000件・2 MBです。"
+                        : "読み込めませんでした。対応するブックマークのJSONまたはHTML（最大1,000件・2 MB）を選んでください。",
+                        Toast.LENGTH_LONG).show();
+                });
+            }
+        });
     }
 
     private void showBookmarks() {
@@ -1918,6 +2259,14 @@ public final class ChromiumTestActivity extends Activity {
         LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(-1, dp(44));
         searchLp.setMargins(dp(12), 0, dp(12), dp(8));
         panel.addView(search, searchLp);
+
+        Button backup = makeButton("バックアップ", "ブックマークの読み込み・保存", () -> {
+            dialog[0].dismiss();
+            openBookmarkTransferMenu();
+        });
+        LinearLayout.LayoutParams backupLp = new LinearLayout.LayoutParams(-1, dp(44));
+        backupLp.setMargins(dp(12), 0, dp(12), 0);
+        panel.addView(backup, backupLp);
 
         BoundedScrollView scroll = new BoundedScrollView();
         panel.addView(scroll, new LinearLayout.LayoutParams(-1, -2));
@@ -2160,10 +2509,7 @@ public final class ChromiumTestActivity extends Activity {
         // A hidden internal header occupies index 0.
         browserRoot.addView(browserFooter, bottom ? browserRoot.getChildCount() : 1,
             new LinearLayout.LayoutParams(-1, -2));
-        if (engine != null) {
-            FrameLayout surface = engine.getSurfaceContainer();
-            surface.post(() -> positionChromiumSurface(surface, browserHeader, browserFooter));
-        }
+        browserRoot.post(this::positionActiveExternalSurface);
     }
 
     private boolean navigateCurrentTab(String url) {
@@ -2193,6 +2539,62 @@ public final class ChromiumTestActivity extends Activity {
         }
         saveRegularTabs();
         return true;
+    }
+
+    private void clearAddressSuggestions() {
+        mainHandler.removeCallbacks(refreshAddressSuggestions);
+        if (addressSuggestions == null) return;
+        addressSuggestions.setVisibility(View.GONE);
+        addressSuggestions.removeAllViews();
+    }
+
+    private void updateAddressSuggestions() {
+        clearAddressSuggestions();
+        TabRegistry.Tab current = tabRegistry.current();
+        if (destroyed || address == null || !address.hasFocus()
+                || current == null || current.privateMode) return;
+        String input = address.getText().toString();
+        if (input.trim().length() < 2 || input.equals(current.url)) return;
+        List<AddressSuggestions.Item> local = new ArrayList<>();
+        for (TabRegistry.Tab tab : tabRegistry.regularTabs()) {
+            if (tab != current && isPersistable(tab.url)) {
+                local.add(new AddressSuggestions.Item(
+                    tab.url, tab.displayTitle(), tab.id, "開いているタブ"));
+            }
+        }
+        for (BookmarkStore.Bookmark bookmark : bookmarkStore.all()) {
+            if (isPersistable(bookmark.url)) {
+                local.add(new AddressSuggestions.Item(
+                    bookmark.url, bookmark.title, null, "ブックマーク"));
+            }
+        }
+        for (HistoryStore.HistoryEntry entry : historyStore.all()) {
+            if (isPersistable(entry.url)) {
+                local.add(new AddressSuggestions.Item(entry.url, entry.title, null, "履歴"));
+            }
+        }
+        List<AddressSuggestions.Item> matches = AddressSuggestions.choose(input, local, false);
+        if (matches.isEmpty()) return;
+        for (AddressSuggestions.Item match : matches) {
+            String label = match.title() == null || match.title().isBlank()
+                ? displayAddress(match.url()) : match.title();
+            addMenuItem(addressSuggestions, R.drawable.ic_browser_search, label,
+                match.source() + " · " + displayAddress(match.url()), () -> {
+                    TabRegistry.Tab active = tabRegistry.current();
+                    if (active == null || active != current || active.privateMode) return;
+                    TabRegistry.Tab open = tabRegistry.find(match.openTabId());
+                    if (open != null && !open.privateMode && match.url().equals(open.url)) {
+                        hideKeyboard();
+                        address.clearFocus();
+                        selectTab(open.id);
+                    } else if (navigateCurrentTab(match.url())) {
+                        hideKeyboard();
+                        address.clearFocus();
+                        updateNavigation();
+                    }
+                });
+        }
+        addressSuggestions.setVisibility(View.VISIBLE);
     }
 
     private void loadAddress() {
@@ -2683,6 +3085,8 @@ public final class ChromiumTestActivity extends Activity {
         return screen;
     }
 
+    private record OverviewEntry(String key, java.util.function.Supplier<View> view) {}
+
     private void showTabOverview(int mode, String expandedGroup) {
         showTabOverview(mode, expandedGroup, "");
     }
@@ -2702,20 +3106,12 @@ public final class ChromiumTestActivity extends Activity {
         int privateCount = tabRegistry.countForMode(true);
         Map<String, List<TabRegistry.Tab>> namedGroups = new LinkedHashMap<>();
         for (TabRegistry.Tab tab : tabRegistry.tabsForMode(privateMode)) {
-            if (tab.group != null && !tab.group.isEmpty()) {
-                namedGroups.computeIfAbsent(tab.group, key -> new ArrayList<>()).add(tab);
-            }
+            String key = tab.groupKey();
+            if (key != null) namedGroups.computeIfAbsent(key, unused -> new ArrayList<>()).add(tab);
         }
-        // Only show normal browsing groups in the dedicated Groups section.
-        if (mode == TAB_VIEW_GROUPS) {
-            namedGroups.clear();
-            for (TabRegistry.Tab tab : tabRegistry.regularTabs()) {
-                if (tab.group != null && !tab.group.isEmpty()) {
-                    namedGroups.computeIfAbsent(tab.group, key -> new ArrayList<>()).add(tab);
-                }
-            }
-        }
-        String headingText = expandedGroup != null ? expandedGroup
+        List<TabRegistry.Tab> expandedMembers = namedGroups.get(expandedGroup);
+        String headingText = expandedGroup != null
+            ? (expandedMembers == null ? "グループ" : expandedMembers.get(0).group)
             : mode == TAB_VIEW_PRIVATE ? "非公開タブ (" + privateCount + ")"
             : mode == TAB_VIEW_GROUPS ? "グループ (" + namedGroups.size() + ")"
             : mode == TAB_VIEW_RECENT ? "最近閉じたタブ"
@@ -2805,144 +3201,145 @@ public final class ChromiumTestActivity extends Activity {
 
         FrameLayout body = new FrameLayout(this);
         page.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
-        ScrollView scroll = new ScrollView(this);
-        scroll.setFillViewport(true);
+        ListView scroll = new ListView(this);
+        scroll.setItemsCanFocus(true);
+        scroll.setDivider(null);
+        scroll.setDividerHeight(0);
         scroll.setVerticalScrollBarEnabled(false);
         scroll.setClipToPadding(false);
         scroll.setPadding(dp(14), dp(8), dp(14), dp(90));
         body.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
-        LinearLayout grid = new LinearLayout(this);
-        grid.setOrientation(LinearLayout.VERTICAL);
-        scroll.addView(grid);
+        TextView empty = text("", 15, SECONDARY, false);
+        empty.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        empty.setPadding(dp(12), dp(80), dp(12), dp(80));
+        body.addView(empty, new FrameLayout.LayoutParams(-1, -1));
+        scroll.setEmptyView(empty);
         int availableDp = BrowserUiLayout.availableSheetWidthDp(
             getResources().getConfiguration().screenWidthDp);
         int columns = BrowserUiLayout.columnsForAvailableWidthDp(availableDp);
         int previewHeight = BrowserUiLayout.tabPreviewHeightDp(columns);
-        // The grid uses lightweight holder rows and binds actual preview cards
-        // *only near the viewport*. Rebuilding for a search never creates
-        // hundreds of ImageViews or instantiates additional browser renderers.
-        List<java.util.function.Supplier<View>> entries = new ArrayList<>();
-        List<FrameLayout> cellHolders = new ArrayList<>();
+        // Only the platform's visible/recycled rows contain views. All other
+        // results remain metadata and never instantiate browser renderers.
+        List<OverviewEntry> entries = new ArrayList<>();
         int cellHeightDp = mode == TAB_VIEW_RECENT ? 80 : previewHeight + 58;
         int rowHeightPx = dp(cellHeightDp + 12);
-        Runnable bindViewport = () -> {
-            if (destroyed || !scroll.isAttachedToWindow()) return;
-            int viewport = Math.max(dp(320), scroll.getHeight());
-            int visibleStart = Math.max(0, scroll.getScrollY() - viewport);
-            int visibleEnd = scroll.getScrollY() + viewport * 2;
-            for (int index = 0; index < entries.size(); index++) {
-                FrameLayout holder = cellHolders.get(index);
-                if (holder == null) continue;
-                int rowTop = (index / columns) * rowHeightPx;
-                boolean nearby = rowTop + rowHeightPx >= visibleStart
-                    && rowTop <= visibleEnd;
-                if (nearby && holder.getChildCount() == 0) {
-                    holder.addView(entries.get(index).get(),
-                        new FrameLayout.LayoutParams(-1, -1));
-                } else if (!nearby && holder.getChildCount() > 0) {
-                    holder.removeAllViews();
+        BaseAdapter rowsAdapter = new BaseAdapter() {
+            @Override public int getCount() { return (entries.size() + columns - 1) / columns; }
+            @Override public Object getItem(int row) { return entries.get(row * columns); }
+            @Override public long getItemId(int row) { return row; }
+            @Override public boolean areAllItemsEnabled() { return false; }
+            @Override public boolean isEnabled(int row) { return false; }
+            @Override public View getView(int rowIndex, View reusable, ViewGroup parent) {
+                LinearLayout row;
+                if (reusable instanceof LinearLayout) {
+                    row = (LinearLayout) reusable;
+                } else {
+                    row = new LinearLayout(ChromiumTestActivity.this);
+                    row.setGravity(Gravity.TOP);
+                    row.setLayoutParams(new AbsListView.LayoutParams(-1, rowHeightPx));
+                    for (int i = 0; i < columns; i++) {
+                        FrameLayout holder = new FrameLayout(ChromiumTestActivity.this);
+                        LinearLayout.LayoutParams cell = new LinearLayout.LayoutParams(0, dp(cellHeightDp), 1);
+                        if (i != 0) cell.leftMargin = dp(BrowserUiLayout.CARD_GAP_DP);
+                        row.addView(holder, cell);
+                    }
                 }
+                for (int i = 0; i < columns; i++) {
+                    FrameLayout holder = (FrameLayout) row.getChildAt(i);
+                    holder.removeAllViews();
+                    int entry = rowIndex * columns + i;
+                    if (entry < entries.size()) holder.addView(entries.get(entry).view().get(),
+                        new FrameLayout.LayoutParams(-1, -1));
+                }
+                return row;
             }
         };
-        scroll.setOnScrollChangeListener((View view, int x, int y,
-                                           int oldX, int oldY) -> bindViewport.run());
+        scroll.setAdapter(rowsAdapter);
+        final boolean[] firstRender = {true};
         Runnable renderGrid = () -> {
             if (destroyed || dialog[0] == null || !dialog[0].isShowing()) return;
             String query = searchInput.getText().toString();
             boolean searching = !query.trim().isEmpty();
-            grid.removeAllViews();
+            int oldIndex = scroll.getFirstVisiblePosition() * columns;
+            String anchor = oldIndex >= 0 && oldIndex < entries.size()
+                ? entries.get(oldIndex).key() : null;
+            View oldFirstRow = scroll.getChildAt(0);
+            int oldOffset = oldFirstRow == null ? 0 : oldFirstRow.getTop() - scroll.getPaddingTop();
             entries.clear();
-            cellHolders.clear();
             int activePosition = -1;
             if (mode == TAB_VIEW_RECENT) {
                 for (TabRegistry.Tab closed : TabSearch.filter(recentlyClosedRegularTabs, query)) {
-                    entries.add(() -> makeRecentTabCard(closed, dialog));
+                    entries.add(new OverviewEntry(closed.id, () -> makeRecentTabCard(closed, dialog)));
                 }
             } else if (expandedGroup != null) {
                 for (TabRegistry.Tab member : namedGroups.getOrDefault(
                         expandedGroup, Collections.emptyList())) {
                     if (!TabSearch.matches(member, query)) continue;
-                    entries.add(() -> makeOverviewTabCard(member, previewHeight, dialog,
-                        mode, expandedGroup, query));
+                    entries.add(new OverviewEntry(member.id,
+                        () -> makeOverviewTabCard(member, previewHeight, dialog,
+                            mode, expandedGroup, query)));
                     if (member == tabRegistry.current()) activePosition = entries.size() - 1;
                 }
             } else if (mode == TAB_VIEW_GROUPS) {
                 for (Map.Entry<String, List<TabRegistry.Tab>> group : namedGroups.entrySet()) {
-                    String groupName = group.getKey();
                     List<TabRegistry.Tab> members = group.getValue();
+                    String groupName = members.get(0).group;
                     if (!TabSearch.matchesGroup(groupName, members, query)) continue;
-                    entries.add(() -> makeOverviewGroupCard(groupName, members,
-                        previewHeight, dialog, mode));
+                    entries.add(new OverviewEntry("group:" + group.getKey(),
+                        () -> makeOverviewGroupCard(group.getKey(), groupName, members,
+                            previewHeight, dialog, mode)));
                     if (members.contains(tabRegistry.current())) activePosition = entries.size() - 1;
                 }
             } else if (searching) {
                 // Crucial: return *individual* matching cards from a group,
                 // rather than hiding a found page inside its 2x2 group collage.
                 for (TabRegistry.Tab tab : tabRegistry.searchForMode(privateMode, query)) {
-                    entries.add(() -> makeOverviewTabCard(tab, previewHeight, dialog,
-                        mode, null, query));
+                    entries.add(new OverviewEntry(tab.id,
+                        () -> makeOverviewTabCard(tab, previewHeight, dialog, mode, null, query)));
                     if (tab == tabRegistry.current()) activePosition = entries.size() - 1;
                 }
             } else {
                 Set<String> seenGroups = new HashSet<>();
-                for (TabRegistry.Tab tab : tabRegistry.tabsForMode(privateMode)) {
-                    if (tab.group != null && !tab.group.isEmpty()) {
-                        if (seenGroups.add(tab.group)) {
+                for (TabRegistry.Tab tab : tabRegistry.orderedOverview(privateMode)) {
+                    String groupKey = tab.groupKey();
+                    if (groupKey != null && !tab.pinned) {
+                        if (seenGroups.add(groupKey)) {
                             String groupName = tab.group;
-                            List<TabRegistry.Tab> members = namedGroups.get(groupName);
-                            entries.add(() -> makeOverviewGroupCard(groupName, members,
-                                previewHeight, dialog, mode));
+                            List<TabRegistry.Tab> members = namedGroups.get(groupKey);
+                            entries.add(new OverviewEntry("group:" + groupKey,
+                                () -> makeOverviewGroupCard(groupKey, groupName, members,
+                                    previewHeight, dialog, mode)));
                             if (members.contains(tabRegistry.current())) {
                                 activePosition = entries.size() - 1;
                             }
                         }
                     } else {
-                        entries.add(() -> makeOverviewTabCard(tab, previewHeight, dialog,
-                            mode, null, query));
+                        entries.add(new OverviewEntry(tab.id,
+                            () -> makeOverviewTabCard(tab, previewHeight, dialog, mode, null, query)));
                         if (tab == tabRegistry.current()) activePosition = entries.size() - 1;
                     }
                 }
             }
             resultCount.setVisibility(searching ? View.VISIBLE : View.GONE);
             if (searching) resultCount.setText("検索結果 " + entries.size() + "件");
-            if (entries.isEmpty()) {
-                TextView empty = text(searching ? "一致するタブがないよ"
-                    : mode == TAB_VIEW_PRIVATE ? "非公開タブはまだないよ"
-                    : mode == TAB_VIEW_GROUPS ? "作成したタブグループがここに表示されるよ"
-                    : mode == TAB_VIEW_RECENT ? "最近閉じたタブはないよ"
-                    : "タブはまだないよ", 15, SECONDARY, false);
-                empty.setGravity(Gravity.CENTER);
-                empty.setPadding(dp(12), dp(80), dp(12), dp(80));
-                grid.addView(empty, new LinearLayout.LayoutParams(-1, -2));
-            }
-            for (int i = 0; i < entries.size(); i += columns) {
-                LinearLayout row = new LinearLayout(this);
-                row.setGravity(Gravity.TOP);
-                grid.addView(row, new LinearLayout.LayoutParams(-1, rowHeightPx));
-                for (int column = 0; column < columns; column++) {
-                    int position = i + column;
-                    FrameLayout holder = new FrameLayout(this);
-                    LinearLayout.LayoutParams cell = new LinearLayout.LayoutParams(
-                        0, dp(cellHeightDp), 1);
-                    if (column != 0) cell.leftMargin = dp(BrowserUiLayout.CARD_GAP_DP);
-                    row.addView(holder, cell);
-                    cellHolders.add(position < entries.size() ? holder : null);
+            empty.setText(searching ? "一致するタブがないよ"
+                : mode == TAB_VIEW_PRIVATE ? "非公開タブはまだないよ"
+                : mode == TAB_VIEW_GROUPS ? "作成したタブグループがここに表示されるよ"
+                : mode == TAB_VIEW_RECENT ? "最近閉じたタブはないよ" : "タブはまだないよ");
+            int anchorPosition = -1;
+            if (anchor != null) {
+                for (int i = 0; i < entries.size(); i++) {
+                    if (anchor.equals(entries.get(i).key())) { anchorPosition = i; break; }
                 }
             }
-            final int selection = activePosition;
-            grid.post(() -> {
-                if (destroyed || !scroll.isAttachedToWindow()) return;
-                if (searching || selection < 0 || entries.size() <= 4) {
-                    scroll.scrollTo(0, 0);
-                } else {
-                    int top = (selection / columns) * rowHeightPx;
-                    scroll.scrollTo(0, Math.max(0, top - dp(8)));
-                }
-                bindViewport.run();
-            });
+            int target = anchorPosition >= 0 ? anchorPosition
+                : firstRender[0] && !searching && entries.size() > 4 ? activePosition : 0;
+            firstRender[0] = false;
+            rowsAdapter.notifyDataSetChanged();
+            if (!entries.isEmpty()) scroll.setSelectionFromTop(Math.max(0, target) / columns,
+                anchorPosition >= 0 ? oldOffset : 0);
         };
-        // 100ms debounce prevents repeated 500-holder layout passes when a
-        // user types quickly. The active keyboard does not reload WebContents.
+        // 100ms debounce keeps large metadata filters off every keystroke.
         Runnable debounceGrid = () -> {
             if (dialog[0] != null && dialog[0].isShowing()) renderGrid.run();
         };
@@ -3085,7 +3482,7 @@ public final class ChromiumTestActivity extends Activity {
             tab.privateMode);
         header.addView(identity, new LinearLayout.LayoutParams(dp(29), dp(29)));
         // In search results a group is flattened, so keep its identity visible.
-        String cardTitle = tab.displayTitle();
+        String cardTitle = (tab.pinned ? "📌 " : "") + tab.displayTitle();
         if (searchQuery != null && !searchQuery.trim().isEmpty()
                 && tab.group != null && !tab.group.isEmpty()) {
             cardTitle += " · " + tab.group;
@@ -3105,20 +3502,43 @@ public final class ChromiumTestActivity extends Activity {
         FrameLayout preview = makeOverviewPreview(tab, false);
         LinearLayout.LayoutParams previewLp = new LinearLayout.LayoutParams(-1, dp(previewHeight));
         card.addView(preview, previewLp);
-        card.setContentDescription(tab.displayTitle() + " タブ");
+        card.setContentDescription(tab.displayTitle() + (tab.pinned ? " 固定タブ" : " タブ"));
         card.setOnClickListener(v -> {
             dialog[0].dismiss();
             selectTab(tab.id);
         });
         card.setOnLongClickListener(v -> {
             dialog[0].dismiss();
-            showTabGroupDialog(tab.id);
+            showTabCardActions(tab, mode, expandedGroup, searchQuery);
             return true;
         });
         return card;
     }
 
-    private View makeOverviewGroupCard(String name, List<TabRegistry.Tab> members,
+    private void showTabCardActions(TabRegistry.Tab tab, int mode, String expandedGroup,
+                                    String searchQuery) {
+        if (tab.startupHome || tabRegistry.find(tab.id) != tab) {
+            showTabOverview(mode, expandedGroup, searchQuery);
+            return;
+        }
+        new AlertDialog.Builder(this)
+            .setItems(new String[]{tab.pinned ? "固定を解除" : "タブを固定",
+                    "前に移動", "後ろに移動", "グループ分け"}, (d, which) -> {
+                if (which == 3) {
+                    showTabGroupDialog(tab.id);
+                    return;
+                }
+                boolean changed = which == 0 ? tabRegistry.togglePin(tab)
+                    : tabRegistry.moveWithinBand(tab, which == 1 ? -1 : 1,
+                        expandedGroup != null || (!tab.pinned && tab.groupKey() != null));
+                if (changed && !tab.privateMode) saveRegularTabs();
+                if (!changed) Toast.makeText(this, "これ以上移動できません",
+                    Toast.LENGTH_SHORT).show();
+                showTabOverview(mode, expandedGroup, searchQuery);
+            }).setOnCancelListener(d -> showTabOverview(mode, expandedGroup, searchQuery)).show();
+    }
+
+    private View makeOverviewGroupCard(String key, String name, List<TabRegistry.Tab> members,
                                        int previewHeight, Dialog[] dialog, int mode) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -3139,7 +3559,7 @@ public final class ChromiumTestActivity extends Activity {
         Button menu = iconButton(R.drawable.ic_browser_menu,
             name + "のグループ設定", () -> {
                 dialog[0].dismiss();
-                showTabGroupOptions(name, members, mode);
+                showTabGroupOptions(key, name, members, mode);
             });
         header.addView(menu, new LinearLayout.LayoutParams(dp(48), dp(48)));
         LinearLayout mosaic = new LinearLayout(this);
@@ -3175,17 +3595,17 @@ public final class ChromiumTestActivity extends Activity {
         card.setContentDescription(name + " グループ " + members.size() + "件");
         card.setOnClickListener(v -> {
             dialog[0].dismiss();
-            showTabOverview(mode, name);
+            showTabOverview(mode, key);
         });
         card.setOnLongClickListener(v -> {
             dialog[0].dismiss();
-            showTabGroupOptions(name, members, mode);
+            showTabGroupOptions(key, name, members, mode);
             return true;
         });
         return card;
     }
 
-    private void showTabGroupOptions(String groupName, List<TabRegistry.Tab> members,
+    private void showTabGroupOptions(String groupId, String groupName, List<TabRegistry.Tab> members,
                                      int mode) {
         // The group is a *metadata* association. Removing a group never
         // closes the underlying tabs or discards page/scroll state.
@@ -3193,7 +3613,7 @@ public final class ChromiumTestActivity extends Activity {
             .setItems(new String[]{"グループを開く", "名前を変更", "グループを解除"},
                 (unused, selected) -> {
                     if (selected == 0) {
-                        showTabOverview(mode, groupName);
+                        showTabOverview(mode, groupId);
                     } else if (selected == 1) {
                         EditText input = new EditText(this);
                         input.setSingleLine(true);
@@ -3202,8 +3622,7 @@ public final class ChromiumTestActivity extends Activity {
                             .setView(input).setPositiveButton("保存", (d, which) -> {
                                 String next = input.getText().toString().trim();
                                 if (next.isEmpty()) return;
-                                next = next.substring(0, Math.min(40, next.length()));
-                                for (TabRegistry.Tab member : members) member.group = next;
+                                tabRegistry.renameGroup(groupId, mode == TAB_VIEW_PRIVATE, next);
                                 saveRegularTabs();
                                 showTabOverview(mode, null);
                             }).setNegativeButton("キャンセル", (d, which) ->
@@ -3214,7 +3633,9 @@ public final class ChromiumTestActivity extends Activity {
                             .setNegativeButton("キャンセル", (d, which) ->
                                 showTabOverview(mode, null))
                             .setPositiveButton("解除", (d, which) -> {
-                                for (TabRegistry.Tab member : members) member.group = null;
+                                for (TabRegistry.Tab member : members) {
+                                    if (groupId.equals(member.groupKey())) tabRegistry.assignGroup(member, null);
+                                }
                                 saveRegularTabs();
                                 showTabOverview(mode, null);
                             }).show();
@@ -3244,8 +3665,8 @@ public final class ChromiumTestActivity extends Activity {
         card.setContentDescription("閉じたタブを復元 " + closed.displayTitle());
         card.setOnClickListener(v -> {
             dialog[0].dismiss();
-            recentlyClosedRegularTabs.remove(closed);
-            createTab(closed.url, false);
+            ClosedTab checkpoint = closedRegularState.get(closed.id);
+            if (checkpoint != null) reopenClosedTab(checkpoint);
         });
         return card;
     }
@@ -3273,18 +3694,19 @@ public final class ChromiumTestActivity extends Activity {
                                 Toast.LENGTH_SHORT).show();
                             return;
                         }
+                        candidates.removeIf(tab -> tab.startupHome || tab.pinned);
+                        if (candidates.isEmpty()) {
+                            Toast.makeText(this, "閉じるタブがありません", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
                         new AlertDialog.Builder(this).setTitle("全タブを閉じる？")
                             .setMessage(candidates.size() + "件の" +
                                 (privateMode ? "非公開" : "通常") +
-                                "タブを閉じるよ。ホームは残すよ。")
+                                "タブを閉じます。ホームと固定タブは残します。")
                             .setNegativeButton("キャンセル", null)
                             .setPositiveButton("閉じる", (confirm, which) -> {
                                 dialog.dismiss();
-                                for (TabRegistry.Tab candidate : candidates) {
-                                    if (candidate.startupHome) continue;
-                                    closeTabDirect(candidate.id);
-                                }
-                                showTabOverview(mode, null);
+                                closeTabBatch(candidates);
                             }).show();
                     }
                 }).show();
@@ -3292,15 +3714,26 @@ public final class ChromiumTestActivity extends Activity {
 
     private void showTabGroupDialog(String id) {
         TabRegistry.Tab tab = tabRegistry.find(id);
-        if (tab == null) return;
-        LinkedHashSet<String> names = new LinkedHashSet<>();
+        if (tab == null || tab.startupHome) return;
+        LinkedHashMap<String, TabRegistry.Tab> groups = new LinkedHashMap<>();
         for (TabRegistry.Tab other : tabRegistry.tabsForMode(tab.privateMode)) {
-            if (other.group != null) names.add(other.group);
+            String key = other.groupKey();
+            if (key != null) groups.putIfAbsent(key, other);
         }
         ArrayList<String> choices = new ArrayList<>();
+        ArrayList<String> keys = new ArrayList<>(groups.keySet());
+        HashMap<String, Integer> nameCounts = new HashMap<>();
+        HashMap<String, Integer> sameNameOrdinal = new HashMap<>();
+        for (TabRegistry.Tab member : groups.values()) nameCounts.merge(member.group, 1, Integer::sum);
         choices.add("＋ 新しいグループを作成");
         choices.add("グループから外す");
-        choices.addAll(names);
+        for (TabRegistry.Tab member : groups.values()) {
+            String name = member.group;
+            choices.add(nameCounts.get(name) > 1
+                ? name + " (" + sameNameOrdinal.merge(name, 1, Integer::sum)
+                    + "/" + nameCounts.get(name) + ") · " + member.displayTitle()
+                : name);
+        }
         new AlertDialog.Builder(this).setTitle("タブのグループ分け")
             .setItems(choices.toArray(new String[0]), (dialog, which) -> {
                 if (which == 0) {
@@ -3310,26 +3743,107 @@ public final class ChromiumTestActivity extends Activity {
                     new AlertDialog.Builder(this).setTitle("新しいグループ")
                         .setView(name).setPositiveButton("作成", (d, w) -> {
                             String value = name.getText().toString().trim();
-                            if (!value.isEmpty()) {
-                                tab.group = value.substring(0, Math.min(40, value.length()));
+                            if (tabRegistry.createGroup(tab, value)) {
                                 saveRegularTabs();
                                 showTabs(tab.privateMode);
                             }
                         }).setNegativeButton("キャンセル", null).show();
                 } else {
-                    tab.group = which == 1 ? null : choices.get(which);
-                    saveRegularTabs();
-                    showTabs(tab.privateMode);
+                    if (tabRegistry.assignGroup(tab, which == 1 ? null : keys.get(which - 2))) {
+                        saveRegularTabs();
+                        showTabs(tab.privateMode);
+                    }
                 }
             }).setNegativeButton("キャンセル", null).show();
     }
 
-    /** Closing is a single operation; reopening navigates back to the URL. */
+    private void reopenClosedTab(ClosedTab closed) {
+        reopenClosedTabs(List.of(closed), closed.tab.id);
+    }
+
+    private void reopenClosedTabs(List<ClosedTab> entries, String selectedId) {
+        ClosedTab selected = null;
+        String fallback = tabRegistry.current() == null ? null : tabRegistry.current().id;
+        boolean restored = false;
+        for (ClosedTab closed : entries) {
+            if (!restoreClosedEntry(closed)) continue;
+            restored = true;
+            if (closed.tab.id.equals(selectedId)) selected = closed;
+        }
+        if (!restored) return;
+        if (selected == null && fallback != null) tabRegistry.select(fallback);
+        else if (selected != null) tabRegistry.select(selected.tab.id);
+        reopeningTab = selected;
+        try { activateCurrentTab(); }
+        finally { reopeningTab = null; }
+        saveRegularTabs();
+    }
+
+    private boolean restoreClosedEntry(ClosedTab closed) {
+        if (!tabRegistry.reopenClosed(closed.tab, closed.position)) return false;
+        recentlyClosedRegularTabs.remove(closed.tab);
+        closedRegularState.remove(closed.tab.id);
+        if (!closed.tab.privateMode && closed.navigation != null) {
+            previewStore.saveNavigationState(closed.tab.id, closed.navigation);
+        }
+        return true;
+    }
+
+    /** Close back to front so all captured positions refer to the original strip. */
+    private void closeTabBatch(List<TabRegistry.Tab> candidates) {
+        TabRegistry.Tab formerCurrent = tabRegistry.current();
+        String formerId = formerCurrent == null ? null : formerCurrent.id;
+        List<ClosedTab> entries = new ArrayList<>();
+        // Keep the immediate undo bounded even for very large sessions.
+        // Tabs outside this history budget still reopen at their saved URLs.
+        int budget = 16;
+        for (int i = candidates.size() - 1; i >= 0; i--) {
+            TabRegistry.Tab tab = candidates.get(i);
+            if (tab.startupHome) continue;
+            boolean capture = tab == formerCurrent || (!tab.privateMode && budget > 0);
+            ClosedTab closed = detachClosedTab(tab.id, capture);
+            if (closed != null) {
+                entries.add(closed);
+                if (capture && tab != formerCurrent && closed.navigation != null) budget--;
+            }
+        }
+        if (entries.isEmpty()) return;
+        java.util.Collections.reverse(entries);
+        ensureCurrentTabAfterClose(formerCurrent != tabRegistry.current());
+        showUndo(entries, formerId);
+    }
+
+    /** Capture navigation before destroying a tab; recently closed entries stay in RAM. */
     private void closeTabDirect(String id) {
         TabRegistry.Tab victim = tabRegistry.find(id);
         if (victim == null) return;
         boolean wasCurrent = victim == tabRegistry.current();
+        ClosedTab closed = detachClosedTab(id, true);
+        if (closed == null) return;
+        ensureCurrentTabAfterClose(wasCurrent);
+        showUndo(List.of(closed), closed.tab.id);
+    }
+
+    private ClosedTab detachClosedTab(String id, boolean captureNavigation) {
+        TabRegistry.Tab victim = tabRegistry.find(id);
+        if (victim == null) return null;
+        int formerIndex = tabRegistry.all().indexOf(victim);
         CefriumBrowser closing = liveBrowsers.remove(id);
+        if (closing != null && closing == findBrowser) closePageFind();
+        byte[] checkpoint = null;
+        if (captureNavigation && !victim.startupHome) {
+            try {
+                checkpoint = closing != null ? closing.serializeNavigationState()
+                    : victim.privateMode ? null : previewStore.loadNavigationState(id);
+            } catch (RuntimeException | LinkageError error) {
+                Log.w(TAG, "Could not capture navigation of closed tab", error);
+            }
+            if (checkpoint != null && (checkpoint.length == 0
+                    || checkpoint.length > NavigationCheckpointStore.MAX_BYTES)) {
+                checkpoint = null;
+            }
+        }
+        ClosedTab closed = new ClosedTab(victim, formerIndex, checkpoint);
         if (closing != null) {
             popupOpeners.entrySet().removeIf(entry ->
                 entry.getKey() == closing || entry.getValue() == closing);
@@ -3347,20 +3861,26 @@ public final class ChromiumTestActivity extends Activity {
         tabRegistry.close(id);
         if (!victim.privateMode && !victim.startupHome && isPersistable(victim.url)) {
             recentlyClosedRegularTabs.add(0, victim);
+            closedRegularState.put(victim.id, closed);
             if (recentlyClosedRegularTabs.size() > 20) {
-                recentlyClosedRegularTabs.remove(recentlyClosedRegularTabs.size() - 1);
+                TabRegistry.Tab expired = recentlyClosedRegularTabs.remove(
+                    recentlyClosedRegularTabs.size() - 1);
+                closedRegularState.remove(expired.id);
             }
         }
         if (!victim.privateMode) previewStore.remove(victim.id);
+        return closed;
+    }
+
+    private void ensureCurrentTabAfterClose(boolean changed) {
         if (tabRegistry.current() == null) tabRegistry.add("about:blank", false);
-        if (wasCurrent) activateCurrentTab();
+        if (changed) activateCurrentTab();
         else updateNavigation();
         saveRegularTabs();
-        showUndo(victim);
     }
 
     /** Five-second, non-modal undo. Does not claim to recover form/JS state. */
-    private void showUndo(TabRegistry.Tab closed) {
+    private void showUndo(List<ClosedTab> entries, String selectedId) {
         if (undoTimeout != null) mainHandler.removeCallbacks(undoTimeout);
         if (undoPopup != null) undoPopup.dismiss();
 
@@ -3368,13 +3888,14 @@ public final class ChromiumTestActivity extends Activity {
         bar.setGravity(Gravity.CENTER_VERTICAL);
         bar.setPadding(dp(18), dp(6), dp(13), dp(6));
         bar.setBackground(rounded(ELEVATED, 16, BORDER));
-        TextView message = text("タブを閉じた", 14, PRIMARY, false);
+        TextView message = text(entries.size() == 1 ? "タブを閉じた"
+            : entries.size() + "件のタブを閉じた", 14, PRIMARY, false);
         bar.addView(message, new LinearLayout.LayoutParams(0, -1, 1));
-        Button undo = makeButton("元に戻す", "URLを再び開く", () -> {
+        Button undo = makeButton("元に戻す", "閉じたタブを復元する", () -> {
             if (undoPopup != null) undoPopup.dismiss();
             undoPopup = null;
             if (undoTimeout != null) mainHandler.removeCallbacks(undoTimeout);
-            createTab(closed.url, closed.privateMode);
+            reopenClosedTabs(entries, selectedId);
         });
         undo.setTextSize(14);
         undo.setTextColor(ACCENT);
@@ -3393,6 +3914,7 @@ public final class ChromiumTestActivity extends Activity {
                 popup.dismiss();
                 undoPopup = null;
             }
+            undoTimeout = null;
         };
         mainHandler.postDelayed(undoTimeout, 5000L);
     }
@@ -3402,18 +3924,105 @@ public final class ChromiumTestActivity extends Activity {
         if (current != null) closeTabDirect(current.id);
     }
 
-    private void findInPage() {
-        if (engine == null) return;
+    private void buildPageFindBar(LinearLayout header) {
         EditText query = new EditText(this);
+        findQuery = query;
         query.setSingleLine(true);
         query.setHint("ページ内検索");
-        new AlertDialog.Builder(this).setTitle("ページ内検索")
-            .setView(query).setPositiveButton("検索", (dialog, which) -> {
-                CefriumBrowser browser = engine;
-                if (browser != null && !query.getText().toString().isEmpty()) {
-                    browser.find(query.getText().toString(), true, false, false);
-                }
-            }).setNegativeButton("キャンセル", null).show();
+        query.setTextColor(PRIMARY);
+        query.setHintTextColor(SECONDARY);
+        query.setTextSize(16);
+        query.setSaveEnabled(false);
+        query.setInputType(InputType.TYPE_CLASS_TEXT);
+        query.setImeOptions(EditorInfo.IME_ACTION_SEARCH | EditorInfo.IME_FLAG_NO_EXTRACT_UI
+            | EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING);
+        header.addView(query, new LinearLayout.LayoutParams(0, dp(48), 1));
+        findCount = text("", 12, SECONDARY, false);
+        findCount.setSingleLine(true);
+        findCount.setGravity(Gravity.CENTER);
+        findCount.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        header.addView(findCount, new LinearLayout.LayoutParams(dp(62), dp(48)));
+        addFindButton(header, "‹", "前の一致へ", () -> runPageFind(false, true));
+        addFindButton(header, "›", "次の一致へ", () -> runPageFind(true, true));
+        addFindButton(header, "×", "ページ内検索を閉じる", this::closePageFind);
+        query.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                if (findBrowser == null) return;
+                mainHandler.removeCallbacks(runPageFind);
+                findCount.setText(s.length() == 0 ? "" : "…");
+                if (s.length() == 0) runPageFind(true, false);
+                else mainHandler.postDelayed(runPageFind, 160);
+            }
+        });
+        query.setOnEditorActionListener((view, actionId, event) -> {
+            if (actionId != EditorInfo.IME_ACTION_SEARCH && (event == null
+                    || event.getKeyCode() != KeyEvent.KEYCODE_ENTER
+                    || event.getAction() != KeyEvent.ACTION_UP)) return false;
+            runPageFind(true, true);
+            hideFindKeyboard();
+            return true;
+        });
+    }
+
+    private void addFindButton(LinearLayout header, String glyph, String label, Runnable action) {
+        Button button = makeButton(glyph, label, action);
+        button.setTextSize(20);
+        button.setMinWidth(0);
+        button.setMinimumWidth(0);
+        button.setPadding(0, 0, 0, 0);
+        header.addView(button, new LinearLayout.LayoutParams(dp(48), dp(48)));
+    }
+
+    private void findInPage() {
+        if (engine == null || tabRegistry.isStartupHomeCurrent()) return;
+        if (findBrowser != null && findBrowser != engine) closePageFind();
+        findBrowser = engine;
+        browserHeader.setVisibility(View.VISIBLE);
+        findQuery.requestFocus();
+        findQuery.selectAll();
+        findQuery.post(() -> {
+            if (destroyed || findBrowser == null || !findQuery.hasFocus()) return;
+            android.view.inputmethod.InputMethodManager ime = getSystemService(
+                android.view.inputmethod.InputMethodManager.class);
+            if (ime != null) ime.showSoftInput(findQuery,
+                android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+        });
+    }
+
+    private void runPageFind(boolean forward, boolean advance) {
+        mainHandler.removeCallbacks(runPageFind);
+        if (destroyed || findBrowser == null || findBrowser != engine) return;
+        String needle = findQuery.getText().toString();
+        if (needle.isEmpty()) {
+            issuedFindQuery = "";
+            findBrowser.stopFinding(true);
+            return;
+        }
+        boolean continuing = advance && needle.equals(issuedFindQuery);
+        issuedFindQuery = needle;
+        findBrowser.find(needle, forward, false, continuing);
+    }
+
+    private void hideFindKeyboard() {
+        android.view.inputmethod.InputMethodManager ime = getSystemService(
+            android.view.inputmethod.InputMethodManager.class);
+        if (ime != null) ime.hideSoftInputFromWindow(findQuery.getWindowToken(), 0);
+    }
+
+    private void closePageFind() {
+        CefriumBrowser browser = findBrowser;
+        if (browser == null) return;
+        findBrowser = null;
+        issuedFindQuery = "";
+        mainHandler.removeCallbacks(runPageFind);
+        browser.stopFinding(true);
+        if (findQuery.hasFocus()) hideFindKeyboard();
+        findQuery.clearFocus();
+        findQuery.setText("");
+        findCount.setText("");
+        browserHeader.setVisibility(View.GONE);
     }
 
     private boolean isFastAttachEnabled() {
@@ -3547,6 +4156,22 @@ public final class ChromiumTestActivity extends Activity {
             dialog[0].dismiss();
             showBookmarks();
         });
+        if (current == null || !current.privateMode) {
+            if (current != null && ReadingList.supports(current.url)) {
+                addMenuItem(items, R.drawable.ic_browser_globe, "本文だけ読む", null, () -> {
+                    dialog[0].dismiss();
+                    showReaderText();
+                });
+                addMenuItem(items, R.drawable.ic_browser_speed, "読書リストに追加", null, () -> {
+                    dialog[0].dismiss();
+                    addPageToReadingList();
+                });
+            }
+            addMenuItem(items, R.drawable.ic_browser_history, "読書リスト", null, () -> {
+                dialog[0].dismiss();
+                showReadingList();
+            });
+        }
         addMenuItem(items, R.drawable.ic_browser_history, "閲覧履歴", null, () -> {
             dialog[0].dismiss();
             showHistory();
@@ -3668,7 +4293,7 @@ public final class ChromiumTestActivity extends Activity {
 
     private void applyBrowserSettings(CefriumBrowser browser) {
         SharedPreferences settings = getSharedPreferences(TAB_PREFS, MODE_PRIVATE);
-        browser.setPullToRefreshEnabled(settings.getBoolean("pull_to_refresh", true));
+        browser.setPullToRefreshEnabled(settings.getBoolean("pull_to_refresh", DEFAULT_PULL_TO_REFRESH));
         browser.setBackgroundColor(CANVAS);
         // Default forbids autoplay without user activation.
         browser.setMediaPlaybackRequiresUserGesture(!settings.getBoolean("auto_play", false));
@@ -3679,11 +4304,12 @@ public final class ChromiumTestActivity extends Activity {
     }
 
     private void quietBrowserWhenHidden(CefriumBrowser browser) {
+        boolean stopOnLeave = getSharedPreferences(TAB_PREFS, MODE_PRIVATE)
+            .getBoolean("stop_media_on_leave", false);
+        if (stopOnLeave) browser.stopAllMedia();
         if (externalAudioPriority()) {
-            // stopAllMedia() releases web media instead of leaving a suspended
-            // MediaSession that onResume() may automatically resume/focus.
-            // The user can start a video's audio again with a page gesture.
-            browser.stopAllMedia();
+            // MediaSession is already disabled for external-audio priority.
+            // Mark only the page visibility; do not erase the user's playback.
             browser.setPageVisible(false);
         } else {
             browser.onPause();
@@ -3871,7 +4497,7 @@ public final class ChromiumTestActivity extends Activity {
                 addSettingsToggle(content, "Webサイトのダークモード",
                     "Chromiumのカラースキームを変更", "force_dark", false);
                 addSettingsToggle(content, "下に引いて更新",
-                    "ページ先頭で引き下ろすと再読み込み", "pull_to_refresh", true);
+                    "ページ先頭で引き下ろすと再読み込み", "pull_to_refresh", DEFAULT_PULL_TO_REFRESH);
                 addSettingsAction(content, R.drawable.ic_browser_plus,
                     "ホームのショートカットを追加", "長押しすると編集・削除できるよ", () -> {
                         dialog[0].dismiss();
@@ -3880,7 +4506,7 @@ public final class ChromiumTestActivity extends Activity {
                 break;
             case "タブ":
                 addSettingsToggle(content, "前回のタブを復元",
-                    "起動時に最後に開いていたタブを表示", "restore_last_tab", false);
+                    "起動時に最後に開いていたタブを表示", "restore_last_tab", DEFAULT_RESTORE_LAST_TAB);
                 addSettingsToggle(content, "タブのプレビューを保存",
                     "通常タブだけ、アプリ専用領域に画像を保存", "save_previews", true);
                 addSettingsToggle(content, "新しいタブで検索欄を選択",
@@ -3911,6 +4537,8 @@ public final class ChromiumTestActivity extends Activity {
                     "音声フォーカスとは別の設定", "auto_play", false);
                 addSettingsToggle(content, "他アプリの音声を優先",
                     "他アプリの音楽が小さくなるのを抑制", "external_audio_priority", true);
+                addSettingsToggle(content, "画面を離れたらWebメディアを停止",
+                    "ページやアプリを切り替える際に再生を終了する", "stop_media_on_leave", false);
                 addSettingsAction(content, R.drawable.ic_browser_play,
                     "Webメディアをすべて停止", "不要な再生・音声フォーカスを解放", () -> {
                         dialog[0].dismiss();
@@ -4067,6 +4695,12 @@ public final class ChromiumTestActivity extends Activity {
     @Override @Deprecated protected void onActivityResult(
         int requestCode, int resultCode, Intent data
     ) {
+        if (requestCode == IMPORT_BOOKMARKS_REQUEST || requestCode == EXPORT_BOOKMARKS_REQUEST) {
+            if (resultCode == RESULT_OK && data != null) {
+                transferBookmarkFile(requestCode == EXPORT_BOOKMARKS_REQUEST, data.getData());
+            }
+            return;
+        }
         for (CefriumBrowser browser : liveBrowsers.values()) {
             if (browser.onActivityResult(requestCode, resultCode, data)) return;
         }
@@ -4085,6 +4719,10 @@ public final class ChromiumTestActivity extends Activity {
 
     /** System Back is navigation, not Activity destruction during page loads. */
     private void handleBrowserBack() {
+        if (findBrowser != null) {
+            closePageFind();
+            return;
+        }
         if (address != null && address.hasFocus()) {
             hideKeyboard();
             address.clearFocus();
@@ -4115,14 +4753,17 @@ public final class ChromiumTestActivity extends Activity {
 
     @Override protected void onDestroy() {
         destroyed = true;
+        closePageFind();
         if (Build.VERSION.SDK_INT >= 33 && gestureBackCallback != null) {
             getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(gestureBackCallback);
         }
         thumbnailDecodeExecutor.shutdownNow();
+        bookmarkFileExecutor.shutdown();
         thumbnailRequestsInFlight.clear();
         pendingThumbnailViews.clear();
         if (previewStore != null) previewStore.close();
         mainHandler.removeCallbacks(deferredTabSave);
+        clearAddressSuggestions();
         if (undoTimeout != null) mainHandler.removeCallbacks(undoTimeout);
         if (undoPopup != null) undoPopup.dismiss();
         if (downloads != null) downloads.dispose();

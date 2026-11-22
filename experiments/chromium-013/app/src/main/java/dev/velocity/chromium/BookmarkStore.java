@@ -71,6 +71,18 @@ public final class BookmarkStore {
         return bookmark;
     }
 
+    /** Merge an already validated backup without overwriting any saved bookmark. */
+    synchronized int mergeTransferred(List<Bookmark> imported) {
+        java.util.Set<String> seen = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        for (Bookmark current : items) seen.add(current.url);
+        List<Bookmark> added = new ArrayList<>();
+        for (Bookmark entry : imported) {
+            if (seen.add(entry.url)) added.add(new Bookmark(null, entry.url, entry.title, entry.addedAt));
+        }
+        items.addAll(0, added);
+        return added.size();
+    }
+
     public synchronized boolean removeByUrl(String url) {
         if (url == null) return false;
         return items.removeIf(b -> url.equalsIgnoreCase(b.url));
